@@ -119,18 +119,6 @@
 					"contextWindow": 131000
 				},
 				{
-					"id": "nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-FP8",
-					"reasoning": false,
-					"input": ["text", "image"],
-					"contextWindow": 131000
-				},
-				{
-					"id": "deepseek-ai/DeepSeek-V4-Pro-0813",
-					"reasoning": false,
-					"input": ["text", "image"],
-					"contextWindow": 131000
-				},
-				{
 					"id": "moonshotai/Kimi-K2.6",
 					"reasoning": true,
 					"thinkingLevelMap": {
