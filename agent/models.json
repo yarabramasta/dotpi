@@ -1,0 +1,343 @@
+{
+	"providers": {
+		"wandb": {
+			"name": "W&B Inference",
+			"baseUrl": "$WANDB_API_BASE_URL",
+			"api": "openai-completions",
+			"apiKey": "$WANDB_API_KEY",
+			"compat": {
+				"supportsStore": false,
+				"supportsDeveloperRole": false,
+				"supportsReasoningEffort": false,
+				"maxTokensField": "max_tokens",
+				"supportsLongCacheRetention": false,
+				"thinkingFormat": "chat-template",
+				"chatTemplateKwargs": {
+					"enable_thinking": { "$var": "thinking.enabled" }
+				}
+			},
+			"models": [
+				{
+					"id": "Qwen/Qwen3.6-27B",
+					"reasoning": true,
+					"thinkingLevelMap": {
+						"minimal": null,
+						"low": null,
+						"medium": null,
+						"high": "enabled",
+						"xhigh": null,
+						"max": null
+					},
+					"input": ["text", "image"],
+					"contextWindow": 262000
+				},
+				{
+					"id": "Qwen/Qwen3-30B-A3B-Instruct-2507",
+					"reasoning": false,
+					"input": ["text"],
+					"contextWindow": 262000
+				},
+				{
+					"id": "deepseek-ai/DeepSeek-V3.1",
+					"reasoning": false,
+					"input": ["text"],
+					"contextWindow": 1000000
+				},
+				{
+					"id": "meta-llama/Llama-3.1-8B-Instruct",
+					"reasoning": false,
+					"input": ["text"],
+					"contextWindow": 131000
+				},
+				{
+					"id": "google/gemma-4-31B-it",
+					"reasoning": true,
+					"thinkingLevelMap": {
+						"minimal": null,
+						"low": null,
+						"medium": null,
+						"high": "enabled",
+						"xhigh": null,
+						"max": null
+					},
+					"input": ["text", "image"],
+					"contextWindow": 262000
+				},
+				{
+					"id": "Qwen/Qwen3.5-35B-A3B",
+					"reasoning": true,
+					"thinkingLevelMap": {
+						"minimal": null,
+						"low": null,
+						"medium": null,
+						"high": "enabled",
+						"xhigh": null,
+						"max": null
+					},
+					"input": ["text", "image"],
+					"contextWindow": 262000
+				},
+				{
+					"id": "meta-llama/Llama-3.1-70B-Instruct",
+					"reasoning": false,
+					"input": ["text"],
+					"contextWindow": 131000
+				},
+				{
+					"id": "deepseek-ai/DeepSeek-V4-Flash",
+					"reasoning": true,
+					"thinkingLevelMap": {
+						"minimal": null,
+						"low": null,
+						"medium": null,
+						"high": "enabled",
+						"xhigh": null,
+						"max": null
+					},
+					"input": ["text"],
+					"contextWindow": 1000000
+				},
+				{
+					"id": "OpenPipe/Qwen3-14B-Instruct",
+					"reasoning": false,
+					"input": ["text"],
+					"contextWindow": 33000
+				},
+				{
+					"id": "openai/gpt-oss-120b",
+					"reasoning": true,
+					"thinkingLevelMap": {
+						"off": null,
+						"minimal": null,
+						"low": null,
+						"medium": null,
+						"high": "enabled",
+						"xhigh": null,
+						"max": null
+					},
+					"input": ["text"],
+					"contextWindow": 131000
+				},
+				{
+					"id": "nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-FP8",
+					"reasoning": false,
+					"input": ["text", "image"],
+					"contextWindow": 131000
+				},
+				{
+					"id": "deepseek-ai/DeepSeek-V4-Pro-0813",
+					"reasoning": false,
+					"input": ["text", "image"],
+					"contextWindow": 131000
+				},
+				{
+					"id": "moonshotai/Kimi-K2.6",
+					"reasoning": true,
+					"thinkingLevelMap": {
+						"off": null,
+						"minimal": null,
+						"low": null,
+						"medium": null,
+						"high": "enabled",
+						"xhigh": null,
+						"max": null
+					},
+					"input": ["text", "image"],
+					"contextWindow": 262000
+				},
+				{
+					"id": "JetBrains/Mellum2-12B-A2.5B-Instruct",
+					"reasoning": false,
+					"input": ["text"],
+					"contextWindow": 131000
+				},
+				{
+					"id": "openai/gpt-oss-20b",
+					"reasoning": true,
+					"thinkingLevelMap": {
+						"off": null,
+						"minimal": null,
+						"low": null,
+						"medium": null,
+						"high": "enabled",
+						"xhigh": null,
+						"max": null
+					},
+					"input": ["text"],
+					"contextWindow": 131000
+				},
+				{
+					"id": "zai-org/GLM-5.2",
+					"reasoning": true,
+					"thinkingLevelMap": {
+						"minimal": null,
+						"low": null,
+						"medium": null,
+						"high": "enabled",
+						"xhigh": null,
+						"max": null
+					},
+					"input": ["text"],
+					"contextWindow": 1000000
+				},
+				{
+					"id": "meta-llama/Llama-3.3-70B-Instruct",
+					"reasoning": false,
+					"input": ["text"],
+					"contextWindow": 262000
+				},
+				{
+					"id": "Qwen/Qwen3.6-35B-A3B",
+					"reasoning": true,
+					"thinkingLevelMap": {
+						"minimal": null,
+						"low": null,
+						"medium": null,
+						"high": "enabled",
+						"xhigh": null,
+						"max": null
+					},
+					"input": ["text", "image"],
+					"contextWindow": 262000
+				},
+				{
+					"id": "ibm-granite/granite-4.2-8b",
+					"reasoning": true,
+					"thinkingLevelMap": {
+						"minimal": null,
+						"low": null,
+						"medium": null,
+						"high": "enabled",
+						"xhigh": null,
+						"max": null
+					},
+					"input": ["text"],
+					"contextWindow": 131000
+				},
+				{
+					"id": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+					"reasoning": false,
+					"input": ["text", "image"],
+					"contextWindow": 131000
+				},
+				{
+					"id": "Qwen/Qwen3.8-27B",
+					"reasoning": true,
+					"thinkingLevelMap": {
+						"minimal": null,
+						"low": null,
+						"medium": null,
+						"high": "enabled",
+						"xhigh": null,
+						"max": null
+					},
+					"input": ["text", "image"],
+					"contextWindow": 262000
+				},
+				{
+					"id": "nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B",
+					"reasoning": true,
+					"thinkingLevelMap": {
+						"minimal": null,
+						"low": null,
+						"medium": null,
+						"high": "enabled",
+						"xhigh": null,
+						"max": null
+					},
+					"input": ["text"],
+					"contextWindow": 262000
+				},
+				{
+					"id": "deepseek-ai/DeepSeek-V4-Flash-0731",
+					"reasoning": true,
+					"thinkingLevelMap": {
+						"minimal": null,
+						"low": null,
+						"medium": null,
+						"high": "enabled",
+						"xhigh": null,
+						"max": null
+					},
+					"input": ["text"],
+					"contextWindow": 262000
+				},
+				{
+					"id": "zai-org/GLM-5.1",
+					"reasoning": false,
+					"input": ["text", "image"],
+					"contextWindow": 131000
+				},
+				{
+					"id": "ibm-granite/granite-4.1-8b",
+					"reasoning": false,
+					"input": ["text"],
+					"contextWindow": 131000
+				},
+				{
+					"id": "nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B",
+					"reasoning": true,
+					"thinkingLevelMap": {
+						"minimal": null,
+						"low": null,
+						"medium": null,
+						"high": "enabled",
+						"xhigh": null,
+						"max": null
+					},
+					"input": ["text"],
+					"contextWindow": 1000000
+				},
+				{
+					"id": "Qwen/Qwen3-235B-A22B-Instruct-2507",
+					"reasoning": false,
+					"input": ["text", "image"],
+					"contextWindow": 131000
+				},
+				{
+					"id": "moonshotai/Kimi-K2.7-Code",
+					"reasoning": true,
+					"thinkingLevelMap": {
+						"off": null,
+						"minimal": null,
+						"low": null,
+						"medium": null,
+						"high": "enabled",
+						"xhigh": null,
+						"max": null
+					},
+					"input": ["text", "image"],
+					"contextWindow": 262000
+				},
+				{
+					"id": "deepseek-ai/DeepSeek-V4-Pro",
+					"reasoning": true,
+					"thinkingLevelMap": {
+						"minimal": null,
+						"low": null,
+						"medium": null,
+						"high": "enabled",
+						"xhigh": null,
+						"max": null
+					},
+					"input": ["text"],
+					"contextWindow": 1000000
+				},
+				{
+					"id": "MiniMaxAI/MiniMax-M3",
+					"reasoning": true,
+					"thinkingLevelMap": {
+						"minimal": null,
+						"low": null,
+						"medium": null,
+						"high": "enabled",
+						"xhigh": null,
+						"max": null
+					},
+					"input": ["text", "image"],
+					"contextWindow": 262000
+				}
+			]
+		}
+	}
+}

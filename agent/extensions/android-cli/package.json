@@ -1,0 +1,8 @@
+{
+	"name": "pi-android-cli",
+	"pi": {
+		"extensions": [
+			"index.ts"
+		]
+	}
+}

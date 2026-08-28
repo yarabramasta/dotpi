@@ -1,0 +1,77 @@
+{
+	"lastChangelogVersion": "0.84.3",
+	"theme": "gruvbox-dark",
+	"packages": [
+		"npm:pi-9router-ext",
+		"npm:pi-observational-memory",
+		"npm:pi-cymbal",
+		"npm:pi-lens",
+		"npm:@sting8k/pi-vcc",
+		"npm:pi-smart-compact",
+		"npm:@juicesharp/rpiv-ask-user-question",
+		"npm:pi-slopchop",
+		"npm:@majorgilles/pi-grill-me",
+		"npm:pi-subagents",
+		"npm:pi-tidy-footer",
+		"npm:@firstpick/pi-themes-bundle",
+		"npm:pi-tool-display",
+		"npm:pi-ponytail",
+		"git:github.com/jonjonrankin/pi-caveman",
+		"npm:pi-rtk-optimizer"
+	],
+	"defaultProvider": "openai-codex",
+	"defaultModel": "gpt-5.6-luna",
+	"defaultThinkingLevel": "high",
+	"enableInstallTelemetry": false,
+	"quietStartup": true,
+	"collapseChangelog": true,
+	"tuiMode": "regular",
+	"fullscreenScrollbar": "auto",
+	"subagents": {
+		"defaultModel": "openai-codex/gpt-5.6-luna",
+		"agentOverrides": {
+			"scout": {
+				"thinking": "low",
+				"fallbackModels": [
+					"wandb/deepseek-ai/DeepSeek-V3.1",
+					"wandb/meta-llama/Llama-3.1-8B-Instruct"
+				]
+			},
+			"researcher": {
+				"thinking": "medium",
+				"fallbackModels": [
+					"wandb/deepseek-ai/DeepSeek-V4-Flash-0731:high",
+					"wandb/google/gemma-4-31B-it:high"
+				]
+			},
+			"delegate": {
+				"thinking": "high",
+				"fallbackModels": [
+					"wandb/deepseek-ai/DeepSeek-V4-Flash-0731:high",
+					"wandb/openai/gpt-oss-20b:high"
+				]
+			},
+			"worker": {
+				"thinking": "high",
+				"fallbackModels": [
+					"wandb/Qwen/Qwen3.5-35B-A3B:high",
+					"wandb/deepseek-ai/DeepSeek-V4-Flash-0731:high"
+				]
+			},
+			"reviewer": {
+				"thinking": "xhigh",
+				"fallbackModels": [
+					"wandb/Qwen/Qwen3.6-35B-A3B:high",
+					"wandb/deepseek-ai/DeepSeek-V4-Flash-0731:high"
+				]
+			},
+			"oracle": {
+				"thinking": "xhigh",
+				"fallbackModels": [
+					"wandb/deepseek-ai/DeepSeek-V4-Pro:high",
+					"wandb/Qwen/Qwen3.6-35B-A3B:high"
+				]
+			}
+		}
+	}
+}
