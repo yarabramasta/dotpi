@@ -1,5 +1,5 @@
 {
   "baseUrl": "http://localhost:20128",
-  "apiKey": "sk-25d1ba86382e7842-5hs899-40e1b1e5",
+  "apiKey": "$9ROUTER_API_KEY",
   "enableReasoning": true
 }
