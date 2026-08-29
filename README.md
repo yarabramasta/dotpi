@@ -148,6 +148,14 @@ export JINA_API_KEY='...'
 
 The W&B provider configuration uses `$WANDB_API_KEY` and `$WANDB_API_BASE_URL`. The Jina extension checks `JINA_API_KEY` first, then its configured `auth.json` value. Keep real keys in your shell environment or another local secret store. Review model and provider JSON before sharing this repository.
 
+Get a Jina API key from the [Jina AI API dashboard](https://jina.ai/api-dashboard/): sign in, open **API Key & Billing**, create or copy a key, then export it before starting Pi:
+
+```sh
+export JINA_API_KEY='...'
+```
+
+Never commit the actual key. Rotate or revoke it from the same dashboard if exposed.
+
 ## Dependencies
 
 Dotpi has no root package manifest or lockfile. After copying, dotpi checks the target for a package manifest, lockfile, and compatible package manager. It runs the declared manager when all are available; otherwise it warns and continues. Dependency rebuild failures are warnings. Pi availability and smoke failure are not warnings: they fail and roll back installation.
