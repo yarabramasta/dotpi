@@ -1,37 +1,56 @@
 {
-	"lastChangelogVersion": "0.84.3",
-	"theme": "gruvbox-dark",
-	"packages": [
-		"npm:pi-observational-memory",
-		"npm:pi-cymbal",
-		"npm:pi-lens",
-		"npm:@sting8k/pi-vcc",
-		"npm:pi-smart-compact",
-		"npm:@juicesharp/rpiv-ask-user-question",
-		"npm:pi-slopchop",
-		"npm:@majorgilles/pi-grill-me",
-		"npm:pi-subagents",
-		"npm:pi-tidy-footer",
-		"npm:@firstpick/pi-themes-bundle",
-		"npm:pi-tool-display",
-		"npm:pi-ponytail",
-		"git:github.com/jonjonrankin/pi-caveman",
-		"npm:pi-rtk-optimizer"
-	],
-	"defaultProvider": "openai-codex",
-	"defaultModel": "gpt-5.6-luna",
-	"defaultThinkingLevel": "high",
-	"enableInstallTelemetry": false,
-	"quietStartup": true,
-	"collapseChangelog": true,
-	"tuiMode": "regular",
-	"fullscreenScrollbar": "auto",
-	"subagents": {
-		"defaultModel": "openai-codex/gpt-5.6-luna",
-		"agentOverrides": {
-			"scout": {
-				"thinking": "low",
-				"tools": [
+  "lastChangelogVersion": "0.84.3",
+  "packages": [
+    "npm:pi-observational-memory",
+    "npm:pi-cymbal",
+    "npm:pi-lens",
+    "npm:@sting8k/pi-vcc",
+    "npm:pi-smart-compact",
+    "npm:@juicesharp/rpiv-ask-user-question",
+    "npm:pi-slopchop",
+    "npm:@majorgilles/pi-grill-me",
+    "npm:pi-subagents",
+    "npm:pi-tidy-footer",
+    "npm:@firstpick/pi-themes-bundle",
+    "npm:pi-tool-display",
+    "npm:pi-ponytail",
+    "npm:pi-caveman",
+    "npm:pi-rtk-optimizer",
+    "npm:pi-multimodal-proxy"
+  ],
+  "theme": "gruvbox-dark",
+  "defaultProvider": "openai-codex",
+  "defaultModel": "gpt-5.6-luna",
+  "defaultThinkingLevel": "high",
+  "enableInstallTelemetry": false,
+  "quietStartup": true,
+  "collapseChangelog": true,
+  "tuiMode": "regular",
+  "fullscreenScrollbar": "auto",
+  "observational-memory": {
+    "observeAfterTokens": 10000,
+    "reflectAfterTokens": 20000,
+    "compactAfterTokens": 81000,
+    "compactAfterTokensMode": "calibrated",
+    "compactAfterTokensRatio": 0.68,
+    "observationsPoolMaxTokens": 20000,
+    "observationsPoolTargetTokens": 10000,
+    "agentMaxTurns": 16,
+    "model": {
+      "provider": "openai-codex",
+      "id": "gpt-5.6-luna",
+      "thinking": "low"
+    },
+    "showWorkerNotifications": true,
+    "passive": false,
+    "debugLog": false
+  },
+  "subagents": {
+    "defaultModel": "openai-codex/gpt-5.6-luna",
+    "agentOverrides": {
+      "scout": {
+        "thinking": "low",
+        "tools": [
           "read",
           "grep",
           "find",
@@ -60,29 +79,29 @@
           "cymbal_impls",
           "cymbal_context"
         ],
-				"fallbackModels": [
-					"wandb/deepseek-ai/DeepSeek-V3.1",
-					"wandb/meta-llama/Llama-3.1-8B-Instruct"
-				]
-			},
-			"researcher": {
-				"thinking": "medium",
-				"systemPrompt": "You are a research subagent.\n\nGiven a question or topic, use Jina web tools to produce a concise, well-sourced research brief.\n\nTool strategy:\n- Use `jina_search_web` for 2-4 focused searches covering direct answer, authoritative sources, practical evidence, and recent developments when time-sensitive.\n- Use `jina_search_web_deep` when passage-level ranking or synthesis matters.\n- Use `jina_read_url` only on the strongest result URLs, prioritizing primary sources, official docs, specs, benchmarks, and direct evidence.\n- Search first, then read promising sources. Drop stale, redundant, or SEO-heavy results. Run tighter follow-up searches when gaps remain.\n\nOutput format:\n\n# Research: [topic]\n\n## Summary\n2-3 sentence direct answer.\n\n## Findings\nNumbered findings with inline source citations.\n1. **Finding** — explanation. [Source](url)\n2. **Finding** — explanation. [Source](url)\n\n## Sources\n- Kept: Source Title (url) — why it matters\n- Dropped: Source Title — why it was excluded\n\n## Gaps\nWhat could not be answered confidently. Suggested next steps.\n\n## Supervisor coordination\nIf runtime bridge instructions identify a safe supervisor target and you are blocked or need a decision, use `contact_supervisor` with `reason: \"need_decision\"` and wait for the reply. Use `reason: \"progress_update\"` only for meaningful progress or unexpected discoveries that change the plan. Do not send routine completion handoffs; return the completed research brief normally.",
-				"tools": [
+        "fallbackModels": [
+          "wandb/deepseek-ai/DeepSeek-V3.1",
+          "wandb/meta-llama/Llama-3.1-8B-Instruct"
+        ]
+      },
+      "researcher": {
+        "thinking": "medium",
+        "systemPrompt": "You are a research subagent.\n\nGiven a question or topic, use Jina web tools to produce a concise, well-sourced research brief.\n\nTool strategy:\n- Use `jina_search_web` for 2-4 focused searches covering direct answer, authoritative sources, practical evidence, and recent developments when time-sensitive.\n- Use `jina_search_web_deep` when passage-level ranking or synthesis matters.\n- Use `jina_read_url` only on the strongest result URLs, prioritizing primary sources, official docs, specs, benchmarks, and direct evidence.\n- Search first, then read promising sources. Drop stale, redundant, or SEO-heavy results. Run tighter follow-up searches when gaps remain.\n\nOutput format:\n\n# Research: [topic]\n\n## Summary\n2-3 sentence direct answer.\n\n## Findings\nNumbered findings with inline source citations.\n1. **Finding** — explanation. [Source](url)\n2. **Finding** — explanation. [Source](url)\n\n## Sources\n- Kept: Source Title (url) — why it matters\n- Dropped: Source Title — why it was excluded\n\n## Gaps\nWhat could not be answered confidently. Suggested next steps.\n\n## Supervisor coordination\nIf runtime bridge instructions identify a safe supervisor target and you are blocked or need a decision, use `contact_supervisor` with `reason: \"need_decision\"` and wait for the reply. Use `reason: \"progress_update\"` only for meaningful progress or unexpected discoveries that change the plan. Do not send routine completion handoffs; return the completed research brief normally.",
+        "tools": [
           "read",
           "write",
           "jina_search_web",
           "jina_search_web_deep",
           "jina_read_url"
         ],
-				"fallbackModels": [
-					"wandb/deepseek-ai/DeepSeek-V4-Flash-0731:high",
-					"wandb/google/gemma-4-31B-it:high"
-				]
-			},
-			"delegate": {
-				"thinking": "high",
-				"tools": [
+        "fallbackModels": [
+          "wandb/deepseek-ai/DeepSeek-V4-Flash-0731:high",
+          "wandb/google/gemma-4-31B-it:high"
+        ]
+      },
+      "delegate": {
+        "thinking": "high",
+        "tools": [
           "read",
           "grep",
           "find",
@@ -114,14 +133,14 @@
           "cymbal_impls",
           "cymbal_context"
         ],
-				"fallbackModels": [
-					"wandb/deepseek-ai/DeepSeek-V4-Flash-0731:high",
-					"wandb/openai/gpt-oss-20b:high"
-				]
-			},
-			"worker": {
-				"thinking": "high",
-				"tools": [
+        "fallbackModels": [
+          "wandb/deepseek-ai/DeepSeek-V4-Flash-0731:high",
+          "wandb/openai/gpt-oss-20b:high"
+        ]
+      },
+      "worker": {
+        "thinking": "high",
+        "tools": [
           "read",
           "grep",
           "find",
@@ -153,14 +172,14 @@
           "cymbal_impls",
           "cymbal_context"
         ],
-				"fallbackModels": [
-					"wandb/Qwen/Qwen3.5-35B-A3B:high",
-					"wandb/deepseek-ai/DeepSeek-V4-Flash-0731:high"
-				]
-			},
-			"reviewer": {
-				"thinking": "xhigh",
-				"tools": [
+        "fallbackModels": [
+          "wandb/Qwen/Qwen3.5-35B-A3B:high",
+          "wandb/deepseek-ai/DeepSeek-V4-Flash-0731:high"
+        ]
+      },
+      "reviewer": {
+        "thinking": "xhigh",
+        "tools": [
           "read",
           "grep",
           "find",
@@ -188,14 +207,14 @@
           "cymbal_diff",
           "cymbal_context"
         ],
-				"fallbackModels": [
-					"wandb/Qwen/Qwen3.6-35B-A3B:high",
-					"wandb/deepseek-ai/DeepSeek-V4-Flash-0731:high"
-				]
-			},
-			"oracle": {
-				"thinking": "xhigh",
-				"tools": [
+        "fallbackModels": [
+          "wandb/Qwen/Qwen3.6-35B-A3B:high",
+          "wandb/deepseek-ai/DeepSeek-V4-Flash-0731:high"
+        ]
+      },
+      "oracle": {
+        "thinking": "xhigh",
+        "tools": [
           "read",
           "grep",
           "find",
@@ -223,11 +242,11 @@
           "cymbal_impls",
           "cymbal_context"
         ],
-				"fallbackModels": [
-					"wandb/deepseek-ai/DeepSeek-V4-Pro:high",
-					"wandb/Qwen/Qwen3.6-35B-A3B:high"
-				]
-			}
-		}
-	}
+        "fallbackModels": [
+          "wandb/deepseek-ai/DeepSeek-V4-Pro:high",
+          "wandb/Qwen/Qwen3.6-35B-A3B:high"
+        ]
+      }
+    }
+  }
 }
