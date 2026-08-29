@@ -1,0 +1,34 @@
+#!/bin/sh
+set -eu
+
+case $0 in
+	*/*)
+		script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+		if [ -f "$script_dir/dotpi.py" ]; then
+			if ! command -v python3 >/dev/null 2>&1; then
+				echo "dotpi: python3 is required" >&2
+				exit 127
+			fi
+			exec python3 "$script_dir/dotpi.py" "$@"
+		fi
+		;;
+esac
+
+# Supports pinned `curl | sh` bootstrap without trusting a mutable local checkout.
+repo=${DOTPI_REPO:-https://github.com/yarabramasta/dotpi}
+ref=${DOTPI_REF:-main}
+if ! command -v curl >/dev/null 2>&1 || ! command -v tar >/dev/null 2>&1; then
+	echo "dotpi: curl and tar are required for remote bootstrap" >&2
+	exit 127
+fi
+if ! command -v python3 >/dev/null 2>&1; then
+	echo "dotpi: python3 is required" >&2
+	exit 127
+fi
+
+tmp=$(mktemp -d "${TMPDIR:-/tmp}/dotpi.XXXXXX")
+trap 'rm -rf "$tmp"' EXIT INT TERM
+curl -fsSL "$repo/archive/$ref.tar.gz" -o "$tmp/repo.tar.gz"
+mkdir "$tmp/repo"
+tar -xzf "$tmp/repo.tar.gz" -C "$tmp/repo" --strip-components=1
+python3 "$tmp/repo/dotpi.py" "$@"
