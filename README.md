@@ -142,10 +142,11 @@ Configure keys through environment variables before starting Pi:
 
 ```sh
 export WANDB_API_KEY='...'
+export WANDB_API_BASE_URL='...'
 export JINA_API_KEY='...'
 ```
 
-The W&B provider configuration uses `$WANDB_API_KEY`. The Jina extension checks `JINA_API_KEY` first, then its configured `auth.json` value. Keep real keys in your shell environment or another local secret store. Review model and provider JSON before sharing this repository.
+The W&B provider configuration uses `$WANDB_API_KEY` and `$WANDB_API_BASE_URL`. The Jina extension checks `JINA_API_KEY` first, then its configured `auth.json` value. Keep real keys in your shell environment or another local secret store. Review model and provider JSON before sharing this repository.
 
 ## Dependencies
 
