@@ -1,5 +1,0 @@
-{
-  "baseUrl": "http://localhost:20128",
-  "apiKey": "$9ROUTER_API_KEY",
-  "enableReasoning": true
-}
