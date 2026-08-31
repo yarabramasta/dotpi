@@ -129,8 +129,23 @@ Tracked direct JSON files under `agent/` are copied literally except `agent/auth
 Extensions currently include:
 
 - `android-cli`
+- `grill`
 - `jina`
 - `wandb`
+
+The `grill` extension adds a Socratic planning mode to Pi:
+
+```text
+/grill <topic>
+/grill status
+/grill checkpoint [edit|chat]
+/grill intent auto|plan|learn|research|content|decide
+/grill research off|ask|auto
+/grill language en|id
+/grill stop
+```
+
+Grill Me maintains a shared-understanding checkpoint, presents structured answer choices, and can use Cymbal or installed read-only scouts for grounding. It keeps interview mode read-only until you explicitly select and approve output production. `/checkpoint` is an alias for the current Grill Me checkpoint. Install it independently with `--extension grill`.
 
 The W&B extension is folder-based at `agent/extensions/wandb/`, with `index.ts` and `package.json`. It adds a session-derived `cache_salt` only to W&B provider requests.
 
