@@ -22,6 +22,13 @@ Use a fixture instead of your real home while testing:
 ./dotpi install --mode=clean --target=/tmp/dotpi-fixture --yes
 ```
 
+Check or refresh dotpi without touching your Pi target:
+
+```sh
+./dotpi doctor
+./dotpi update --dry-run
+```
+
 ## Install modes
 
 ### Safe
@@ -83,6 +90,9 @@ All mutating commands prompt in a terminal. Non-interactive commands must pass `
 
 ```text
 ./dotpi install --mode=safe|clean|cherry-pick [options]
+./dotpi doctor [--target PATH] [--json]
+./dotpi update [--dry-run] [--yes]
+./dotpi sync [--settings] [--models] [--apply] [--target PATH] [--yes]
 ./dotpi backup [paths...] [--target PATH] [--yes]
 ./dotpi restore BACKUP_ID [paths...] [--target PATH] [--yes]
 ./dotpi list [--target PATH]
@@ -100,6 +110,22 @@ Useful install options:
 - `--force` — allow selected extension overwrite; not recoverable through extension backups.
 - `--yes` — explicit approval for non-interactive operation.
 - `--dry-run` — preview install without changing files or running validation.
+
+## Doctor, update, and sync
+
+`doctor` is a quick, read-only preflight. It checks target layout, direct JSON validity, and installed extension manifests/entrypoints. It never reads `agent/auth.json`, runs package managers, or launches Pi. Use `--json` for scripts.
+
+`update` fast-forwards this local dotpi checkout from its configured Git upstream. It refuses dirty, detached, missing-upstream, or diverged states. It never changes `~/.pi`; use `--dry-run` to query upstream without changing Git metadata.
+
+`sync` is separate and opt-in. First version reviews or applies existing `settings.json` and `models.json` only:
+
+```sh
+./dotpi sync --settings --dry-run
+./dotpi sync --settings --models --dry-run
+./dotpi sync --settings --apply --yes
+```
+
+Sync requires explicit file flags and defaults to review-only. Provider/default-provider or provider-object differences block apply. Sensitive values and provider URLs are redacted. Missing target files are not created. Apply creates a protected backup and rolls back all selected files on failure. Extension code syncing is deferred.
 
 ## Backups and restore
 
