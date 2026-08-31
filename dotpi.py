@@ -344,7 +344,9 @@ def iter_entries(root: Path, relative: Path) -> list[tuple[Path, Path]]:
     return entries
 
 
-def create_backup(target: Path, paths: list[Path], label: str) -> Path:
+def create_backup(
+    target: Path, paths: list[Path], label: str, announce: bool = True
+) -> Path:
     root = backup_root(target)
     root.mkdir(mode=0o700, parents=True, exist_ok=True)
     backup_id = (
@@ -396,7 +398,8 @@ def create_backup(target: Path, paths: list[Path], label: str) -> Path:
     )
     os.chmod(backup / "manifest.json", 0o600)
     set_private(backup)
-    print(f"Backup created: {backup_id} ({len(entries)} entries)")
+    if announce:
+        print(f"Backup created: {backup_id} ({len(entries)} entries)")
     return backup
 
 
@@ -804,6 +807,552 @@ def validate_target(
                 die(f"installed extension {name} entrypoint missing: {entry}")
 
 
+def doctor_result(name: str, status: str, message: str) -> dict[str, str]:
+    return {"name": name, "status": status, "message": message}
+
+
+def doctor_readable_directory(path: Path) -> tuple[bool, str]:
+    try:
+        if path.is_symlink():
+            return False, "symlink not followed"
+        if not path.exists():
+            return False, "not found"
+        if not path.is_dir():
+            return False, "wrong type; expected directory"
+        if not os.access(path, os.R_OK | os.X_OK):
+            return False, "not readable"
+    except OSError as error:
+        return False, f"not readable: {error}"
+    return True, "readable directory"
+
+
+def doctor_json_result(path: Path) -> dict[str, str]:
+    name = f"json:{path.name}"
+    if path.is_symlink():
+        return doctor_result(name, "FAIL", f"{path}: symlink not followed")
+    if not path.is_file():
+        return doctor_result(name, "FAIL", f"{path}: wrong type; expected file")
+    try:
+        readable = os.access(path, os.R_OK)
+    except OSError as error:
+        return doctor_result(name, "FAIL", f"{path}: not readable: {error}")
+    if not readable:
+        return doctor_result(name, "FAIL", f"{path}: not readable")
+    try:
+        json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        return doctor_result(name, "FAIL", f"{path}: invalid JSON: {error}")
+    return doctor_result(name, "PASS", f"{path}: valid JSON")
+
+
+def doctor_entrypoint(extension: Path, entry: Any) -> str | None:
+    if not isinstance(entry, str):
+        return "entrypoint is not a string"
+    relative = Path(entry)
+    if relative.is_absolute() or ".." in relative.parts:
+        return f"invalid entrypoint path: {entry}"
+    current = extension
+    for part in relative.parts:
+        current /= part
+        if current.is_symlink():
+            return f"entrypoint symlink not followed: {entry}"
+    if not current.is_file():
+        return f"entrypoint missing: {entry}"
+    try:
+        readable = os.access(current, os.R_OK)
+    except OSError:
+        return f"entrypoint not readable: {entry}"
+    if not readable:
+        return f"entrypoint not readable: {entry}"
+    return None
+
+
+def doctor_extension_result(extension: Path) -> dict[str, str]:
+    name = f"extension:{extension.name}"
+    if extension.is_symlink():
+        return doctor_result(name, "FAIL", f"{extension}: symlink not followed")
+    if not extension.is_dir():
+        return doctor_result(
+            name, "FAIL", f"{extension}: wrong type; expected directory"
+        )
+    try:
+        readable = os.access(extension, os.R_OK | os.X_OK)
+    except OSError as error:
+        return doctor_result(name, "FAIL", f"{extension}: not readable: {error}")
+    if not readable:
+        return doctor_result(name, "FAIL", f"{extension}: not readable")
+    manifest_path = extension / "package.json"
+    if manifest_path.is_symlink() or not manifest_path.is_file():
+        return doctor_result(name, "FAIL", f"{manifest_path}: missing readable file")
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        return doctor_result(name, "FAIL", f"{manifest_path}: invalid JSON: {error}")
+    if not isinstance(manifest, dict) or not isinstance(manifest.get("pi"), dict):
+        return doctor_result(name, "FAIL", f"{manifest_path}: missing pi manifest")
+    entries = manifest["pi"].get("extensions")
+    if not isinstance(entries, list) or not entries:
+        return doctor_result(name, "FAIL", f"{extension}: no pi extension entrypoint")
+    for entry in entries:
+        if error := doctor_entrypoint(extension, entry):
+            return doctor_result(name, "FAIL", f"{extension}: {error}")
+    return doctor_result(name, "PASS", f"{extension}: valid manifest and entrypoints")
+
+
+def doctor_command(args: argparse.Namespace) -> None:
+    target = target_path(args.target)
+    checks: list[dict[str, str]] = []
+    target_ok, target_message = doctor_readable_directory(target)
+    checks.append(
+        doctor_result(
+            "target", "PASS" if target_ok else "FAIL", f"{target}: {target_message}"
+        )
+    )
+    agent = target / "agent"
+    if not target_ok:
+        checks.append(doctor_result("agent", "SKIP", "target prerequisite failed"))
+        checks.append(doctor_result("auth", "SKIP", "agent prerequisite failed"))
+        checks.append(doctor_result("config", "SKIP", "agent prerequisite failed"))
+        checks.append(doctor_result("extensions", "SKIP", "agent prerequisite failed"))
+    else:
+        agent_ok, agent_message = doctor_readable_directory(agent)
+        checks.append(
+            doctor_result(
+                "agent", "PASS" if agent_ok else "FAIL", f"{agent}: {agent_message}"
+            )
+        )
+        if not agent_ok:
+            checks.append(doctor_result("auth", "SKIP", "agent prerequisite failed"))
+            checks.append(doctor_result("config", "SKIP", "agent prerequisite failed"))
+            checks.append(
+                doctor_result("extensions", "SKIP", "agent prerequisite failed")
+            )
+        else:
+            auth = agent / AUTH.name
+            checks.append(
+                doctor_result("auth", "PASS", "present; contents not checked")
+                if os.path.lexists(auth)
+                else doctor_result("auth", "PASS", "absent; optional")
+            )
+            try:
+                json_paths = sorted(
+                    path
+                    for path in agent.iterdir()
+                    if path.name != AUTH.name and path.suffix == ".json"
+                )
+            except OSError as error:
+                checks.append(
+                    doctor_result("config", "FAIL", f"cannot list {agent}: {error}")
+                )
+                json_paths = []
+            if json_paths:
+                checks.extend(doctor_json_result(path) for path in json_paths)
+            else:
+                checks.append(
+                    doctor_result(
+                        "config", "WARN", f"{agent}: no direct config JSON files found"
+                    )
+                )
+            extensions_root = agent / "extensions"
+            if not extensions_root.exists() and not extensions_root.is_symlink():
+                checks.append(
+                    doctor_result("extensions", "PASS", "no installed extensions")
+                )
+            elif extensions_root.is_symlink() or not extensions_root.is_dir():
+                checks.append(
+                    doctor_result(
+                        "extensions",
+                        "FAIL",
+                        f"{extensions_root}: invalid extensions directory",
+                    )
+                )
+            else:
+                try:
+                    readable = os.access(extensions_root, os.R_OK | os.X_OK)
+                except OSError as error:
+                    checks.append(
+                        doctor_result(
+                            "extensions",
+                            "FAIL",
+                            f"{extensions_root}: not readable: {error}",
+                        )
+                    )
+                    readable = False
+                if not readable:
+                    checks.append(
+                        doctor_result(
+                            "extensions", "FAIL", f"{extensions_root}: not readable"
+                        )
+                    )
+                else:
+                    try:
+                        extensions = sorted(
+                            path
+                            for path in extensions_root.iterdir()
+                            if path.is_dir() or path.is_symlink()
+                        )
+                    except OSError as error:
+                        checks.append(
+                            doctor_result(
+                                "extensions",
+                                "FAIL",
+                                f"cannot list {extensions_root}: {error}",
+                            )
+                        )
+                        extensions = []
+                    checks.extend(doctor_extension_result(path) for path in extensions)
+    overall = (
+        "FAIL"
+        if any(check["status"] == "FAIL" for check in checks)
+        else "WARN"
+        if any(check["status"] == "WARN" for check in checks)
+        else "PASS"
+    )
+    payload = {"target": str(target), "overall": overall, "checks": checks}
+    if args.json:
+        print(json.dumps(payload, indent=2))
+    else:
+        for check in checks:
+            print(f"{check['status']} {check['name']}: {check['message']}")
+    if overall == "FAIL":
+        raise DotpiError(1)
+
+
+def git_run(root: Path, *arguments: str) -> subprocess.CompletedProcess[str]:
+    command = ["git", "-C", str(root), *arguments]
+    try:
+        return subprocess.run(
+            command,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+    except OSError as error:
+        return subprocess.CompletedProcess(command, 127, "", str(error))
+
+
+def git_failure(
+    result: subprocess.CompletedProcess[str], action: str, code: int = 2
+) -> NoReturn:
+    detail = (result.stderr or result.stdout).strip()
+    die(f"git {action} failed{(': ' + detail) if detail else ''}", code)
+
+
+def git_upstream(root: Path) -> tuple[str, str, str]:
+    result = git_run(root, "rev-parse", "--symbolic-full-name", "@{u}")
+    if result.returncode:
+        git_failure(result, "find configured upstream")
+    reference = result.stdout.strip()
+    prefix = "refs/remotes/"
+    if not reference.startswith(prefix) or "/" not in reference[len(prefix) :]:
+        die(f"configured upstream is not a remote branch: {reference}")
+    remote, branch = reference[len(prefix) :].split("/", 1)
+    return remote, branch, reference
+
+
+def git_relation(root: Path, local: str, remote: str) -> str:
+    if local == remote:
+        return "same"
+    result = git_run(root, "cat-file", "-e", f"{remote}^{{commit}}")
+    if result.returncode:
+        return "unknown"
+    result = git_run(root, "merge-base", "--is-ancestor", local, remote)
+    if result.returncode == 0:
+        return "behind"
+    result = git_run(root, "merge-base", "--is-ancestor", remote, local)
+    if result.returncode == 0:
+        return "ahead"
+    return "diverged"
+
+
+def update_command(args: argparse.Namespace) -> None:
+    root = repo_root()
+    status = git_run(root, "status", "--porcelain", "--untracked-files=all")
+    if status.returncode:
+        git_failure(status, "inspect worktree")
+    if status.stdout:
+        die("dotpi checkout has local changes; commit or stash them first", 1)
+    branch = git_run(root, "symbolic-ref", "--quiet", "--short", "HEAD")
+    if branch.returncode:
+        die("dotpi checkout is detached; checkout a branch first", 1)
+    remote, remote_branch, upstream = git_upstream(root)
+    head = git_run(root, "rev-parse", "HEAD")
+    if head.returncode:
+        git_failure(head, "read HEAD")
+    local = head.stdout.strip()
+    if args.dry_run:
+        remote_result = git_run(
+            root, "ls-remote", remote, f"refs/heads/{remote_branch}"
+        )
+        if remote_result.returncode:
+            git_failure(remote_result, "inspect upstream")
+        line = remote_result.stdout.strip().splitlines()
+        if not line or not line[0].split()[0]:
+            die(f"configured upstream has no branch: {remote}/{remote_branch}")
+        remote_head = line[0].split()[0]
+        relation = git_relation(root, local, remote_head)
+        if relation == "same":
+            print(f"Already up to date: {branch.stdout.strip()} at {local[:12]}")
+        elif relation == "behind":
+            count = git_run(root, "rev-list", "--count", f"{local}..{remote_head}")
+            suffix = (
+                f" ({count.stdout.strip()} commit(s))" if count.returncode == 0 else ""
+            )
+            print(
+                f"Would fast-forward {branch.stdout.strip()} from {local[:12]} to {remote_head[:12]}{suffix}"
+            )
+        elif relation == "unknown":
+            print(
+                f"Update available: upstream {remote_head[:12]}; ancestry not verified in dry-run"
+            )
+        elif relation == "ahead":
+            die(
+                f"local branch is ahead of configured upstream {upstream}; refusing update",
+                1,
+            )
+        else:
+            die(
+                f"local branch diverged from configured upstream {upstream}; refusing update",
+                1,
+            )
+        return
+    require_confirmation(args, f"Update dotpi from {remote}/{remote_branch}")
+    fetched = git_run(root, "fetch", "--no-tags", remote, remote_branch)
+    if fetched.returncode:
+        git_failure(fetched, "fetch upstream")
+    upstream_head = git_run(root, "rev-parse", upstream)
+    if upstream_head.returncode:
+        git_failure(upstream_head, "read fetched upstream")
+    remote_head = upstream_head.stdout.strip()
+    relation = git_relation(root, local, remote_head)
+    if relation == "same":
+        print(f"Already up to date: {branch.stdout.strip()} at {local[:12]}")
+        return
+    if relation != "behind":
+        message = "ahead of" if relation == "ahead" else "diverged from"
+        die(
+            f"local branch is {message} configured upstream {upstream}; refusing update",
+            1,
+        )
+    merged = git_run(root, "merge", "--ff-only", upstream)
+    if merged.returncode:
+        git_failure(merged, "fast-forward update")
+    print(f"Updated dotpi to {remote_head[:12]}")
+
+
+def sync_path_specs(args: argparse.Namespace) -> list[tuple[str, Path]]:
+    selected: list[tuple[str, Path]] = []
+    if args.settings:
+        selected.append(("settings.json", Path("agent/settings.json")))
+    if args.models:
+        selected.append(("models.json", Path("agent/models.json")))
+    if not selected:
+        die("sync requires --settings and/or --models")
+    return selected
+
+
+def provider_projection(
+    value: Any, path: tuple[str, ...] = ()
+) -> dict[tuple[str, ...], Any]:
+    projection: dict[tuple[str, ...], Any] = {}
+    if isinstance(value, dict):
+        for key, child in value.items():
+            child_path = path + (str(key),)
+            if str(key).lower() in {"provider", "providers", "defaultprovider"}:
+                projection[child_path] = child
+            else:
+                projection.update(provider_projection(child, child_path))
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            projection.update(provider_projection(child, path + (f"[{index}]",)))
+    return projection
+
+
+def structural_diff(
+    source: Any, target: Any, path: tuple[str, ...] = ()
+) -> list[tuple[str, str]]:
+    if isinstance(source, dict) and isinstance(target, dict):
+        changes: list[tuple[str, str]] = []
+        for key in sorted(set(source) | set(target)):
+            child = path + (str(key),)
+            if key not in source:
+                changes.append(("removed", ".".join(child)))
+            elif key not in target:
+                changes.append(("added", ".".join(child)))
+            else:
+                changes.extend(structural_diff(source[key], target[key], child))
+        return changes
+    if isinstance(source, list) and isinstance(target, list):
+        if source == target:
+            return []
+        return [("changed", ".".join(path) or "<root>")]
+    if source != target:
+        return [("changed", ".".join(path) or "<root>")]
+    return []
+
+
+def sync_rollback(
+    target: Path,
+    snapshots: dict[Path, tuple[bytes, int] | None],
+    backup: Path,
+    original: Exception,
+) -> NoReturn:
+    rollback_errors: list[str] = []
+    for relative, snapshot in snapshots.items():
+        if snapshot is None:
+            continue
+        try:
+            restore_snapshot(target / relative, snapshot)
+        except (DotpiError, OSError):
+            rollback_errors.append(str(target / relative))
+    if rollback_errors:
+        die(
+            f"sync failed ({original}); rollback failed for {', '.join(rollback_errors)}; "
+            f"backup retained at {backup}",
+            2,
+        )
+    if isinstance(original, DotpiError):
+        raise original
+    die(f"sync failed: {original}")
+
+
+def sync_command(args: argparse.Namespace) -> None:
+    root = repo_root()
+    target = target_path(args.target)
+    ensure_target_safe(target)
+    if (
+        not target.is_dir()
+        or (target / "agent").is_symlink()
+        or not (target / "agent").is_dir()
+    ):
+        die(f"sync target is not an installed Pi target: {target}")
+    reports: list[dict[str, Any]] = []
+    changes: list[tuple[str, Path, Path, bytes, int]] = []
+    provider_blocked = False
+    for name, relative in sync_path_specs(args):
+        source = root / relative
+        destination = target / relative
+        if source.is_symlink() or not source.is_file():
+            die(f"sync source is missing: {source}")
+        if destination.is_symlink():
+            reports.append(
+                {
+                    "name": name,
+                    "status": "FAIL",
+                    "message": "target is a symlink; refusing to follow",
+                }
+            )
+            continue
+        if not destination.exists():
+            reports.append(
+                {
+                    "name": name,
+                    "status": "SKIP",
+                    "message": "target file missing; install it before sync",
+                }
+            )
+            continue
+        if not destination.is_file():
+            reports.append(
+                {
+                    "name": name,
+                    "status": "FAIL",
+                    "message": "target is not a regular file",
+                }
+            )
+            continue
+        source_value = parse_json(source)
+        target_value = parse_json(destination)
+        differences = structural_diff(source_value, target_value)
+        source_providers = provider_projection(source_value)
+        target_providers = provider_projection(target_value)
+        provider_differences = sorted(
+            ".".join(path)
+            for path in set(source_providers) | set(target_providers)
+            if path not in source_providers
+            or path not in target_providers
+            or source_providers[path] != target_providers[path]
+        )
+        if provider_differences:
+            provider_blocked = True
+        status = (
+            "BLOCKED" if provider_differences else "PASS" if not differences else "WARN"
+        )
+        message = "unchanged" if not differences else f"{len(differences)} change(s)"
+        report = {
+            "name": name,
+            "status": status,
+            "message": message,
+            "changes": [
+                {"status": status_text, "path": f"{name}.{path}"}
+                for status_text, path in differences
+            ],
+            "provider_conflicts": [f"{name}.{path}" for path in provider_differences],
+        }
+        reports.append(report)
+        if differences and not provider_differences:
+            changes.append(
+                (name, relative, destination, source.read_bytes(), mode(destination))
+            )
+    overall = (
+        "BLOCKED"
+        if provider_blocked
+        else "FAIL"
+        if any(report["status"] == "FAIL" for report in reports)
+        else "WARN"
+        if any(report["status"] in {"WARN", "SKIP"} for report in reports)
+        else "PASS"
+    )
+    if args.json:
+        print(
+            json.dumps(
+                {"target": str(target), "overall": overall, "files": reports}, indent=2
+            )
+        )
+    else:
+        for report in reports:
+            print(f"{report['status']} {report['name']}: {report['message']}")
+            for change in report.get("changes", []):
+                print(f"  {change['status']} {change['path']}")
+            for conflict in report.get("provider_conflicts", []):
+                print(f"  blocked provider difference: {conflict}")
+    if any(report["status"] == "FAIL" for report in reports):
+        die("sync could not read selected target files")
+    if provider_blocked:
+        raise DotpiError(1)
+    if not args.apply or not changes:
+        return
+    require_confirmation(args, f"Apply dotpi configuration sync to {target}")
+    changed_paths = [relative for _, relative, _, _, _ in changes]
+    backup = create_backup(target, changed_paths, "before-sync", announce=not args.json)
+    snapshots = {
+        relative: snapshot_file(target / relative) for relative in changed_paths
+    }
+    try:
+        for _, _, destination, content, target_mode in changes:
+            atomic_write(destination, content, target_mode)
+    except DotpiError as error:
+        sync_rollback(target, snapshots, backup, error)
+    except OSError as error:
+        sync_rollback(target, snapshots, backup, error)
+    if args.json:
+        print(
+            json.dumps(
+                {
+                    "target": str(target),
+                    "overall": "APPLIED",
+                    "backup": backup.name,
+                    "files": [name for name, *_ in changes],
+                },
+                indent=2,
+            )
+        )
+    else:
+        print(
+            f"Applied sync for {len(changes)} file(s); backup retained: {backup.name}"
+        )
+
+
 def clean_install(args: argparse.Namespace, root: Path, target: Path) -> None:
     source_agent = root / "agent"
     include_auth = args.include_auth
@@ -950,6 +1499,41 @@ def build_parser() -> argparse.ArgumentParser:
     add_target(install)
     add_confirmation(install)
     install.set_defaults(function=install_command)
+
+    doctor = commands.add_parser(
+        "doctor", help="check Pi target health without changing files"
+    )
+    doctor.add_argument(
+        "--json", action="store_true", help="emit machine-readable results"
+    )
+    add_target(doctor)
+    doctor.set_defaults(function=doctor_command)
+
+    update = commands.add_parser("update", help="update this dotpi checkout")
+    update.add_argument(
+        "--dry-run", action="store_true", help="preview without changing Git state"
+    )
+    add_confirmation(update)
+    update.set_defaults(function=update_command)
+
+    sync = commands.add_parser(
+        "sync", help="review or apply repository config to an existing Pi target"
+    )
+    sync.add_argument("--settings", action="store_true", help="review settings.json")
+    sync.add_argument("--models", action="store_true", help="review models.json")
+    sync_action = sync.add_mutually_exclusive_group()
+    sync_action.add_argument(
+        "--apply", action="store_true", help="apply reviewed, conflict-free files"
+    )
+    sync_action.add_argument(
+        "--dry-run", action="store_true", help="review without changing files"
+    )
+    sync.add_argument(
+        "--json", action="store_true", help="emit machine-readable results"
+    )
+    add_target(sync)
+    add_confirmation(sync)
+    sync.set_defaults(function=sync_command)
 
     backup = commands.add_parser("backup", help="create protected backup")
     backup.add_argument("paths", nargs="*", help="repository-relative paths")
