@@ -281,7 +281,7 @@ def select_extensions(args: argparse.Namespace, sources: dict[str, Path]) -> lis
                 selected.append(name)
         return selected
     if not is_interactive(args):
-        die("non-interactive safe/cherry-pick install requires --extension filters")
+        die("non-interactive install requires --extension filters")
     if not sources:
         return []
     print("Available extensions:")
@@ -673,6 +673,42 @@ def rollback_partial_install(
         )
 
 
+def cherry_pick_install(args: argparse.Namespace, root: Path, target: Path) -> None:
+    sources = extension_sources(root)
+    selected = select_extensions(args, sources)
+    if not selected:
+        die("extension install requires --extension filters")
+    conflicts = extension_conflicts(target, selected, sources)
+    if conflicts and not args.force:
+        die(
+            f"extension already exists: {', '.join(conflicts)}; use --force to overwrite"
+        )
+    if conflicts and args.force:
+        warn(
+            f"--force will overwrite extensions without a recoverable backup: {', '.join(conflicts)}"
+        )
+    if args.dry_run:
+        print("Dry run: no files changed.")
+        print("Would copy extensions: " + ", ".join(selected))
+        return
+    require_confirmation(args, f"Install extensions to {target}")
+    created: list[Path] = []
+    try:
+        for name in selected:
+            destination = target / "agent" / "extensions" / name
+            if not destination.exists():
+                created.append(destination)
+            copy_entry(sources[name], destination, overwrite=args.force)
+        validate_target(target, [], selected)
+    except DotpiError:
+        rollback_partial_install(target, {}, created, conflicts if args.force else [])
+        raise
+    except OSError as error:
+        rollback_partial_install(target, {}, created, conflicts if args.force else [])
+        die(f"extension install failed: {error}")
+    print(f"Installed {len(selected)} extensions; configuration untouched")
+
+
 def safe_or_cherry_install(args: argparse.Namespace, root: Path, target: Path) -> None:
     sources = extension_sources(root)
     selected = select_extensions(args, sources)
@@ -861,6 +897,8 @@ def install_command(args: argparse.Namespace) -> None:
         die("--include-auth is valid only with --mode=clean")
     if args.mode == "clean":
         clean_install(args, root, target)
+    elif args.mode == "cherry-pick":
+        cherry_pick_install(args, root, target)
     else:
         safe_or_cherry_install(args, root, target)
 

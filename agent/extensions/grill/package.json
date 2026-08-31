@@ -1,0 +1,9 @@
+{
+	"name": "pi-grill",
+	"type": "module",
+	"pi": {
+		"extensions": [
+			"index.ts"
+		]
+	}
+}
