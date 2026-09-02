@@ -18,8 +18,8 @@
     "npm:pi-tidy-footer"
   ],
   "theme": "gruvbox-dark",
-  "defaultProvider": "openai-codex",
-  "defaultModel": "gpt-5.6-luna",
+  "defaultProvider": "wandb",
+  "defaultModel": "deepseek-ai/DeepSeek-V4-Flash-0731",
   "defaultThinkingLevel": "high",
   "enableInstallTelemetry": false,
   "quietStartup": true,
@@ -36,8 +36,8 @@
     "observationsPoolTargetTokens": 10000,
     "agentMaxTurns": 16,
     "model": {
-      "provider": "openai-codex",
-      "id": "gpt-5.6-luna",
+      "provider": "wandb",
+      "id": "deepseek-ai/DeepSeek-V4-Flash-0731",
       "thinking": "low"
     },
     "showWorkerNotifications": true,
@@ -45,9 +45,10 @@
     "debugLog": false
   },
   "subagents": {
-    "defaultModel": "openai-codex/gpt-5.6-luna",
+    "defaultModel": "wandb/deepseek-ai/DeepSeek-V4-Flash-0731",
     "agentOverrides": {
       "scout": {
+        "model": "wandb/Qwen/Qwen3-30B-A3B-Instruct-2507",
         "thinking": "low",
         "tools": [
           "read",
@@ -80,11 +81,12 @@
         ],
         "fallbackModels": [
           "wandb/deepseek-ai/DeepSeek-V3.1",
-          "wandb/meta-llama/Llama-3.1-8B-Instruct"
+          "wandb/meta-llama/Llama-3.1-70B-Instruct"
         ]
       },
       "researcher": {
-        "thinking": "medium",
+        "model": "wandb/Qwen/Qwen3.6-27B",
+        "thinking": "high",
         "systemPrompt": "You are a research subagent.\n\nGiven a question or topic, use Jina web tools to produce a concise, well-sourced research brief.\n\nTool strategy:\n- Use `jina_search_web` for 2-4 focused searches covering direct answer, authoritative sources, practical evidence, and recent developments when time-sensitive.\n- Use `jina_search_web_deep` when passage-level ranking or synthesis matters.\n- Use `jina_read_url` only on the strongest result URLs, prioritizing primary sources, official docs, specs, benchmarks, and direct evidence.\n- Search first, then read promising sources. Drop stale, redundant, or SEO-heavy results. Run tighter follow-up searches when gaps remain.\n\nOutput format:\n\n# Research: [topic]\n\n## Summary\n2-3 sentence direct answer.\n\n## Findings\nNumbered findings with inline source citations.\n1. **Finding** — explanation. [Source](url)\n2. **Finding** — explanation. [Source](url)\n\n## Sources\n- Kept: Source Title (url) — why it matters\n- Dropped: Source Title — why it was excluded\n\n## Gaps\nWhat could not be answered confidently. Suggested next steps.\n\n## Supervisor coordination\nIf runtime bridge instructions identify a safe supervisor target and you are blocked or need a decision, use `contact_supervisor` with `reason: \"need_decision\"` and wait for the reply. Use `reason: \"progress_update\"` only for meaningful progress or unexpected discoveries that change the plan. Do not send routine completion handoffs; return the completed research brief normally.",
         "tools": [
           "read",
@@ -95,10 +97,11 @@
         ],
         "fallbackModels": [
           "wandb/deepseek-ai/DeepSeek-V4-Flash-0731:high",
-          "wandb/google/gemma-4-31B-it:high"
+          "wandb/MiniMaxAI/MiniMax-M3:high"
         ]
       },
       "delegate": {
+        "model": "wandb/deepseek-ai/DeepSeek-V4-Flash-0731",
         "thinking": "high",
         "tools": [
           "read",
@@ -133,11 +136,12 @@
           "cymbal_context"
         ],
         "fallbackModels": [
-          "wandb/deepseek-ai/DeepSeek-V4-Flash-0731:high",
-          "wandb/openai/gpt-oss-20b:high"
+          "wandb/openai/gpt-oss-20b:high",
+          "wandb/Qwen/Qwen3.6-35B-A3B:high"
         ]
       },
       "worker": {
+        "model": "wandb/moonshotai/Kimi-K2.7-Code",
         "thinking": "high",
         "tools": [
           "read",
@@ -172,12 +176,13 @@
           "cymbal_context"
         ],
         "fallbackModels": [
-          "wandb/Qwen/Qwen3.5-35B-A3B:high",
-          "wandb/deepseek-ai/DeepSeek-V4-Flash-0731:high"
+          "wandb/deepseek-ai/DeepSeek-V4-Pro-0813:high",
+          "wandb/Qwen/Qwen3.8-27B:high"
         ]
       },
       "reviewer": {
-        "thinking": "xhigh",
+        "model": "wandb/deepseek-ai/DeepSeek-V4-Pro-0813",
+        "thinking": "high",
         "tools": [
           "read",
           "grep",
@@ -207,12 +212,13 @@
           "cymbal_context"
         ],
         "fallbackModels": [
-          "wandb/Qwen/Qwen3.6-35B-A3B:high",
-          "wandb/deepseek-ai/DeepSeek-V4-Flash-0731:high"
+          "wandb/zai-org/GLM-5.2:high",
+          "wandb/Qwen/Qwen3.8-27B:high"
         ]
       },
       "oracle": {
-        "thinking": "xhigh",
+        "model": "wandb/zai-org/GLM-5.2",
+        "thinking": "high",
         "tools": [
           "read",
           "grep",
@@ -242,8 +248,7 @@
           "cymbal_context"
         ],
         "fallbackModels": [
-          "wandb/deepseek-ai/DeepSeek-V4-Pro:high",
-          "wandb/Qwen/Qwen3.6-35B-A3B:high"
+          "wandb/deepseek-ai/DeepSeek-V4-Pro-0813:high"
         ]
       }
     }
