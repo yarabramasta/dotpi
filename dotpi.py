@@ -621,6 +621,35 @@ def rebuild_dependencies(target: Path) -> None:
         )
 
 
+def pi_supported_options(pi: str) -> set[str]:
+    """Return the long/short CLI flags the installed pi understands.
+
+    Smoke passes a batch of `--no-*` flags that younger pi versions added
+    (e.g. `--no-lens`). Older pi builds reject unknown flags and abort, so
+    query `pi --help` once and only keep flags this runtime advertises.
+    """
+    try:
+        result = subprocess.run(
+            [pi, "--help"],
+            text=True,
+            capture_output=True,
+            timeout=30,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return set()
+    if result.returncode:
+        return set()
+    options: set[str] = set()
+    for line in result.stdout.splitlines():
+        match = re.match(r"\s+(--[A-Za-z][\w-]*)(?:\s*,\s*(-[A-Za-z]+))?", line)
+        if match:
+            options.add(match.group(1))
+            if match.group(2):
+                options.add(match.group(2))
+    return options
+
+
 def smoke(target: Path) -> None:
     pi = os.environ.get("DOTPI_PI", "pi")
     if not shutil.which(pi) and not Path(pi).is_file():
@@ -631,10 +660,13 @@ def smoke(target: Path) -> None:
             shutil.copytree(target, isolated, symlinks=True)
         environment = os.environ.copy()
         environment["PI_CODING_AGENT_DIR"] = str(isolated / "agent")
-        command = [
-            pi,
+        # Env var, not a CLI flag: works on pi builds that predate --offline.
+        environment["PI_OFFLINE"] = "1"
+        # Only pass optional --no-* flags the installed pi actually advertises;
+        # older builds reject unknown flags and abort the smoke run.
+        supported = pi_supported_options(pi)
+        desired = [
             "--no-session",
-            "--offline",
             "--no-tools",
             "--no-skills",
             "--no-prompt-templates",
@@ -644,6 +676,16 @@ def smoke(target: Path) -> None:
             "-p",
             "Reply with exactly DOTPI_SMOKE_OK",
         ]
+        command = [pi, *desired]
+        if supported:
+            command = [
+                pi,
+                *[
+                    flag
+                    for flag in desired
+                    if flag in supported or not flag.startswith("-")
+                ],
+            ]
         try:
             result = subprocess.run(
                 command, env=environment, text=True, capture_output=True, timeout=120
