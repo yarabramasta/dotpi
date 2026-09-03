@@ -8,6 +8,8 @@ type LocaleKey =
 	| "cancel"
 	| "preview"
 	| "noPreview"
+	| "expand"
+	| "collapse"
 	| "noteHeader"
 	| "customEditorTitle"
 	| "noteEditorTitle";
@@ -21,6 +23,8 @@ export const STRINGS: Record<Language, Record<LocaleKey, string>> = {
 		cancel: "Esc to cancel",
 		preview: "Preview",
 		noPreview: "No preview available",
+		expand: "x to expand",
+		collapse: "x to collapse",
 		noteHeader: "Note",
 		customEditorTitle: "Type your answer",
 		noteEditorTitle: "Add a note",
@@ -33,6 +37,8 @@ export const STRINGS: Record<Language, Record<LocaleKey, string>> = {
 		cancel: "Esc untuk batal",
 		preview: "Pratinjau",
 		noPreview: "Tidak ada pratinjau",
+		expand: "x untuk perluas",
+		collapse: "x untuk ciutkan",
 		noteHeader: "Catatan",
 		customEditorTitle: "Ketik jawaban Anda",
 		noteEditorTitle: "Tambahkan catatan",

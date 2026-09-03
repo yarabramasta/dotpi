@@ -816,7 +816,7 @@ export default function grillMeExtension(pi: ExtensionAPI): void {
 			if (command === "help") {
 				pi.sendMessage({
 					customType: "grill-me-help",
-					content: `# Grill Me commands\n\n- /grill <topic>\n- /grill stop\n- /checkpoint [edit|chat]\n- /grill checkpoint [edit|chat]\n- /grill status\n- /grill intent auto|plan|learn|research|content|decide\n- /grill output <one or more outputs> (preference only; approval still required)\n- /grill research off|ask|auto\n\nGrill Me uses one thorough default Socratic style. The assistant must use the hardcoded output-selection phase before ending the interview, producing outputs, or stopping without outputs.`,
+					content: `# Grill Me commands\n\n- /grill <topic>\n- /grill stop\n- /checkpoint [edit|chat]\n- /grill checkpoint [edit|chat]\n- /grill status\n- /grill intent auto|plan|learn|research|content|decide\n- /grill output <one or more outputs> (preference only; approval still required)\n- /grill research off|ask|auto\n\nGrill Me uses one thorough default Socratic style. The assistant must use the hardcoded output-selection phase before ending the interview, producing outputs, or stopping without outputs.\n\nState (checkpoint, phase, alternatives, current question) auto-persists every change. Switching model mid-session is safe. Reloading pi into the same session resumes the grill automatically — the status chip returns and the next turn re-injects the prompt and checkpoint.`,
 					display: true,
 				});
 				return;
