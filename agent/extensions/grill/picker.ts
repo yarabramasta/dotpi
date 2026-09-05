@@ -35,13 +35,16 @@ type Instruction =
 
 const PREVIEW_MAX_LINES = 6;
 
-// Same layout constants rpiv-ask-user-question uses (borrowed, not vendored).
+// Layout constants. Started from rpiv-ask-user-question's values, then tuned for
+// Grill Me: choices column gets the larger share (MAX_LEFT_RATIO 0.6) and a
+// smaller preview floor (40) so options+descriptions never get squeezed by the
+// preview pane.
 const SIDE_BY_SIDE_MIN_WIDTH = 100;
 const COLUMN_GAP = 2;
 const PREVIEW_PAD_LEFT = 1;
 const MIN_LEFT = 30;
-const MAX_LEFT_RATIO = 0.5;
-const MIN_PREVIEW_WIDTH = 45;
+const MAX_LEFT_RATIO = 0.6;
+const MIN_PREVIEW_WIDTH = 40;
 const ACTIVE_POINTER = "❯ ";
 const INACTIVE_POINTER = "  ";
 const CONTINUATION_INDENT = "  ";
@@ -153,23 +156,21 @@ export async function showPicker(
 						const prefixWidth = ACTIVE_POINTER.length + numberWidth + 2; // pointer + digits + ". "
 						const sideBySide = hasPreview && width >= SIDE_BY_SIDE_MIN_WIDTH;
 
-						// Adaptive left column, same pipeline as rpiv's adaptiveLeftWidth.
-						// Computed up front so option labels/descriptions wrap at the LEFT
-						// column width, not the full pane — otherwise side-by-side joins
-						// cut description sentences at the column boundary.
+						// Choices are the decision; preview is auxiliary. Give the left
+						// (options + descriptions) column a fixed larger share so long
+						// descriptions don't collapse into a narrow wrapped strip.
+						// ponytail: fixed ratio instead of a label-width cap; the old cap
+						// starved descriptions whenever option labels were short, handing
+						// all spare width to the preview pane.
 						let leftWidth = width;
 						if (sideBySide) {
-							let maxLabel = 0;
-							for (const o of options)
-								maxLabel = Math.max(maxLabel, visibleWidth(o.label));
-							const desired = maxLabel + prefixWidth + 2;
-							// Expanded: shrink the left column so the preview gets ~65%.
+							// Expanded (x): shrink the left column so the preview gets ~65%.
 							const leftRatio = expanded ? 0.35 : MAX_LEFT_RATIO;
-							const ratioCapped = Math.min(desired, Math.floor(width * leftRatio));
+							const ratioWidth = Math.floor(width * leftRatio);
 							const available = width - COLUMN_GAP - MIN_PREVIEW_WIDTH;
 							leftWidth = Math.max(
 								MIN_LEFT,
-								Math.min(ratioCapped, Math.max(1, available)),
+								Math.min(ratioWidth, Math.max(1, available)),
 							);
 						}
 						const contentWidth = Math.max(1, leftWidth - prefixWidth);
