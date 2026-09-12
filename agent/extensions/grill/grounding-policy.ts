@@ -12,12 +12,22 @@ export interface ScoutAgent {
 	mutationTools?: string[];
 }
 
-const PREFERRED_NAMES = ["scout", "researcher", "oracle", "delegate"];
-const READ_ONLY_DESCRIPTION =
+const SCOUT_PREFERRED_NAMES = ["scout", "researcher", "oracle", "delegate"];
+const SCOUT_READ_ONLY_DESCRIPTION =
 	/read[- ]only|scout|research|inspect|analy[sz]|recon/i;
+const AUDITOR_PREFERRED_NAMES = [
+	"reviewer",
+	"evidence-auditor",
+	"auditor",
+	"verifier",
+	"oracle",
+];
+const AUDITOR_READ_ONLY_DESCRIPTION =
+	/read[- ]only|review|audit|evidence|verif|inspect|analy[sz]|recon/i;
+const WRITER_NAME = /(^|[-_])(writer|worker)([-_]|$)|cli[-_]?writer/;
 const MUTATING_TOOL =
 	/(^|:|\/)(edit|write|apply_patch|ast_grep_replace|rm|mv|cp|mkdir|touch|chmod|chown)(:|\/|$)/i;
-const MAX_SCOUTS = 20;
+const MAX_ELIGIBLE = 20;
 
 function stringList(value: unknown): string[] {
 	return Array.isArray(value)
@@ -49,9 +59,12 @@ function normalizeCandidate(
 	return name ? { ...value, name } : undefined;
 }
 
-/** Select executable, read-only recon agents from the live subagent list. */
-export function eligibleScouts(
+/** Shared read-only recon/audit selector. Preferred names rank first, then
+ * description match. Writer-named and mutating agents are always excluded. */
+function selectEligible(
 	values: readonly (ScoutAgent | string)[],
+	preferredNames: readonly string[],
+	descriptionRegex: RegExp,
 ): ScoutAgent[] {
 	const seen = new Set<string>();
 	const selected: ScoutAgent[] = [];
@@ -61,23 +74,46 @@ export function eligibleScouts(
 			continue;
 		seen.add(candidate.name);
 		const name = candidate.name.toLowerCase();
-		if (/(^|[-_])(writer|worker)([-_]|$)|cli[-_]?writer/.test(name)) continue;
+		if (WRITER_NAME.test(name)) continue;
 		if (isMutating(candidate)) continue;
-		const known = PREFERRED_NAMES.includes(name);
-		if (!known && !READ_ONLY_DESCRIPTION.test(candidate.description ?? ""))
-			continue;
+		const known = preferredNames.includes(name);
+		if (!known && !descriptionRegex.test(candidate.description ?? "")) continue;
 		selected.push(candidate);
 	}
 	return selected
 		.sort((a, b) => {
-			const ai = PREFERRED_NAMES.indexOf(a.name.toLowerCase());
-			const bi = PREFERRED_NAMES.indexOf(b.name.toLowerCase());
+			const ai = preferredNames.indexOf(a.name.toLowerCase());
+			const bi = preferredNames.indexOf(b.name.toLowerCase());
 			if (ai !== -1 || bi !== -1)
 				return (
-					(ai === -1 ? PREFERRED_NAMES.length : ai) -
-					(bi === -1 ? PREFERRED_NAMES.length : bi)
+					(ai === -1 ? preferredNames.length : ai) -
+					(bi === -1 ? preferredNames.length : bi)
 				);
 			return a.name.localeCompare(b.name);
 		})
-		.slice(0, MAX_SCOUTS);
+		.slice(0, MAX_ELIGIBLE);
+}
+
+/** Select executable, read-only recon agents from the live subagent list. */
+export function eligibleScouts(
+	values: readonly (ScoutAgent | string)[],
+): ScoutAgent[] {
+	return selectEligible(
+		values,
+		SCOUT_PREFERRED_NAMES,
+		SCOUT_READ_ONLY_DESCRIPTION,
+	);
+}
+
+/** Select executable, read-only audit/review agents for the output-audit phase.
+ * Recognizes review/audit/evidence/verifier agents (e.g. reviewer,
+ * evidence-auditor, oracle) while keeping the read-only guarantee. */
+export function eligibleAuditors(
+	values: readonly (ScoutAgent | string)[],
+): ScoutAgent[] {
+	return selectEligible(
+		values,
+		AUDITOR_PREFERRED_NAMES,
+		AUDITOR_READ_ONLY_DESCRIPTION,
+	);
 }

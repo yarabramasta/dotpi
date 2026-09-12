@@ -16,6 +16,7 @@ import { Type } from "typebox";
 
 import { showPicker } from "./picker.js";
 import {
+	eligibleAuditors,
 	eligibleScouts,
 	type GroundingView,
 	type ScoutAgent,
@@ -56,6 +57,10 @@ interface GrillState {
 	assistEnabled?: boolean;
 	availableScouts: ScoutAgent[];
 	grounding?: GroundingView & { at: number };
+	availableAuditors: ScoutAgent[];
+	outputAudit?: GroundingView & { at: number };
+	auditing?: boolean;
+	auditTask?: string;
 	outputSelection?: {
 		readinessRationale: string;
 		recommendedOutputs: string;
@@ -90,6 +95,10 @@ const DEFAULT_STATE: GrillState = {
 	assistEnabled: undefined,
 	availableScouts: [],
 	grounding: undefined,
+	availableAuditors: [],
+	outputAudit: undefined,
+	auditing: false,
+	auditTask: undefined,
 	currentQuestion: undefined,
 	updatedAt: Date.now(),
 };
@@ -109,7 +118,7 @@ const ASSIST_OPTIONS = [
 		value: "yes",
 		label: "Enable grounding assist (Recommended)",
 		description:
-			"Use cymbal first, then an installed read-only scout when needed.",
+			"Use cymbal first, then an installed read-only scout for interview grounding AND a read-only auditor for output audit (advisory, never blocks).",
 	},
 	{
 		value: "no",
@@ -246,6 +255,7 @@ We are starting a grill-me session to reach shared understanding before producin
 - Research mode: ${state.researchMode}
 - Grounding assist: ${state.assistEnabled === undefined ? "unanswered" : state.assistEnabled ? "enabled" : "disabled"}
 - Eligible grounding scouts: ${state.availableScouts.length ? state.availableScouts.map((scout) => scout.name).join(", ") : "none discovered"}
+- Eligible output auditors: ${state.availableAuditors.length ? state.availableAuditors.map((a) => a.name).join(", ") : "none discovered"}
 - Output preference: ${describeOutputPreference(state)}
 
 ## Decisions
@@ -328,6 +338,10 @@ ${
 `
 		: ""
 }${
+	state.outputAudit
+		? `- Last output audit: ${state.outputAudit.skippedReason ? `skipped — ${state.outputAudit.skippedReason}` : (state.outputAudit.source ?? "recorded")}\n`
+		: ""
+}${
 	state.lastChangeSummary
 		? `- Last checkpoint change: ${state.lastChangeSummary}
 `
@@ -335,23 +349,52 @@ ${
 }`;
 }
 
-function appendGroundingNote(checkpoint: string, note: string): string {
-	const heading = "## Grounding Notes";
+function appendCheckpointNote(
+	checkpoint: string,
+	note: string,
+	heading = "## Grounding Notes",
+): string {
 	return checkpoint.includes(heading)
-		? `${checkpoint.trimEnd()}\n- ${note}\n`
+		? `${checkpoint.trimEnd()}
+- ${note}
+`
 		: `${checkpoint.trimEnd()}\n\n${heading}\n\n- ${note}\n`;
 }
 
-function groundingStatusText(view: GroundingView): string {
+function outputAuditStatusText(view: GroundingView): string {
 	if (view.skippedReason)
-		return `⚠ grounding skipped: ${view.skippedReason}`.slice(0, 100);
+		return `⚠ output audit skipped: ${view.skippedReason}`.slice(0, 100);
 	const source = view.source ? ` · ${view.source}` : "";
-	return `🔥 grounding${source}`.slice(0, 100);
+	return `✓ output audit${source}`.slice(0, 100);
 }
 
-function groundingResultText(view: GroundingView): string {
-	if (view.skippedReason) return `Grounding skipped: ${view.skippedReason}`;
-	return `Grounding summary recorded${view.source ? ` (${view.source})` : ""}. Ask the next focused question.`;
+function outputAuditResultText(view: GroundingView): string {
+	if (view.skippedReason) return `Output audit skipped: ${view.skippedReason}`;
+	return `Output audit recorded${view.source ? ` (${view.source})` : ""}. Revise the output if needed, then call grill_finish_output_phase.`;
+}
+
+/** Derive an advisory audit task from the approved output plan.
+ * Docs/claims -> verify against the codebase. Code edits -> review the diff.
+ * Mixed or unknown -> both. Always read-only; never mutates. */
+function deriveAuditTask(plan: string | undefined): string {
+	const text = (plan ?? "").toLowerCase();
+	const mentionsCode =
+		/\b(diff|edit|write|patch|implement|apply|code change|refactor|fix|function|class|file)\b/.test(
+			text,
+		);
+	const mentionsDocs =
+		/\b(doc|readme|adr|prd|plan|issue|brief|memo|outline|checklist|notes|design)\b/.test(
+			text,
+		);
+	const head =
+		"You are a read-only output auditor for a Grill Me session. Inspect the repository with read-only tools only; do not edit, write, or apply any change. Compare the produced output against the actual codebase and report discrepancies, unsupported claims, and missing coverage. Output a concise verdict: PASS or a bulleted list of gaps (file:symbol where possible).";
+	const docsPart =
+		"Verify any factual claims in the produced output against the actual codebase: file paths, symbol names, behavior, and constraints. Flag claims not supported by the code.";
+	const codePart =
+		"Review any directly-applied code changes as a diff: correctness, convention adherence, regressions, and missed call sites. Flag issues with file:symbol where possible.";
+	if (mentionsCode && !mentionsDocs) return `${head}\n\n${codePart}`;
+	if (mentionsDocs && !mentionsCode) return `${head}\n\n${docsPart}`;
+	return `${head}\n\n${docsPart}\n\n${codePart}`;
 }
 
 function normalizeAlternatives(
@@ -594,6 +637,7 @@ export default function grillMeExtension(pi: ExtensionAPI): void {
 		if (!state.active) {
 			ctx.ui.setStatus("grill-me", undefined);
 			ctx.ui.setStatus("grill-grounding", undefined);
+			ctx.ui.setStatus("grill-output-audit", undefined);
 			return;
 		}
 
@@ -620,6 +664,14 @@ export default function grillMeExtension(pi: ExtensionAPI): void {
 			state.grounding?.skippedReason
 				? ctx.ui.theme.fg("warning", groundingStatusText(state.grounding))
 				: undefined,
+		);
+		ctx.ui.setStatus(
+			"grill-output-audit",
+			state.outputAudit?.skippedReason
+				? ctx.ui.theme.fg("warning", outputAuditStatusText(state.outputAudit))
+				: state.outputAudit
+					? ctx.ui.theme.fg("success", outputAuditStatusText(state.outputAudit))
+					: undefined,
 		);
 	}
 
@@ -816,7 +868,7 @@ export default function grillMeExtension(pi: ExtensionAPI): void {
 			if (command === "help") {
 				pi.sendMessage({
 					customType: "grill-me-help",
-					content: `# Grill Me commands\n\n- /grill <topic>\n- /grill stop\n- /checkpoint [edit|chat]\n- /grill checkpoint [edit|chat]\n- /grill status\n- /grill intent auto|plan|learn|research|content|decide\n- /grill output <one or more outputs> (preference only; approval still required)\n- /grill research off|ask|auto\n\nGrill Me uses one thorough default Socratic style. The assistant must use the hardcoded output-selection phase before ending the interview, producing outputs, or stopping without outputs.\n\nState (checkpoint, phase, alternatives, current question) auto-persists every change. Switching model mid-session is safe. Reloading pi into the same session resumes the grill automatically — the status chip returns and the next turn re-injects the prompt and checkpoint.`,
+					content: `# Grill Me commands\n\n- /grill <topic>\n- /grill stop\n- /checkpoint [edit|chat]\n- /grill checkpoint [edit|chat]\n- /grill status\n- /grill intent auto|plan|learn|research|content|decide\n- /grill output <one or more outputs> (preference only; approval still required)\n- /grill research off|ask|auto\n\nGrill Me uses one thorough default Socratic style. The assistant must use the hardcoded output-selection phase before ending the interview, producing outputs, or stopping without outputs.\n\nWhen grounding assist is enabled, the session start picker also enables an advisory output audit: in the output phase, after producing/applying the approved output, the assistant runs one read-only auditor (grill_set_auditors → subagent → grill_show_output_audit). The audit is advisory and never blocks grill_finish_output_phase; it can be skipped if no eligible auditor exists.\n\nState (checkpoint, phase, alternatives, current question) auto-persists every change. Switching model mid-session is safe. Reloading pi into the same session resumes the grill automatically — the status chip returns and the next turn re-injects the prompt and checkpoint.`,
 					display: true,
 				});
 				return;
@@ -830,6 +882,10 @@ export default function grillMeExtension(pi: ExtensionAPI): void {
 				state.approvedOutputPlan = undefined;
 				state.currentQuestion = undefined;
 				state.alternatives = [];
+				state.auditing = false;
+				state.auditTask = undefined;
+				state.availableAuditors = [];
+				state.outputAudit = undefined;
 				state.lastChangeSummary = "Stopped grill session";
 				persist();
 				updateUi(ctx);
@@ -1282,7 +1338,7 @@ export default function grillMeExtension(pi: ExtensionAPI): void {
 			};
 			state.grounding = { ...view, at: Date.now() };
 			if (view.skippedReason) {
-				state.checkpoint = appendGroundingNote(
+				state.checkpoint = appendCheckpointNote(
 					state.checkpoint,
 					`Grounding skipped: ${view.skippedReason}`,
 				);
@@ -1312,6 +1368,210 @@ export default function grillMeExtension(pi: ExtensionAPI): void {
 				result.content[0]?.type === "text"
 					? result.content[0].text
 					: "Grounding recorded";
+			return new Text(theme.fg("success", text), 0, 0);
+		},
+	});
+
+	pi.registerTool({
+		name: "grill_set_auditors",
+		label: "Set Grill Output Auditors",
+		description:
+			'Filter the live subagent capability list to executable read-only audit/review agents for an advisory output audit. Call after subagent({ action: "list", capabilities: true }) during the approved output phase, before producing/after-producing the audit run.',
+		promptSnippet:
+			"Filter installed subagents to safe read-only output auditors and derive the audit task",
+		promptGuidelines: [
+			'When output audit is enabled (grounding assist on) and the output phase is active, after producing/applying the approved output call subagent({ action: "list", capabilities: true }) once, then pass its live capability rows to grill_set_auditors.',
+			"grill_set_auditors derives a read-only audit task from the approved output plan (docs verify claims vs codebase; code edits review the diff; mixed both). Provide `task` to override the derived task.",
+			"Then run ONE eligible auditor with subagent({ agent, task }) and record the result with grill_show_output_audit. The audit is advisory; it never blocks grill_finish_output_phase.",
+			"Use only the returned eligible auditors; never guess or hardcode an unavailable agent. If none qualify, call grill_show_output_audit with skippedReason and skip the audit.",
+		],
+		parameters: Type.Object({
+			agents: Type.Array(
+				Type.Object(
+					{
+						name: Type.String(),
+						description: Type.Optional(Type.String()),
+						executable: Type.Optional(Type.Boolean()),
+						source: Type.Optional(Type.String()),
+						runner: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+						tools: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+						mutationTools: Type.Optional(Type.Array(Type.String())),
+					},
+					{ additionalProperties: true },
+				),
+				{ maxItems: 100 },
+			),
+			task: Type.Optional(
+				Type.String({
+					description:
+						"Override the extension-derived audit task. When omitted, the task is derived from the approved output plan (docs verify claims vs codebase; code edits review the diff; mixed both).",
+				}),
+			),
+		}),
+		async execute(_toolCallId, params) {
+			if (!state.active) {
+				return {
+					content: [{ type: "text", text: "No active Grill Me session." }],
+					details: { auditors: [] },
+				};
+			}
+			if (state.assistEnabled !== true) {
+				return {
+					content: [
+						{
+							type: "text",
+							text:
+								"Grounding assist is disabled for this session; output audit is not available.",
+						},
+					],
+					details: { auditors: [], assistEnabled: state.assistEnabled },
+				};
+			}
+			if (!state.outputPhase) {
+				return {
+					content: [
+						{
+							type: "text",
+							text:
+								"Output audit is only available in the approved output phase. Call grill_enter_output_selection_phase, get output approval, then grill_enter_output_phase first.",
+						},
+					],
+					details: { auditors: [], phase: currentPhase(state) },
+				};
+			}
+			const auditors = eligibleAuditors(params.agents as ScoutAgent[]);
+			state.availableAuditors = auditors;
+			state.auditing = auditors.length > 0;
+			const derivedTask = params.task?.trim()
+				? params.task.trim()
+				: deriveAuditTask(state.approvedOutputPlan);
+			state.auditTask = derivedTask || undefined;
+			state.lastChangeSummary = auditors.length
+				? `Discovered ${auditors.length} eligible output auditor${auditors.length === 1 ? "" : "s"}${params.task?.trim() ? " (task overridden)" : ""}`
+				: "No eligible read-only output auditor discovered; audit skipped";
+			persist();
+			return {
+				content: [
+					{
+						type: "text",
+						text: auditors.length
+							? `Eligible read-only output auditors (canonical-first): ${auditors.map((a) => a.name).join(", ")}. Audit task: ${state.auditTask ?? "(none)"}. Run ONE auditor with subagent({ agent, task }), then record the result with grill_show_output_audit. While auditing, only subagent spawns targeting these auditors are allowed; other subagent calls are blocked until the audit is recorded.`
+							: "No eligible read-only output auditor found. Call grill_show_output_audit with a skippedReason and skip the audit.",
+					},
+				],
+				details: {
+					auditors,
+					assistEnabled: state.assistEnabled,
+					auditTask: state.auditTask,
+					auditing: state.auditing,
+				},
+			};
+		},
+		renderCall(args, theme) {
+			return new Text(
+				theme.fg("toolTitle", theme.bold("grill_set_auditors ")) +
+					theme.fg("muted", `${(args.agents ?? []).length} candidates`),
+				0,
+				0,
+			);
+		},
+		renderResult(result, _options, theme) {
+			const auditors = ((result.details as any)?.auditors ?? []) as ScoutAgent[];
+			return new Text(
+				theme.fg(
+					auditors.length ? "success" : "warning",
+					auditors.length
+						? `✓ Eligible auditors: ${auditors.map((a) => a.name).join(", ")}`
+						: "No eligible output auditors",
+				),
+				0,
+				0,
+			);
+		},
+	});
+
+	pi.registerTool({
+		name: "grill_show_output_audit",
+		label: "Show Grill Output Audit",
+		description:
+			"Record a concise read-only auditor result for the produced output before grill_finish_output_phase. Use skippedReason when no eligible auditor exists or the audit run failed; the audit is advisory and never blocks finishing.",
+		promptSnippet:
+			"Record the output-audit result before finishing the output phase",
+		promptGuidelines: [
+			"After running one eligible auditor (or failing to), call grill_show_output_audit to record the result. This clears the audit window so production subagents are unblocked again.",
+			"If no eligible auditor was found or the run failed, pass skippedReason; continue and call grill_finish_output_phase. Do not block finishing.",
+			"If the auditor found gaps, revise the output and re-audit, or call grill_finish_output_phase. The audit is advisory; the user decides.",
+		],
+		parameters: Type.Object({
+			summary: Type.String({ maxLength: 12000 }),
+			source: Type.Optional(Type.String({ maxLength: 200 })),
+			confidence: Type.Optional(Type.String({ maxLength: 120 })),
+			skippedReason: Type.Optional(Type.String({ maxLength: 500 })),
+		}),
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			if (!state.active) {
+				return {
+					content: [{ type: "text", text: "No active Grill Me session." }],
+					details: {},
+				};
+			}
+			if (state.assistEnabled !== true) {
+				return {
+					content: [
+						{
+							type: "text",
+							text:
+								"Grounding assist is disabled for this session; output audit is not available.",
+						},
+					],
+					details: { assistEnabled: state.assistEnabled },
+				};
+			}
+			const view: GroundingView = {
+				summary: params.summary.trim(),
+				source: params.source?.trim() || undefined,
+				confidence: params.confidence?.trim() || undefined,
+				skippedReason: params.skippedReason?.trim() || undefined,
+			};
+			state.outputAudit = { ...view, at: Date.now() };
+			state.auditing = false;
+			if (view.skippedReason) {
+				state.checkpoint = appendCheckpointNote(
+					state.checkpoint,
+					`Output audit skipped: ${view.skippedReason}`,
+					"## Output Audit Notes",
+				);
+				state.lastChangeSummary = `Output audit skipped: ${view.skippedReason}`;
+			} else {
+				state.checkpoint = appendCheckpointNote(
+					state.checkpoint,
+					`Output audit recorded${view.source ? ` from ${view.source}` : ""}: ${view.summary.slice(0, 280)}`,
+					"## Output Audit Notes",
+				);
+				state.lastChangeSummary = `Output audit recorded${view.source ? ` from ${view.source}` : ""}`;
+			}
+			persist();
+			updateUi(ctx);
+			if (view.skippedReason)
+				ctx.ui.notify(`Output audit skipped: ${view.skippedReason}`, "warning");
+			return {
+				content: [{ type: "text", text: outputAuditResultText(view) }],
+				details: { outputAudit: state.outputAudit },
+			};
+		},
+		renderCall(args, theme) {
+			return new Text(
+				theme.fg("toolTitle", theme.bold("grill_show_output_audit ")) +
+					theme.fg("muted", args.source ?? "output audit"),
+				0,
+				0,
+			);
+		},
+		renderResult(result, _options, theme) {
+			const text =
+				result.content[0]?.type === "text"
+					? result.content[0].text
+					: "Output audit recorded";
 			return new Text(theme.fg("success", text), 0, 0);
 		},
 	});
@@ -1622,6 +1882,10 @@ export default function grillMeExtension(pi: ExtensionAPI): void {
 			state.phase = "output";
 			state.outputPhase = true;
 			state.approvedOutputPlan = params.outputPlan;
+			state.auditing = false;
+			state.auditTask = undefined;
+			state.availableAuditors = [];
+			state.outputAudit = undefined;
 			state.lastChangeSummary = "Entered approved output phase";
 			persist();
 			if (ctx) updateUi(ctx);
@@ -1658,6 +1922,10 @@ export default function grillMeExtension(pi: ExtensionAPI): void {
 			state.outputPhase = false;
 			state.outputSelection = undefined;
 			state.approvedOutputPlan = undefined;
+			state.auditing = false;
+			state.auditTask = undefined;
+			state.availableAuditors = [];
+			state.outputAudit = undefined;
 			state.lastChangeSummary = params.summary
 				? `Finished output phase: ${params.summary}`
 				: "Finished output phase";
@@ -1675,7 +1943,34 @@ export default function grillMeExtension(pi: ExtensionAPI): void {
 	});
 
 	pi.on("tool_call", async (event) => {
-		if (!state.active || state.outputPhase) return;
+		if (!state.active) return;
+
+		// Audit-window enforcement: while an output audit is in progress in
+		// the output phase, only subagent spawns targeting an eligible
+		// read-only auditor are allowed. Production subagents the parent may
+		// otherwise spawn are blocked only during this window; it is cleared
+		// by grill_show_output_audit.
+		if (state.auditing && state.outputPhase && event.toolName === "subagent") {
+			const input = (event.input ?? {}) as {
+				action?: string;
+				agent?: string;
+			};
+			const isManagement =
+				typeof input.action === "string" && input.action.length > 0;
+			if (!isManagement) {
+				const target = typeof input.agent === "string" ? input.agent.trim() : "";
+				const allowed = state.availableAuditors.some((a) => a.name === target);
+				if (!target || !allowed) {
+					return {
+						block: true,
+						reason:
+							"Grill Me output audit is in progress. While auditing, subagent spawns must target one of the eligible read-only auditors set by grill_set_auditors. Record the audit result with grill_show_output_audit to clear the window and unblock other subagent calls.",
+					};
+				}
+			}
+		}
+
+		if (state.outputPhase) return;
 
 		if (event.toolName === "edit" || event.toolName === "write") {
 			return {
@@ -1725,7 +2020,7 @@ export default function grillMeExtension(pi: ExtensionAPI): void {
 		const phase = currentPhase(state);
 		const outputPhaseGuidance =
 			phase === "output"
-				? `Approved output phase: produce only the approved outputs. If a required mutation is blocked by permissions, auth, or repo setup, ask the user instead of bypassing or faking success. ${GITHUB_REPO_PERMISSION_GUIDANCE} When done, call grill_finish_output_phase.`
+				? `Approved output phase: produce only the approved outputs. If a required mutation is blocked by permissions, auth, or repo setup, ask the user instead of bypassing or faking success. ${GITHUB_REPO_PERMISSION_GUIDANCE} When done, call grill_finish_output_phase.${state.assistEnabled === true ? ' If grounding/output audit is enabled, after producing/applying the approved output, run ONE advisory output audit: call subagent({ action: "list", capabilities: true }), pass the rows to grill_set_auditors (which derives the audit task from the approved plan; you may override it), run one eligible auditor with subagent({ agent, task }), then record the result with grill_show_output_audit. The audit is advisory and never blocks grill_finish_output_phase. If no eligible auditor exists or the run fails, call grill_show_output_audit with a skippedReason and skip the audit. While the audit window is active (after grill_set_auditors, before grill_show_output_audit), subagent spawns must target one of the eligible auditors; other subagent calls are blocked until the audit is recorded.' : ""}`
 				: phase === "output-selection"
 					? "You are in the mandatory output-selection phase. Do not ask new interview questions unless the user chooses to continue grilling. Ask the user to choose outputs/continue/review/stop from the active output-selection alternatives. If they approve concrete output production, call grill_enter_output_phase. If they choose to continue or stop without output, call grill_finish_output_selection_phase."
 					: "You are in read-only interview mode. Do not implement, write files, create issues, install packages, run mutating commands, or stop the Grill Me work. When ready to end the interview, first update the checkpoint if needed, then call grill_enter_output_selection_phase to enter the mandatory hardcoded output-selection phase before output production or stopping.";
@@ -1738,6 +2033,7 @@ export default function grillMeExtension(pi: ExtensionAPI): void {
 - Research mode: ${state.researchMode}
 - Grounding assist: ${state.assistEnabled === undefined ? "unanswered" : state.assistEnabled ? "enabled" : "disabled"}
 - Eligible grounding scouts: ${state.availableScouts.length ? state.availableScouts.map((scout) => scout.name).join(", ") : "none discovered"}
+- Eligible output auditors: ${state.availableAuditors.length ? state.availableAuditors.map((a) => a.name).join(", ") : "none discovered"}
 - Output preference: ${describeOutputPreference(state)}
 - Phase: ${phase}\n- Output phase: ${state.outputPhase ? "yes" : "no"}${outputSelectionSummary}\n\nCurrent checkpoint:\n${state.checkpoint || "(No checkpoint yet.)"}\n\nCurrent picker alternatives (shown in the ↑/↓ + Enter overlay):\n${state.alternatives.length ? state.alternatives.map((a) => `- ${a.label}: ${a.value}${a.description ? ` (${a.description})` : ""}`).join("\n") : "(None set.)"}\n\nDecisions so far:\n${state.decisions.length ? state.decisions.map((d) => `- ${d.question} → ${d.label}${d.note ? ` (note: ${d.note})` : ""}`).join("\n") : "(None recorded.)"}\n\nBehavior:\n- Apply the Socratic method to reach shared understanding of the topic.\n- Avoid hardcoded interview phases. Adapt the dimensions you explore to the subject and to the user's expertise.\n- The output-selection phase is the one hardcoded terminal phase: it is mandatory before stopping the Grill Me work, stopping without outputs, or producing outputs.\n- Treat desired outcome mode as important: learning, building, researching, content/tutorial creation, decision review, etc.\n- Do not set or assume a default output mode for the session. A missing output preference means no output has been chosen yet, not design-doc or any other default.\n- Treat /grill output as a preference only, not production approval. Always explicitly ask/confirm which output(s) to produce before output production.\n- Support 1..n outputs in one approved output plan; for example, a design doc AND uploaded GitHub issues.\n- The output-selection phase must explicitly mention concrete output destinations by name. Use this catalog and allow custom combinations:\n${outputDestinationOptionsMarkdown()}\n- ${groundingGuidance}
 - Ask mostly one focused question at a time. Small grouped questions are allowed only when inseparable.
@@ -1761,6 +2057,8 @@ export default function grillMeExtension(pi: ExtensionAPI): void {
 				if (!state.phase) state.phase = state.outputPhase ? "output" : "interview";
 				if (state.phase !== "output") state.outputPhase = false;
 				if (!Array.isArray(state.availableScouts)) state.availableScouts = [];
+				if (!Array.isArray(state.availableAuditors)) state.availableAuditors = [];
+				if (state.phase !== "output") state.auditing = false;
 				if (state.grounding && typeof state.grounding !== "object")
 					state.grounding = undefined;
 			}

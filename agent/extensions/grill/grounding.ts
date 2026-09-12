@@ -1,4 +1,8 @@
-export { eligibleScouts, type ScoutAgent } from "./grounding-policy.js";
+export {
+	eligibleAuditors,
+	eligibleScouts,
+	type ScoutAgent,
+} from "./grounding-policy.js";
 
 export interface GroundingView {
 	summary: string;
