@@ -14,7 +14,8 @@
     "npm:pi-subagents",
     "npm:@firstpick/pi-themes-bundle",
     "npm:pi-tool-display",
-    "npm:pi-tidy-footer"
+    "npm:pi-tidy-footer",
+    "npm:pi-tool-repair"
   ],
   "theme": "gruvbox-dark",
   "defaultProvider": "wandb",
