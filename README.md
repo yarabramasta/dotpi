@@ -171,7 +171,7 @@ The `grill` extension adds a Socratic planning mode to Pi:
 /grill stop
 ```
 
-Grill Me maintains a shared-understanding checkpoint, presents structured answer choices, and can use Cymbal or installed read-only scouts for grounding. It keeps interview mode read-only until you explicitly select and approve output production. `/checkpoint` is an alias for the current Grill Me checkpoint. Install it independently with `--extension grill`.
+Grill Me maintains a shared-understanding checkpoint, presents structured answer choices, and can use Cymbal or installed read-only scouts for grounding. It keeps interview mode read-only until you explicitly select and approve output production. When grounding assist is enabled at session start, Grill Me can also run an advisory output audit: after you produce or apply the approved output, one read-only auditor (e.g. reviewer, evidence-auditor, oracle) checks it against the codebase before the output phase finishes. The audit is advisory — it never blocks finishing — and off by default to save tokens; the auditor only reviews, never mutates. `/checkpoint` is an alias for the current Grill Me checkpoint. Install it independently with `--extension grill`.
 
 The W&B extension is folder-based at `agent/extensions/wandb/`, with `index.ts` and `package.json`. It adds a session-derived `cache_salt` only to W&B provider requests.
 
