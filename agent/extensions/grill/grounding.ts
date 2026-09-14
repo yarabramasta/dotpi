@@ -1,6 +1,7 @@
 export {
 	eligibleAuditors,
 	eligibleScouts,
+	eligibleWriters,
 	type ScoutAgent,
 } from "./grounding-policy.js";
 
