@@ -1,4 +1,8 @@
-import { eligibleAuditors, eligibleScouts } from "../grounding-policy.ts";
+import {
+	eligibleAuditors,
+	eligibleScouts,
+	eligibleWriters,
+} from "../grounding-policy.ts";
 
 function assertEqual(actual: unknown, expected: unknown, label: string): void {
 	if (JSON.stringify(actual) !== JSON.stringify(expected)) {
@@ -102,3 +106,60 @@ assertEqual(
 	"auditor read-only ordering",
 );
 assertEqual(eligibleAuditors([]), [], "empty auditor candidates");
+
+// Writers are the inverse of read-only scouts/auditors: keep mutating,
+// external CLI/job, or writer-named agents; rank writer/worker names first.
+const writers = eligibleWriters([
+	{
+		name: "reviewer",
+		description:
+			"Versatile review specialist for code diffs, plans, proposed solutions, and codebase health",
+		executable: true,
+		tools: { names: ["read", "grep", "find", "ls", "contact_supervisor"] },
+	},
+	{
+		name: "scout",
+		description:
+			"Fast codebase recon that returns compressed context for handoff",
+		executable: true,
+		tools: { names: ["read", "grep", "find", "ls", "bash"] },
+	},
+	{
+		name: "worker",
+		description:
+			"Implementation agent for normal tasks and approved oracle handoffs",
+		executable: true,
+		tools: {
+			names: [
+				"read",
+				"grep",
+				"find",
+				"ls",
+				"bash",
+				"edit",
+				"write",
+				"contact_supervisor",
+			],
+		},
+	},
+	{
+		name: "codex-writer",
+		description:
+			"Explicit workspace-writing one-shot execution through the Codex CLI",
+		executable: true,
+		runner: { type: "external-cli:codex" },
+	},
+	{
+		name: "researcher",
+		description: "Read-only researcher",
+		executable: true,
+	},
+	{ name: "personal-helper", description: "General helper", executable: true },
+]);
+
+assertEqual(
+	writers.map((w) => w.name),
+	["worker", "codex-writer"],
+	"writer canonical-first ordering (worker/codex-writer; read-only excluded)",
+);
+assertEqual(eligibleWriters([]), [], "empty writer candidates");

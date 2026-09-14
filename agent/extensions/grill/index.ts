@@ -18,6 +18,7 @@ import { showPicker } from "./picker.js";
 import {
 	eligibleAuditors,
 	eligibleScouts,
+	eligibleWriters,
 	type GroundingView,
 	type ScoutAgent,
 } from "./grounding.js";
@@ -61,6 +62,10 @@ interface GrillState {
 	outputAudit?: GroundingView & { at: number };
 	auditing?: boolean;
 	auditTask?: string;
+	availableWriters: ScoutAgent[];
+	delegate?: boolean;
+	chosenWriter?: string;
+	outputPaths?: string[];
 	outputSelection?: {
 		readinessRationale: string;
 		recommendedOutputs: string;
@@ -99,6 +104,10 @@ const DEFAULT_STATE: GrillState = {
 	outputAudit: undefined,
 	auditing: false,
 	auditTask: undefined,
+	availableWriters: [],
+	delegate: undefined,
+	chosenWriter: undefined,
+	outputPaths: undefined,
 	currentQuestion: undefined,
 	updatedAt: Date.now(),
 };
@@ -124,6 +133,21 @@ const ASSIST_OPTIONS = [
 		value: "no",
 		label: "Continue without subagents",
 		description: "Keep this Grill Me session local and lightweight.",
+	},
+];
+
+const DELEGATE_OPTIONS = [
+	{
+		value: "yes",
+		label: "Delegate file writes to a writer subagent (Recommended)",
+		description:
+			"A write-capable subagent performs the approved file writes; the parent stays read-only for files and keeps CLI mutations (gh/git). The advisory audit runs after. Costs extra tokens.",
+	},
+	{
+		value: "no",
+		label: "Parent writes directly",
+		description:
+			"The parent agent writes the approved outputs itself (current behavior). Saves tokens; no subagent delegation.",
 	},
 ];
 
@@ -256,6 +280,7 @@ We are starting a grill-me session to reach shared understanding before producin
 - Grounding assist: ${state.assistEnabled === undefined ? "unanswered" : state.assistEnabled ? "enabled" : "disabled"}
 - Eligible grounding scouts: ${state.availableScouts.length ? state.availableScouts.map((scout) => scout.name).join(", ") : "none discovered"}
 - Eligible output auditors: ${state.availableAuditors.length ? state.availableAuditors.map((a) => a.name).join(", ") : "none discovered"}
+- Eligible write delegates: ${state.availableWriters.length ? state.availableWriters.map((w) => w.name).join(", ") : "none discovered"}
 - Output preference: ${describeOutputPreference(state)}
 
 ## Decisions
@@ -315,6 +340,7 @@ function statusMarkdown(state: GrillState): string {
 - Research: ${state.researchMode}
 - Grounding assist: ${state.assistEnabled === undefined ? "unanswered" : state.assistEnabled ? "on" : "off"}
 - Eligible scouts: ${state.availableScouts.length ? state.availableScouts.map((scout) => scout.name).join(", ") : "(none discovered)"}
+- Eligible write delegates: ${state.availableWriters.length ? state.availableWriters.map((w) => w.name).join(", ") : "(none discovered)"}${state.delegate === true ? ` (active: ${state.chosenWriter ?? "?"})` : state.delegate === false ? " (parent writes)" : ""}
 - Phase: ${phaseLabel(state)}
 - Output preference: ${describeOutputPreference(state)}
 ${
@@ -371,6 +397,19 @@ function outputAuditStatusText(view: GroundingView): string {
 function outputAuditResultText(view: GroundingView): string {
 	if (view.skippedReason) return `Output audit skipped: ${view.skippedReason}`;
 	return `Output audit recorded${view.source ? ` (${view.source})` : ""}. Revise the output if needed, then call grill_finish_output_phase.`;
+}
+
+function groundingStatusText(view: GroundingView): string {
+	if (view.skippedReason)
+		return `⚠ grounding skipped: ${view.skippedReason}`.slice(0, 100);
+	const source = view.source ? ` · ${view.source}` : "";
+	return `✓ grounding${source}`.slice(0, 100);
+}
+
+function groundingResultText(view: GroundingView): string {
+	if (view.skippedReason)
+		return `Grounding skipped: ${view.skippedReason}. Continue ungrounded.`;
+	return `Grounding recorded${view.source ? ` (${view.source})` : ""}. Ask the next question.`;
 }
 
 /** Derive an advisory audit task from the approved output plan.
@@ -489,6 +528,49 @@ function asResearchMode(value: unknown): ResearchMode | undefined {
 
 function firstWord(text: string): string {
 	return text.trim().split(/\s+/, 1)[0]?.toLowerCase() ?? "";
+}
+
+/** Parse approved output file/directory paths out of the approved output plan
+ * text. The plan is free-form markdown, so we look for path-like tokens
+ * (agent/extensions/..., README.md, etc.) and repo-relative paths. Used to
+ * constrain writer-subagent `output` to the approved scope. */
+function approvedOutputPaths(plan: string | undefined): string[] {
+	if (!plan) return [];
+	const paths = new Set<string>();
+	const lines = plan.split(/\r?\n/);
+	for (const line of lines) {
+		const stripped = line.trim();
+		if (!stripped || stripped.startsWith("#")) continue;
+		// Match tokens that look like repo paths (contain a slash + a dot, or end
+		// in a known file ext) OR a bare filename with a known ext.
+		const tokens =
+			stripped.match(
+				/(?<![\w/])([A-Za-z0-9._@-]+(?:\/[A-Za-z0-9._@-]+)+|[A-Za-z0-9._-]+\.(?:ts|js|json|md|py|go|rs|sh|ya?ml|txt|tsx|jsx))/g,
+			) ?? [];
+		for (const token of tokens) {
+			if (token.length >= 3 && !/^https?:\/\//.test(token) && !/^ssh:/.test(token))
+				paths.add(token);
+		}
+	}
+	return [...paths];
+}
+
+/** True if `target` is within (or equal to) one of the approved output paths
+ * or their parent directories. Pure: takes the approved list explicitly so it
+ * is testable without Grill state. */
+function isWithinApprovedOutputPath(
+	target: string,
+	approved: readonly string[],
+): boolean {
+	const t = target.trim();
+	if (!t) return false;
+	if (approved.length === 0) return true; // no paths parsed → do not block.
+	const norm = (p: string) => p.replace(/\/+$/, "");
+	const nt = norm(t);
+	return approved.some((p) => {
+		const np = norm(p);
+		return nt === np || nt.startsWith(np.endsWith("/") ? `${np}` : `${np}/`);
+	});
 }
 
 function shellSegments(command: string): string[] {
@@ -638,13 +720,18 @@ export default function grillMeExtension(pi: ExtensionAPI): void {
 			ctx.ui.setStatus("grill-me", undefined);
 			ctx.ui.setStatus("grill-grounding", undefined);
 			ctx.ui.setStatus("grill-output-audit", undefined);
+			ctx.ui.setStatus("grill-writer", undefined);
 			return;
 		}
 
 		const phase = currentPhase(state);
+		const delegateTag =
+			phase === "output" && state.delegate === true
+				? ` → ${state.chosenWriter ?? "writer"}`
+				: "";
 		const status =
 			phase === "output"
-				? "🔥 grill: output"
+				? `🔥 grill: output${delegateTag}`
 				: phase === "output-selection"
 					? "🔥 grill: select output"
 					: "🔥 grill";
@@ -672,6 +759,12 @@ export default function grillMeExtension(pi: ExtensionAPI): void {
 				: state.outputAudit
 					? ctx.ui.theme.fg("success", outputAuditStatusText(state.outputAudit))
 					: undefined,
+		);
+		ctx.ui.setStatus(
+			"grill-writer",
+			phase === "output" && state.delegate === true
+				? ctx.ui.theme.fg("accent", `✎ delegate: ${state.chosenWriter ?? "?"}`)
+				: undefined,
 		);
 	}
 
@@ -868,7 +961,7 @@ export default function grillMeExtension(pi: ExtensionAPI): void {
 			if (command === "help") {
 				pi.sendMessage({
 					customType: "grill-me-help",
-					content: `# Grill Me commands\n\n- /grill <topic>\n- /grill stop\n- /checkpoint [edit|chat]\n- /grill checkpoint [edit|chat]\n- /grill status\n- /grill intent auto|plan|learn|research|content|decide\n- /grill output <one or more outputs> (preference only; approval still required)\n- /grill research off|ask|auto\n\nGrill Me uses one thorough default Socratic style. The assistant must use the hardcoded output-selection phase before ending the interview, producing outputs, or stopping without outputs.\n\nWhen grounding assist is enabled, the session start picker also enables an advisory output audit: in the output phase, after producing/applying the approved output, the assistant runs one read-only auditor (grill_set_auditors → subagent → grill_show_output_audit). The audit is advisory and never blocks grill_finish_output_phase; it can be skipped if no eligible auditor exists.\n\nState (checkpoint, phase, alternatives, current question) auto-persists every change. Switching model mid-session is safe. Reloading pi into the same session resumes the grill automatically — the status chip returns and the next turn re-injects the prompt and checkpoint.`,
+					content: `# Grill Me commands\n\n- /grill <topic>\n- /grill stop\n- /checkpoint [edit|chat]\n- /grill checkpoint [edit|chat]\n- /grill status\n- /grill intent auto|plan|learn|research|content|decide\n- /grill output <one or more outputs> (preference only; approval still required)\n- /grill research off|ask|auto\n\nGrill Me uses one thorough default Socratic style. The assistant must use the hardcoded output-selection phase before ending the interview, producing outputs, or stopping without outputs.\n\nWhen grounding assist is enabled, the session start picker also enables an advisory output audit: in the output phase, after producing/applying the approved output, the assistant runs one read-only auditor (grill_set_auditors → subagent → grill_show_output_audit). The audit is advisory and never blocks grill_finish_output_phase; it can be skipped if no eligible auditor exists.\n\nIn the output-selection phase, the assistant may discover write-capable subagents with grill_set_writers; if any exist, grill_enter_output_phase asks (via a picker) whether to delegate approved file writes to a writer subagent or have the parent write directly. When delegating, the parent is blocked from edit/write (keeps CLI mutations like gh/git), the writer subagent performs file writes scoped to the approved output paths, then the advisory audit runs. Delegation is per output batch; there is no persistent toggle.\n\nState (checkpoint, phase, alternatives, current question) auto-persists every change. Switching model mid-session is safe. Reloading pi into the same session resumes the grill automatically — the status chip returns and the next turn re-injects the prompt and checkpoint.`,
 					display: true,
 				});
 				return;
@@ -886,6 +979,10 @@ export default function grillMeExtension(pi: ExtensionAPI): void {
 				state.auditTask = undefined;
 				state.availableAuditors = [];
 				state.outputAudit = undefined;
+				state.availableWriters = [];
+				state.delegate = undefined;
+				state.chosenWriter = undefined;
+				state.outputPaths = undefined;
 				state.lastChangeSummary = "Stopped grill session";
 				persist();
 				updateUi(ctx);
@@ -1373,6 +1470,83 @@ export default function grillMeExtension(pi: ExtensionAPI): void {
 	});
 
 	pi.registerTool({
+		name: "grill_set_writers",
+		label: "Set Grill Write Delegates",
+		description:
+			'Filter the live subagent capability list to executable write-capable agents for delegating approved-output file writes. Call after subagent({ action: "list", capabilities: true }).',
+		promptSnippet: "Filter installed subagents to write-capable output delegates",
+		promptGuidelines: [
+			'When the user chooses to delegate output writes, call subagent({ action: "list", capabilities: true }) once, then pass its live agent capability rows to grill_set_writers.',
+			"grill_set_writers returns write-capable agents (canonical-first): mutating tools, external CLI/job runner, or writer-named. Use the first as the delegate.",
+			"Spawn the delegate with subagent({ agent, output, task }) where `output` is an approved output path and `task` is the approved output plan; the extension blocks writer spawns whose `output` is outside the approved plan.",
+			"If no write-capable agent exists, the delegate picker is skipped and the parent writes directly.",
+		],
+		parameters: Type.Object({
+			agents: Type.Array(
+				Type.Object(
+					{
+						name: Type.String(),
+						description: Type.Optional(Type.String()),
+						executable: Type.Optional(Type.Boolean()),
+						source: Type.Optional(Type.String()),
+						runner: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+						tools: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+						mutationTools: Type.Optional(Type.Array(Type.String())),
+					},
+					{ additionalProperties: true },
+				),
+				{ maxItems: 100 },
+			),
+		}),
+		async execute(_toolCallId, params) {
+			if (!state.active) {
+				return {
+					content: [{ type: "text", text: "No active Grill Me session." }],
+					details: { writers: [] },
+				};
+			}
+			const writers = eligibleWriters(params.agents as ScoutAgent[]);
+			state.availableWriters = writers;
+			state.lastChangeSummary = writers.length
+				? `Discovered ${writers.length} eligible write delegate${writers.length === 1 ? "" : "s"}`
+				: "No eligible write delegate discovered; parent writes directly";
+			persist();
+			return {
+				content: [
+					{
+						type: "text",
+						text: writers.length
+							? `Eligible write delegates (canonical-first): ${writers.map((w) => w.name).join(", ")}. Use the first with subagent({ agent, output, task }) where output is an approved output path; the extension blocks writer spawns whose output is outside the approved plan. The parent keeps CLI mutations (gh/git).`
+							: "No eligible write delegate found. The parent writes directly (current behavior).",
+					},
+				],
+				details: { writers, phase: currentPhase(state) },
+			};
+		},
+		renderCall(args, theme) {
+			return new Text(
+				theme.fg("toolTitle", theme.bold("grill_set_writers ")) +
+					theme.fg("muted", `${(args.agents ?? []).length} candidates`),
+				0,
+				0,
+			);
+		},
+		renderResult(result, _options, theme) {
+			const writers = ((result.details as any)?.writers ?? []) as ScoutAgent[];
+			return new Text(
+				theme.fg(
+					writers.length ? "success" : "warning",
+					writers.length
+						? `✓ Eligible write delegates: ${writers.map((w) => w.name).join(", ")}`
+						: "No eligible write delegates",
+				),
+				0,
+				0,
+			);
+		},
+	});
+
+	pi.registerTool({
 		name: "grill_set_auditors",
 		label: "Set Grill Output Auditors",
 		description:
@@ -1648,6 +1822,10 @@ export default function grillMeExtension(pi: ExtensionAPI): void {
 				question: params.question,
 			};
 			state.approvedOutputPlan = undefined;
+			state.delegate = undefined;
+			state.chosenWriter = undefined;
+			state.outputPaths = undefined;
+			state.availableWriters = [];
 			state.currentQuestion = params.question;
 			state.alternatives = normalizeAlternatives(
 				params.alternatives as GrillAlternative[],
@@ -1779,6 +1957,10 @@ export default function grillMeExtension(pi: ExtensionAPI): void {
 				state.phase = "interview";
 				state.outputPhase = false;
 				state.outputSelection = undefined;
+				state.delegate = undefined;
+				state.chosenWriter = undefined;
+				state.outputPaths = undefined;
+				state.availableWriters = [];
 				state.currentQuestion = undefined;
 				state.alternatives = [];
 				state.lastChangeSummary = params.summary
@@ -1809,6 +1991,10 @@ export default function grillMeExtension(pi: ExtensionAPI): void {
 				state.outputPhase = false;
 				state.outputSelection = undefined;
 				state.approvedOutputPlan = undefined;
+				state.delegate = undefined;
+				state.chosenWriter = undefined;
+				state.outputPaths = undefined;
+				state.availableWriters = [];
 				state.currentQuestion = undefined;
 				state.alternatives = [];
 				state.lastChangeSummary = params.summary
@@ -1844,6 +2030,7 @@ export default function grillMeExtension(pi: ExtensionAPI): void {
 		promptGuidelines: [
 			"Use grill_enter_output_phase only after grill_enter_output_selection_phase has run and the user explicitly approves a concrete output plan or preview during an active Grill Me session.",
 			"During output phase, do not refuse approved mutating output work merely because it mutates state, such as creating GitHub issues. If a tool, CLI, platform, or pi permission/authentication gate blocks the mutation, stop and ask the user for the needed permission, confirmation, credentials, or plan change; do not bypass it or broaden scope.",
+			"If write delegates were discovered via grill_set_writers, this tool asks the user (via a picker) whether to delegate approved file writes to a writer subagent or have the parent write directly. When delegating, the parent is blocked from edit/write and spawns the writer with subagent({ agent, output, task }); the writer is scoped to the approved output paths. If no write delegate exists, the picker is skipped and the parent writes directly.",
 			GITHUB_REPO_PERMISSION_GUIDANCE,
 		],
 		parameters: Type.Object({
@@ -1851,6 +2038,18 @@ export default function grillMeExtension(pi: ExtensionAPI): void {
 				description:
 					"The approved output plan, including one or more outputs/artifacts/files/issues and intended tool use.",
 			}),
+			delegate: Type.Optional(
+				Type.Boolean({
+					description:
+						"If true, delegate approved file writes to a write-capable subagent (parent stays read-only for files, keeps CLI mutations). If false, parent writes directly. When omitted and write delegates were discovered via grill_set_writers, the user is asked via a picker.",
+				}),
+			),
+			writer: Type.Optional(
+				Type.String({
+					description:
+						"Override the canonical-first writer selection with a specific eligible writer name. Must be in state.availableWriters.",
+				}),
+			),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			if (!state.active) {
@@ -1879,27 +2078,66 @@ export default function grillMeExtension(pi: ExtensionAPI): void {
 					},
 				};
 			}
+
+			// Per-batch write-delegation state. Reset, then resolve via param or
+			// picker. The picker only runs when write delegates were discovered
+			// (grill_set_writers in the output-selection phase); if none exist the
+			// parent writes directly (current behavior).
+			state.delegate = undefined;
+			state.chosenWriter = undefined;
+
+			let delegate = params.delegate;
+			if (delegate === undefined && state.availableWriters.length > 0) {
+				if (ctx?.hasUI) {
+					const result = await showPicker(
+						ctx,
+						"Delegate approved file writes to a writer subagent, or have the parent write directly?",
+						DELEGATE_OPTIONS,
+						state.language,
+					);
+					delegate = result.status === "answered" && result.value === "yes";
+				} else {
+					delegate = false;
+				}
+			} else if (delegate === undefined) {
+				delegate = false;
+			}
+			state.delegate = delegate;
+			if (delegate) {
+				const requested = params.writer?.trim();
+				const writer = requested
+					? state.availableWriters.find((w) => w.name === requested)
+					: state.availableWriters[0];
+				state.chosenWriter = writer?.name;
+			}
+
 			state.phase = "output";
 			state.outputPhase = true;
 			state.approvedOutputPlan = params.outputPlan;
+			state.outputPaths = approvedOutputPaths(params.outputPlan);
 			state.auditing = false;
 			state.auditTask = undefined;
 			state.availableAuditors = [];
 			state.outputAudit = undefined;
-			state.lastChangeSummary = "Entered approved output phase";
+			state.lastChangeSummary = state.delegate
+				? `Entered approved output phase (delegating file writes to ${state.chosenWriter ?? "?"})`
+				: "Entered approved output phase (parent writes directly)";
 			persist();
 			if (ctx) updateUi(ctx);
 			return {
 				content: [
 					{
 						type: "text",
-						text: `Output phase enabled for approved plan:\n${params.outputPlan}\n\n${GITHUB_REPO_PERMISSION_GUIDANCE}`,
+						text: `Output phase enabled for approved plan:\n${params.outputPlan}\n\n${state.delegate ? `File writes delegated to ${state.chosenWriter ?? "the chosen writer"}; the parent keeps CLI mutations (gh/git) and spawns the writer with subagent({ agent, output, task }). ${GITHUB_REPO_PERMISSION_GUIDANCE}` : `Parent writes the approved outputs directly. ${GITHUB_REPO_PERMISSION_GUIDANCE}`}`,
 					},
 				],
 				details: {
 					phase: currentPhase(state),
 					outputPhase: true,
 					outputPlan: params.outputPlan,
+					delegate: state.delegate,
+					chosenWriter: state.chosenWriter,
+					availableWriters: state.availableWriters,
 				},
 			};
 		},
@@ -1926,6 +2164,10 @@ export default function grillMeExtension(pi: ExtensionAPI): void {
 			state.auditTask = undefined;
 			state.availableAuditors = [];
 			state.outputAudit = undefined;
+			state.delegate = undefined;
+			state.chosenWriter = undefined;
+			state.outputPaths = undefined;
+			state.availableWriters = [];
 			state.lastChangeSummary = params.summary
 				? `Finished output phase: ${params.summary}`
 				: "Finished output phase";
@@ -1966,6 +2208,57 @@ export default function grillMeExtension(pi: ExtensionAPI): void {
 						reason:
 							"Grill Me output audit is in progress. While auditing, subagent spawns must target one of the eligible read-only auditors set by grill_set_auditors. Record the audit result with grill_show_output_audit to clear the window and unblock other subagent calls.",
 					};
+				}
+			}
+		}
+
+		// Write-delegation enforcement (approved output phase only): when the
+		// user chose to delegate file writes, the parent is blocked from
+		// edit/write so file mutations go through the writer subagent. CLI
+		// mutations (gh/git via bash) stay allowed for non-file outputs. Writer
+		// subagent spawns are allowed but their declared `output` path must be
+		// within the approved plan's output paths; spawns outside are blocked.
+		if (state.outputPhase && state.delegate === true) {
+			if (event.toolName === "edit" || event.toolName === "write") {
+				return {
+					block: true,
+					reason:
+						"Grill Me is delegating file writes to a writer subagent this batch. Spawn the writer with subagent({ agent, output, task }) where output is an approved output path; the parent keeps CLI mutations (gh/git) only. If the writer is unavailable or fails, fall back to finishing the writes yourself and notify the user.",
+				};
+			}
+			if (event.toolName === "subagent") {
+				const input = (event.input ?? {}) as {
+					action?: string;
+					agent?: string;
+					output?: string | false;
+				};
+				const isManagement =
+					typeof input.action === "string" && input.action.length > 0;
+				if (!isManagement) {
+					const target = typeof input.agent === "string" ? input.agent.trim() : "";
+					const isWriter =
+						!!target && !!state.availableWriters.some((w) => w.name === target);
+					if (isWriter) {
+						const out = typeof input.output === "string" ? input.output.trim() : "";
+						const approved =
+							state.outputPaths && state.outputPaths.length > 0
+								? state.outputPaths
+								: approvedOutputPaths(state.approvedOutputPlan);
+						if (approved.length === 0) {
+							// No paths parsed from the plan → cannot enforce scope; do not block.
+						} else if (!out) {
+							return {
+								block: true,
+								reason:
+									"Grill Me requires a writer spawn to declare an `output` path within the approved output plan when delegating. Pass output: <approved path> to subagent.",
+							};
+						} else if (!isWithinApprovedOutputPath(out, approved)) {
+							return {
+								block: true,
+								reason: `Grill Me blocked a writer spawn whose output path is outside the approved output plan. Use an approved output path. Declared output: ${out}`,
+							};
+						}
+					}
 				}
 			}
 		}
@@ -2018,11 +2311,21 @@ export default function grillMeExtension(pi: ExtensionAPI): void {
 					: "Grounding assist was not answered. Ask the user before using subagents for Grill Me grounding.";
 
 		const phase = currentPhase(state);
+		const delegationGuidance =
+			state.delegate === true
+				? `Write delegation is ON for this batch: the parent is blocked from edit/write; spawn the writer subagent (${state.chosenWriter ?? "the chosen writer"}) with subagent({ agent, output, task }) where output is an approved output path; the extension blocks writer spawns whose output is outside the approved plan. The parent keeps CLI mutations (gh/git). Run the writer BEFORE the advisory audit (the audit window blocks non-auditor spawns). If the writer fails or times out, fall back to finishing the writes yourself and notify the user.`
+				: state.delegate === false
+					? "Write delegation is OFF for this batch: the parent writes the approved outputs directly."
+					: "";
+		const writerDiscoveryGuidance =
+			phase === "output-selection"
+				? ' After the user approves outputs, if they may want to delegate file writes, call subagent({ action: "list", capabilities: true }) and pass the rows to grill_set_writers to discover write-capable delegates. grill_enter_output_phase will then ask (via a picker) whether to delegate; the picker is skipped if no write delegate exists.'
+				: "";
 		const outputPhaseGuidance =
 			phase === "output"
-				? `Approved output phase: produce only the approved outputs. If a required mutation is blocked by permissions, auth, or repo setup, ask the user instead of bypassing or faking success. ${GITHUB_REPO_PERMISSION_GUIDANCE} When done, call grill_finish_output_phase.${state.assistEnabled === true ? ' If grounding/output audit is enabled, after producing/applying the approved output, run ONE advisory output audit: call subagent({ action: "list", capabilities: true }), pass the rows to grill_set_auditors (which derives the audit task from the approved plan; you may override it), run one eligible auditor with subagent({ agent, task }), then record the result with grill_show_output_audit. The audit is advisory and never blocks grill_finish_output_phase. If no eligible auditor exists or the run fails, call grill_show_output_audit with a skippedReason and skip the audit. While the audit window is active (after grill_set_auditors, before grill_show_output_audit), subagent spawns must target one of the eligible auditors; other subagent calls are blocked until the audit is recorded.' : ""}`
+				? `Approved output phase: produce only the approved outputs. If a required mutation is blocked by permissions, auth, or repo setup, ask the user instead of bypassing or faking success. ${GITHUB_REPO_PERMISSION_GUIDANCE} ${delegationGuidance} When done, call grill_finish_output_phase.${state.assistEnabled === true ? ' If grounding/output audit is enabled, after producing/applying the approved output, run ONE advisory output audit: call subagent({ action: "list", capabilities: true }), pass the rows to grill_set_auditors (which derives the audit task from the approved plan; you may override it), run one eligible auditor with subagent({ agent, task }), then record the result with grill_show_output_audit. The audit is advisory and never blocks grill_finish_output_phase. If no eligible auditor exists or the run fails, call grill_show_output_audit with a skippedReason and skip the audit. While the audit window is active (after grill_set_auditors, before grill_show_output_audit), subagent spawns must target one of the eligible auditors; other subagent calls are blocked until the audit is recorded.' : ""}`
 				: phase === "output-selection"
-					? "You are in the mandatory output-selection phase. Do not ask new interview questions unless the user chooses to continue grilling. Ask the user to choose outputs/continue/review/stop from the active output-selection alternatives. If they approve concrete output production, call grill_enter_output_phase. If they choose to continue or stop without output, call grill_finish_output_selection_phase."
+					? `You are in the mandatory output-selection phase. Do not ask new interview questions unless the user chooses to continue grilling. Ask the user to choose outputs/continue/review/stop from the active output-selection alternatives. If they approve concrete output production, call grill_enter_output_phase. If they choose to continue or stop without output, call grill_finish_output_selection_phase.${writerDiscoveryGuidance}`
 					: "You are in read-only interview mode. Do not implement, write files, create issues, install packages, run mutating commands, or stop the Grill Me work. When ready to end the interview, first update the checkpoint if needed, then call grill_enter_output_selection_phase to enter the mandatory hardcoded output-selection phase before output production or stopping.";
 
 		const outputSelectionSummary = state.outputSelection
@@ -2034,6 +2337,7 @@ export default function grillMeExtension(pi: ExtensionAPI): void {
 - Grounding assist: ${state.assistEnabled === undefined ? "unanswered" : state.assistEnabled ? "enabled" : "disabled"}
 - Eligible grounding scouts: ${state.availableScouts.length ? state.availableScouts.map((scout) => scout.name).join(", ") : "none discovered"}
 - Eligible output auditors: ${state.availableAuditors.length ? state.availableAuditors.map((a) => a.name).join(", ") : "none discovered"}
+- Eligible write delegates: ${state.availableWriters.length ? state.availableWriters.map((w) => w.name).join(", ") : "none discovered"}
 - Output preference: ${describeOutputPreference(state)}
 - Phase: ${phase}\n- Output phase: ${state.outputPhase ? "yes" : "no"}${outputSelectionSummary}\n\nCurrent checkpoint:\n${state.checkpoint || "(No checkpoint yet.)"}\n\nCurrent picker alternatives (shown in the ↑/↓ + Enter overlay):\n${state.alternatives.length ? state.alternatives.map((a) => `- ${a.label}: ${a.value}${a.description ? ` (${a.description})` : ""}`).join("\n") : "(None set.)"}\n\nDecisions so far:\n${state.decisions.length ? state.decisions.map((d) => `- ${d.question} → ${d.label}${d.note ? ` (note: ${d.note})` : ""}`).join("\n") : "(None recorded.)"}\n\nBehavior:\n- Apply the Socratic method to reach shared understanding of the topic.\n- Avoid hardcoded interview phases. Adapt the dimensions you explore to the subject and to the user's expertise.\n- The output-selection phase is the one hardcoded terminal phase: it is mandatory before stopping the Grill Me work, stopping without outputs, or producing outputs.\n- Treat desired outcome mode as important: learning, building, researching, content/tutorial creation, decision review, etc.\n- Do not set or assume a default output mode for the session. A missing output preference means no output has been chosen yet, not design-doc or any other default.\n- Treat /grill output as a preference only, not production approval. Always explicitly ask/confirm which output(s) to produce before output production.\n- Support 1..n outputs in one approved output plan; for example, a design doc AND uploaded GitHub issues.\n- The output-selection phase must explicitly mention concrete output destinations by name. Use this catalog and allow custom combinations:\n${outputDestinationOptionsMarkdown()}\n- ${groundingGuidance}
 - Ask mostly one focused question at a time. Small grouped questions are allowed only when inseparable.
@@ -2058,7 +2362,13 @@ export default function grillMeExtension(pi: ExtensionAPI): void {
 				if (state.phase !== "output") state.outputPhase = false;
 				if (!Array.isArray(state.availableScouts)) state.availableScouts = [];
 				if (!Array.isArray(state.availableAuditors)) state.availableAuditors = [];
+				if (!Array.isArray(state.availableWriters)) state.availableWriters = [];
 				if (state.phase !== "output") state.auditing = false;
+				if (state.phase !== "output") {
+					state.delegate = undefined;
+					state.chosenWriter = undefined;
+					state.outputPaths = undefined;
+				}
 				if (state.grounding && typeof state.grounding !== "object")
 					state.grounding = undefined;
 			}

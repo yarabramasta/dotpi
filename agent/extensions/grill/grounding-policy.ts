@@ -25,9 +25,29 @@ const AUDITOR_PREFERRED_NAMES = [
 const AUDITOR_READ_ONLY_DESCRIPTION =
 	/read[- ]only|review|audit|evidence|verif|inspect|analy[sz]|recon/i;
 const WRITER_NAME = /(^|[-_])(writer|worker)([-_]|$)|cli[-_]?writer/;
+const WRITER_PREFERRED_NAMES = [
+	"writer",
+	"worker",
+	"codex-writer",
+	"implementer",
+];
+// External CLI/job runners (e.g. external-cli:codex, external-job:foo) can mutate
+// the workspace. isMutating only matches the exact "external-cli"/"external-job"
+// type, so this prefix check closes the gap for suffixed runner types.
+const WRITER_RUNNER = /^external-(cli|job)\b/i;
 const MUTATING_TOOL =
 	/(^|:|\/)(edit|write|apply_patch|ast_grep_replace|rm|mv|cp|mkdir|touch|chmod|chown)(:|\/|$)/i;
 const MAX_ELIGIBLE = 20;
+
+/** A write-capable agent: the inverse of the read-only scout/auditor guarantee.
+ * Keeps agents that CAN mutate — mutating tools, an external CLI/job runner, or
+ * a writer/worker name. Read-only agents are excluded. isMutating now uses the
+ * same prefix runner predicate as the read-only exclusion, so suffixed runners
+ * (external-cli:codex) cannot appear in both pools. */
+function isWriteCapable(candidate: ScoutAgent): boolean {
+	if (isMutating(candidate)) return true;
+	return WRITER_NAME.test(candidate.name.toLowerCase());
+}
 
 function stringList(value: unknown): string[] {
 	return Array.isArray(value)
@@ -41,10 +61,10 @@ function isMutating(candidate: ScoutAgent): boolean {
 		...stringList(candidate.tools?.mutationTools),
 		...stringList(candidate.mutationTools),
 	];
+	const runnerType = candidate.runner?.type;
 	return (
 		tools.some((tool) => MUTATING_TOOL.test(tool)) ||
-		candidate.runner?.type === "external-cli" ||
-		candidate.runner?.type === "external-job"
+		(typeof runnerType === "string" && WRITER_RUNNER.test(runnerType))
 	);
 }
 
@@ -116,4 +136,34 @@ export function eligibleAuditors(
 		AUDITOR_PREFERRED_NAMES,
 		AUDITOR_READ_ONLY_DESCRIPTION,
 	);
+}
+
+/** Select executable, write-capable agents for delegating approved-output file
+ * writes. Inverse of the read-only scout/auditor selectors: keeps mutating,
+ * external CLI/job, or writer-named agents; ranks writer/worker names first. */
+export function eligibleWriters(
+	values: readonly (ScoutAgent | string)[],
+): ScoutAgent[] {
+	const seen = new Set<string>();
+	const selected: ScoutAgent[] = [];
+	for (const value of values) {
+		const candidate = normalizeCandidate(value);
+		if (!candidate || seen.has(candidate.name) || candidate.executable === false)
+			continue;
+		seen.add(candidate.name);
+		if (!isWriteCapable(candidate)) continue;
+		selected.push(candidate);
+	}
+	return selected
+		.sort((a, b) => {
+			const ai = WRITER_PREFERRED_NAMES.indexOf(a.name.toLowerCase());
+			const bi = WRITER_PREFERRED_NAMES.indexOf(b.name.toLowerCase());
+			if (ai !== -1 || bi !== -1)
+				return (
+					(ai === -1 ? WRITER_PREFERRED_NAMES.length : ai) -
+					(bi === -1 ? WRITER_PREFERRED_NAMES.length : bi)
+				);
+			return a.name.localeCompare(b.name);
+		})
+		.slice(0, MAX_ELIGIBLE);
 }
