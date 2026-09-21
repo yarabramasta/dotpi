@@ -1,6 +1,6 @@
 function shellSegments(command: string): string[] {
 	return command
-		.split(/&&|\|\||;|\n/) // pipelines are handled separately to avoid flagging read-only grep pipelines as mutating.
+		.split(/&&|\|\||;|\||\n/) // split pipes too: mutating commands (sed -i, git apply) must not ride after a read-only segment.
 		.map((s) => s.trim())
 		.filter(Boolean);
 }
@@ -9,13 +9,33 @@ function isReadOnlyGit(args: string[]): boolean {
 	const sub = args[1];
 	if (sub === "branch" || sub === "remote") {
 		// git branch <name> creates; -d/-D/-m/-M/-c mutate. git remote add/set-url/
-		// rename/remove/prune mutate; only the bare listing forms are read-only.
+		// rename/remove/prune mutate; listing forms stay read-only (including
+		// `branch --list <pattern>` and `remote get-url <name>`).
 		const mutatingFlags =
 			/^-(d|D|m|M|c)$|^--(delete|move|copy|edit|set-url|add|rename|remove|prune|update)$/;
 		const rest = args.slice(2);
+		const mutatingSubcommands = [
+			"add",
+			"set-url",
+			"rename",
+			"remove",
+			"prune",
+			"update",
+		];
+		if (rest.some((token) => mutatingFlags.test(token))) return false;
+		if (
+			sub === "remote" &&
+			rest.some((token) => mutatingSubcommands.includes(token))
+		)
+			return false;
+		const allowedBareValue =
+			sub === "remote"
+				? rest.includes("get-url") ||
+					rest.includes("-v") ||
+					rest.includes("--verbose")
+				: rest.includes("--list");
 		const hasBareToken = rest.some((token) => !token.startsWith("-"));
-		const hasMutatingFlag = rest.some((token) => mutatingFlags.test(token));
-		return !hasBareToken && !hasMutatingFlag;
+		return allowedBareValue ? true : !hasBareToken;
 	}
 	return [
 		"status",
