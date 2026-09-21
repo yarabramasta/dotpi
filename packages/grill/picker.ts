@@ -10,7 +10,21 @@ import {
 	truncateToWidth,
 	visibleWidth,
 } from "@earendil-works/pi-tui";
-import { type Language, strings } from "./locales.js";
+
+// English-only since the locales.ts cut; the rpiv-style picker stays custom TUI.
+const EN_STRINGS = {
+	navigate: "↑/↓ to navigate",
+	select: "Enter to select",
+	typeSomething: "Type something.",
+	note: "n to add note",
+	cancel: "Esc to cancel",
+	preview: "Preview",
+	expand: "x to expand",
+	collapse: "x to collapse",
+	noteHeader: "Note",
+	customEditorTitle: "Type your answer",
+	noteEditorTitle: "Add a note",
+};
 
 export interface PickerOption {
 	value: string;
@@ -80,7 +94,6 @@ export async function showPicker(
 	ctx: ExtensionContext,
 	question: string,
 	options: PickerOption[],
-	lang: Language,
 ): Promise<PickerResult> {
 	if (!ctx.hasUI) {
 		return { status: "cancelled", value: "", label: "", custom: false };
@@ -98,7 +111,7 @@ export async function showPicker(
 	while (true) {
 		const instruction = await ctx.ui.custom<Instruction | undefined>(
 			(tui: TUI, theme: Theme, _keybindings, done) => {
-				const t = strings(lang);
+				const t = EN_STRINGS;
 				const border = new DynamicBorder((s: string) => theme.fg("accent", s));
 				let selected = 0;
 				// ponytail: preview expand toggle. x drops the line cap so the
@@ -341,14 +354,14 @@ export async function showPicker(
 		}
 		if (instruction.kind === "note") {
 			const edited = await ctx.ui.editor(
-				strings(lang).noteEditorTitle,
+				EN_STRINGS.noteEditorTitle,
 				note ?? "",
 			);
 			if (edited !== undefined) note = edited.trim() || undefined;
 			continue;
 		}
 		if (instruction.kind === "custom") {
-			const edited = await ctx.ui.editor(strings(lang).customEditorTitle, "");
+			const edited = await ctx.ui.editor(EN_STRINGS.customEditorTitle, "");
 			if (edited?.trim()) {
 				const value = edited.trim();
 				return { status: "answered", value, label: value, custom: true, note };

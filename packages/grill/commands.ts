@@ -55,7 +55,6 @@ export function registerCommands(
 				ctx,
 				"Use installed read-only subagents to ground this Grill Me session?",
 				ASSIST_OPTIONS,
-				runtime.state.language,
 			);
 			runtime.state.assistEnabled =
 				result.status === "answered" && result.value === "yes";
@@ -325,20 +324,6 @@ export function registerCommands(
 				persist();
 				updateUi(ctx);
 				ctx.ui.notify(`Grill research mode: ${value}`, "info");
-				return;
-			}
-
-			if (command === "language") {
-				const value = rest.trim().toLowerCase();
-				if (value !== "en" && value !== "id") {
-					ctx.ui.notify("Usage: /grill language en|id", "warning");
-					return;
-				}
-				runtime.state.language = value;
-				runtime.state.lastChangeSummary = `Language set to ${value}`;
-				persist();
-				updateUi(ctx);
-				ctx.ui.notify(`Grill language: ${value}`, "info");
 				return;
 			}
 

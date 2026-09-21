@@ -116,7 +116,6 @@ export function registerPhaseTools(
 					ctx,
 					params.question,
 					runtime.state.alternatives,
-					runtime.state.language,
 				);
 				if (result.status === "answered") {
 					runtime.state.decisions = [
@@ -394,7 +393,6 @@ export function registerPhaseTools(
 						ctx,
 						"Delegate approved file writes to a writer subagent, or have the parent write directly?",
 						DELEGATE_OPTIONS,
-						runtime.state.language,
 					);
 					delegate = result.status === "answered" && result.value === "yes";
 				} else {

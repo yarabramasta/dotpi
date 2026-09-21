@@ -153,7 +153,6 @@ export function registerStateTools(
 					ctx,
 					params.question,
 					runtime.state.alternatives,
-					runtime.state.language,
 				);
 				if (result.status === "answered") {
 					runtime.state.decisions = [

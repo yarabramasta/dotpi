@@ -1,6 +1,5 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { GroundingView, ScoutAgent } from "./grounding.js";
-import type { Language } from "./locales.js";
 
 export type Intent =
 	| "auto"
@@ -53,7 +52,6 @@ export interface GrillState {
 	checkpoint: string;
 	phase: GrillPhase;
 	outputPhase: boolean;
-	language: Language;
 	decisions: GrillDecision[];
 	assistEnabled?: boolean;
 	availableScouts: ScoutAgent[];
@@ -95,7 +93,6 @@ export const DEFAULT_STATE: GrillState = {
 	outputSelection: undefined,
 	approvedOutputPlan: undefined,
 	alternatives: [],
-	language: "en",
 	decisions: [],
 	assistEnabled: undefined,
 	availableScouts: [],
