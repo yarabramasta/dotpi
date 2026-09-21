@@ -1,0 +1,27 @@
+{
+	"editor.formatOnSave": true,
+	"editor.codeActionsOnSave": {
+		"source.fixAll.biome": "explicit",
+		"source.organizeImports": "never"
+	},
+	"python.analysis.extraPaths": ["src"],
+	"python.testing.unittestEnabled": true,
+	"python.testing.unittestArgs": ["-s", "src", "-t", "src"],
+	"[python]": {
+		"editor.defaultFormatter": "charliermarsh.ruff"
+	},
+	"js/ts.tsdk.path": "node_modules/typescript/lib",
+	"js/ts.tsdk.promptToUseWorkspaceVersion": true,
+	"[typescript]": {
+		"editor.defaultFormatter": "biomejs.biome"
+	},
+	"[javascript]": {
+		"editor.defaultFormatter": "biomejs.biome"
+	},
+	"[json]": {
+		"editor.defaultFormatter": "biomejs.biome"
+	},
+	"[jsonc]": {
+		"editor.defaultFormatter": "biomejs.biome"
+	}
+}
