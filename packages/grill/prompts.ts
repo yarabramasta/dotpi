@@ -173,28 +173,24 @@ export function groundingResultText(view: GroundingView): string {
 	return `Grounding recorded${view.source ? ` (${view.source})` : ""}. Ask the next question.`;
 }
 
-/** Derive an advisory audit task from the approved output plan.
- * Docs/claims -> verify against the codebase. Code edits -> review the diff.
- * Mixed or unknown -> both. Always read-only; never mutates. */
-export function deriveAuditTask(plan: string | undefined): string {
-	const text = (plan ?? "").toLowerCase();
-	const mentionsCode =
-		/\b(diff|edit|write|patch|implement|apply|code change|refactor|fix|function|class|file)\b/.test(
-			text,
-		);
-	const mentionsDocs =
-		/\b(doc|readme|adr|prd|plan|issue|brief|memo|outline|checklist|notes|design)\b/.test(
-			text,
-		);
+/** Derive the end-of-process reviewer task from the approved output plan and
+ * the checkpoint. The reviewer verifies sync: checkpoint decisions vs produced
+ * outputs vs edited files. Always read-only; never mutates. */
+export function deriveReviewerTask(
+	plan: string | undefined,
+	checkpoint: string | undefined,
+): string {
 	const head =
-		"You are a read-only output auditor for a Grill Me session. Inspect the repository with read-only tools only; do not edit, write, or apply any change. Compare the produced output against the actual codebase and report discrepancies, unsupported claims, and missing coverage. Output a concise verdict: PASS or a bulleted list of gaps (file:symbol where possible).";
-	const docsPart =
-		"Verify any factual claims in the produced output against the actual codebase: file paths, symbol names, behavior, and constraints. Flag claims not supported by the code.";
-	const codePart =
-		"Review any directly-applied code changes as a diff: correctness, convention adherence, regressions, and missed call sites. Flag issues with file:symbol where possible.";
-	if (mentionsCode && !mentionsDocs) return `${head}\n\n${codePart}`;
-	if (mentionsDocs && !mentionsCode) return `${head}\n\n${docsPart}`;
-	return `${head}\n\n${docsPart}\n\n${codePart}`;
+		"You are a read-only reviewer for a Grill Me session. Inspect the repository with read-only tools only; do not edit, write, or apply any change. Verify that the grill session stayed in sync and report a concise verdict: PASS or a bulleted list of gaps (file:symbol where possible).";
+	const syncPart =
+		"Check three-way sync: (1) the checkpoint decisions below actually hold in the repo; (2) the produced outputs match what the checkpoint claims was produced; (3) edited files (git status/diff) match the declared output plan and the checkpoint's decisions. Flag anything stale, contradicted, or missing.";
+	const planPart = plan
+		? `\n\nApproved output plan:\n${plan.slice(0, 2000)}`
+		: "";
+	const checkpointPart = checkpoint
+		? `\n\nCheckpoint (decisions + coverage):\n${checkpoint.slice(0, 6000)}`
+		: "";
+	return `${head}\n\n${syncPart}${planPart}${checkpointPart}`;
 }
 
 export function buildSystemPrompt(state: GrillState): string {

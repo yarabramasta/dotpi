@@ -9,6 +9,7 @@ const TOOL_NAMES = [
 	"grill_set_scouts",
 	"grill_show_grounding",
 	"grill_set_writers",
+	"grill_run_reviewer",
 	"grill_enter_output_selection_phase",
 	"grill_finish_output_selection_phase",
 	"grill_enter_output_phase",
