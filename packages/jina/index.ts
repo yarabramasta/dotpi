@@ -1,7 +1,20 @@
-import { readFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { readFileSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type {
+	AgentToolUpdateCallback,
+	ExtensionAPI,
+	ExtensionContext,
+} from "@earendil-works/pi-coding-agent";
+import {
+	DEFAULT_MAX_BYTES,
+	DEFAULT_MAX_LINES,
+	formatSize,
+	getMarkdownTheme,
+	keyHint,
+	truncateHead,
+} from "@earendil-works/pi-coding-agent";
+import { Container, Markdown, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 
 type JsonObject = Record<string, unknown>;
@@ -56,6 +69,23 @@ function formatResponse(body: string): string {
 	}
 }
 
+// ponytail: web pages can be huge; keep head (titles/first results matter) and
+// park the full body in tmp so the agent can read what was cut.
+function truncateWeb(text: string): string {
+	const trunc = truncateHead(text, {
+		maxLines: DEFAULT_MAX_LINES,
+		maxBytes: DEFAULT_MAX_BYTES,
+	});
+	if (!trunc.truncated) return text;
+	const fullFile = join(tmpdir(), `jina-${Date.now()}.md`);
+	try {
+		writeFileSync(fullFile, text);
+	} catch {
+		// tmp write failed — notice still shows what was kept
+	}
+	return `${trunc.content}\n[Truncated: showing first ${trunc.outputLines} of ${trunc.totalLines} lines (${formatSize(trunc.outputBytes)} of ${formatSize(trunc.totalBytes)}). Full content: ${fullFile}]`;
+}
+
 async function request(
 	url: string,
 	init: RequestInit,
@@ -94,6 +124,84 @@ function headers(apiKey: string | undefined): HeadersInit {
 	};
 }
 
+// --- branded tool-row helpers (same visual language as android-cli) ---
+
+type RenderTheme = {
+	fg(name: string, text: string): string;
+	bold(text: string): string;
+};
+
+function rowHead(theme: RenderTheme, label: string, detail?: string): string {
+	let s = theme.fg("toolTitle", theme.bold(label));
+	if (detail) s += ` ${theme.fg("muted", detail)}`;
+	return s;
+}
+
+function resultHead(theme: RenderTheme, ok: boolean, text: string): string {
+	const mark = ok ? theme.fg("success", "✓") : theme.fg("error", "✗");
+	const body = ok ? theme.fg("muted", text) : theme.fg("error", text);
+	return `${mark} ${body}`;
+}
+
+function partialRow(theme: RenderTheme, text: string): Text {
+	return new Text(theme.fg("warning", `→ ${text}`), 0, 0);
+}
+
+function resultText(result: {
+	content: ReadonlyArray<{ type: string; text?: string }>;
+}): string {
+	return result.content
+		.map((item) => (item.type === "text" ? (item.text ?? "") : ""))
+		.join("\n")
+		.trim();
+}
+
+function expandText(theme: RenderTheme, text: string): string {
+	if (!text) return "";
+	// TUI: styles do not carry across lines — reapply per line
+	return text
+		.split("\n")
+		.map((line) => theme.fg("dim", line))
+		.join("\n");
+}
+
+function resultRow(
+	theme: RenderTheme,
+	ok: boolean,
+	done: string,
+	text: string,
+	opts: { expanded?: boolean; hint?: boolean } = {},
+): Text {
+	let s = resultHead(theme, ok, done);
+	if (opts.hint && !opts.expanded) {
+		s += ` ${theme.fg("dim", keyHint("app.tools.expand", "to expand"))}`;
+	}
+	if (opts.expanded) s += `\n${expandText(theme, text)}`;
+	return new Text(s, 0, 0);
+}
+
+function short(text: string, max = 48): string {
+	return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
+/** Set footer status while the fetch runs; clear after. */
+async function withStatus(
+	ctx: ExtensionContext | undefined,
+	status: string | undefined,
+	onUpdate: AgentToolUpdateCallback | undefined,
+	run: () => Promise<string>,
+): Promise<string> {
+	if (status) {
+		onUpdate?.({ content: [{ type: "text", text: status }], details: {} });
+		if (ctx?.hasUI) ctx.ui.setStatus("jina", status);
+	}
+	try {
+		return await run();
+	} finally {
+		if (status && ctx?.hasUI) ctx.ui.setStatus("jina", undefined);
+	}
+}
+
 export default function jinaExtension(pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "jina_search_web",
@@ -119,7 +227,7 @@ export default function jinaExtension(pi: ExtensionAPI) {
 				}),
 			),
 		}),
-		async execute(_toolCallId, params, signal) {
+		async execute(_toolCallId, params, signal, onUpdate, ctx) {
 			if (!params.query.trim()) return result("query is required", true);
 			const apiKey = resolveApiKey();
 			if (!apiKey) return result("Jina search requires JINA_API_KEY.", true);
@@ -129,22 +237,48 @@ export default function jinaExtension(pi: ExtensionAPI) {
 			if (params.maxResults) body.max_num_results = params.maxResults;
 
 			try {
-				const response = await request(
-					SEARCH_URL,
-					{
-						method: "POST",
-						headers: { ...headers(apiKey), "Content-Type": "application/json" },
-						body: JSON.stringify(body),
-					},
-					signal,
+				const response = await withStatus(
+					ctx,
+					`searching ${short(params.query, 40)}…`,
+					onUpdate,
+					() =>
+						request(
+							SEARCH_URL,
+							{
+								method: "POST",
+								headers: {
+									...headers(apiKey),
+									"Content-Type": "application/json",
+								},
+								body: JSON.stringify(body),
+							},
+							signal,
+						),
 				);
-				return result(formatResponse(response));
+				return result(truncateWeb(formatResponse(response)));
 			} catch (error) {
 				return result(
 					error instanceof Error ? error.message : String(error),
 					true,
 				);
 			}
+		},
+		renderCall(args, theme) {
+			let head = rowHead(theme, "jina_search_web", short(args.query));
+			if (args.site) head += ` ${theme.fg("dim", args.site)}`;
+			return new Text(head, 0, 0);
+		},
+		renderResult(result, { expanded, isPartial }, theme, context) {
+			if (isPartial) {
+				return partialRow(theme, `searching ${short(context.args.query, 40)}…`);
+			}
+			return resultRow(
+				theme,
+				!context.isError,
+				`search ${short(context.args.query, 32)}`,
+				resultText(result),
+				{ expanded, hint: true },
+			);
 		},
 	});
 
@@ -162,33 +296,64 @@ export default function jinaExtension(pi: ExtensionAPI) {
 				description: "Research question or focused deep-search query.",
 			}),
 		}),
-		async execute(_toolCallId, params, signal) {
+		async execute(_toolCallId, params, signal, onUpdate, ctx) {
 			if (!params.query.trim()) return result("query is required", true);
 			const apiKey = resolveApiKey();
 			if (!apiKey)
 				return result("Jina deep search requires JINA_API_KEY.", true);
 
 			try {
-				const response = await request(
-					DEEP_SEARCH_URL,
-					{
-						method: "POST",
-						headers: { ...headers(apiKey), "Content-Type": "application/json" },
-						body: JSON.stringify({
-							model: "jina-deepsearch-v1",
-							messages: [{ role: "user", content: params.query }],
-							stream: false,
-						}),
-					},
-					signal,
+				const response = await withStatus(
+					ctx,
+					`deep search ${short(params.query, 40)}…`,
+					onUpdate,
+					() =>
+						request(
+							DEEP_SEARCH_URL,
+							{
+								method: "POST",
+								headers: {
+									...headers(apiKey),
+									"Content-Type": "application/json",
+								},
+								body: JSON.stringify({
+									model: "jina-deepsearch-v1",
+									messages: [{ role: "user", content: params.query }],
+									stream: false,
+								}),
+							},
+							signal,
+						),
 				);
-				return result(formatResponse(response));
+				return result(truncateWeb(formatResponse(response)));
 			} catch (error) {
 				return result(
 					error instanceof Error ? error.message : String(error),
 					true,
 				);
 			}
+		},
+		renderCall(args, theme) {
+			return new Text(
+				rowHead(theme, "jina_search_web_deep", short(args.query)),
+				0,
+				0,
+			);
+		},
+		renderResult(result, { expanded, isPartial }, theme, context) {
+			if (isPartial) {
+				return partialRow(
+					theme,
+					`deep search ${short(context.args.query, 40)}…`,
+				);
+			}
+			return resultRow(
+				theme,
+				!context.isError,
+				"deep search done",
+				resultText(result),
+				{ expanded, hint: true },
+			);
 		},
 	});
 
@@ -211,7 +376,7 @@ export default function jinaExtension(pi: ExtensionAPI) {
 				}),
 			),
 		}),
-		async execute(_toolCallId, params, signal) {
+		async execute(_toolCallId, params, signal, onUpdate, ctx) {
 			let target: URL;
 			try {
 				target = new URL(params.url);
@@ -225,19 +390,25 @@ export default function jinaExtension(pi: ExtensionAPI) {
 			}
 
 			try {
-				const response = await request(
-					`${READER_URL}${target.toString()}`,
-					{
-						headers: {
-							...headers(resolveApiKey()),
-							"X-Return-Format": "markdown",
-						},
-					},
-					signal,
+				const response = await withStatus(
+					ctx,
+					`reading ${target.hostname}…`,
+					onUpdate,
+					() =>
+						request(
+							`${READER_URL}${target.toString()}`,
+							{
+								headers: {
+									...headers(resolveApiKey()),
+									"X-Return-Format": "markdown",
+								},
+							},
+							signal,
+						),
 				);
 				const text = params.maxCharacters
 					? response.slice(0, params.maxCharacters)
-					: response;
+					: truncateWeb(response);
 				return result(text);
 			} catch (error) {
 				return result(
@@ -245,6 +416,29 @@ export default function jinaExtension(pi: ExtensionAPI) {
 					true,
 				);
 			}
+		},
+		renderCall(args, theme) {
+			return new Text(rowHead(theme, "jina_read_url", short(args.url)), 0, 0);
+		},
+		renderResult(result, { expanded, isPartial }, theme, context) {
+			if (isPartial) {
+				return partialRow(theme, `reading ${short(context.args.url, 40)}…`);
+			}
+			const row = resultRow(
+				theme,
+				!context.isError,
+				`read ${short(context.args.url, 32)}`,
+				resultText(result),
+				{ hint: true },
+			);
+			// Reader returns markdown — render it as markdown when expanded
+			if (!expanded || context.isError) return row;
+			const container = new Container();
+			container.addChild(row);
+			container.addChild(
+				new Markdown(resultText(result), 0, 0, getMarkdownTheme()),
+			);
+			return container;
 		},
 	});
 
