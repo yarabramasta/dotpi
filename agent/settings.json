@@ -20,7 +20,7 @@
   ],
   "theme": "gruvbox-dark",
   "defaultProvider": "wandb",
-  "defaultModel": "zai-org/GLM-5.2",
+  "defaultModel": "zai-org/GLM-5.3-Flash",
   "defaultThinkingLevel": "high",
   "enableInstallTelemetry": false,
   "quietStartup": true,
