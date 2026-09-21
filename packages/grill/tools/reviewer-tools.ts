@@ -216,6 +216,9 @@ export function registerReviewerTools(
 		async execute(
 			_toolCallId,
 			params,
+			_signal,
+			_onUpdate,
+			ctx,
 		): Promise<AgentToolResult<ReviewerDetails>> {
 			if (!runtime.state.active) {
 				return {
@@ -278,7 +281,7 @@ export function registerReviewerTools(
 				runtime.state.lastChangeSummary =
 					"Reviewer skipped: no eligible read-only reviewer";
 				persist();
-				updateUi;
+				updateUi(ctx);
 				return {
 					content: [
 						{
@@ -327,7 +330,7 @@ export function registerReviewerTools(
 				runtime.state.lastChangeSummary = `Reviewer round ${runtime.state.reviewerRounds} recorded`;
 			}
 			persist();
-			updateUi;
+			updateUi(ctx);
 			return {
 				content: [
 					{
