@@ -7,10 +7,34 @@ function shellSegments(command: string): string[] {
 
 function isReadOnlyGit(args: string[]): boolean {
 	const sub = args[1];
-	if (sub === "branch" || sub === "remote") {
-		// git branch <name> creates; -d/-D/-m/-M/-c mutate. git remote add/set-url/
-		// rename/remove/prune mutate; listing forms stay read-only (including
-		// `branch --list <pattern>` and `remote get-url <name>`).
+	if (sub === "branch") {
+		// Strict allowlist: only listing invocations pass. Everything else —
+		// creation, -d/-D/-m/-M/-c, --edit-description, --set-upstream-to=X,
+		// --unset-upstream, -u — is mutating or unverified, so block.
+		const rest = args.slice(2);
+		if (rest.length === 0) return true;
+		const readOnlyFlags = new Set([
+			"-a",
+			"--all",
+			"-r",
+			"--remotes",
+			"-v",
+			"-vv",
+			"--verbose",
+			"--list",
+			"--show-current",
+		]);
+		const hasList = rest.includes("--list");
+		return rest.every(
+			(token) =>
+				readOnlyFlags.has(token) ||
+				/^(--sort|--format|--color|--column)=/.test(token) ||
+				(hasList && !token.startsWith("-")),
+		);
+	}
+	if (sub === "remote") {
+		// git remote add/set-url/rename/remove/prune/update mutate; the bare
+		// listing forms stay read-only, including `remote get-url <name>`.
 		const mutatingFlags =
 			/^-(d|D|m|M|c)$|^--(delete|move|copy|edit|set-url|add|rename|remove|prune|update)$/;
 		const rest = args.slice(2);
@@ -23,17 +47,11 @@ function isReadOnlyGit(args: string[]): boolean {
 			"update",
 		];
 		if (rest.some((token) => mutatingFlags.test(token))) return false;
-		if (
-			sub === "remote" &&
-			rest.some((token) => mutatingSubcommands.includes(token))
-		)
-			return false;
+		if (rest.some((token) => mutatingSubcommands.includes(token))) return false;
 		const allowedBareValue =
-			sub === "remote"
-				? rest.includes("get-url") ||
-					rest.includes("-v") ||
-					rest.includes("--verbose")
-				: rest.includes("--list");
+			rest.includes("get-url") ||
+			rest.includes("-v") ||
+			rest.includes("--verbose");
 		const hasBareToken = rest.some((token) => !token.startsWith("-"));
 		return allowedBareValue ? true : !hasBareToken;
 	}
