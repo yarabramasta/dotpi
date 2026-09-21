@@ -189,17 +189,18 @@ The `grill` extension adds a Socratic planning mode to Pi:
 
 ```text
 /grill <topic>
+/grill stop
 /grill status
 /grill checkpoint [edit|chat]
 /grill intent auto|plan|learn|research|content|decide
+/grill output <outputs>
 /grill research off|ask|auto
-/grill language en|id
-/grill stop
+/grill subagents on|off
 ```
 
-Grill Me maintains a shared-understanding checkpoint, presents structured answer choices, and can use Cymbal or installed read-only scouts for grounding. It keeps interview mode read-only until you explicitly select and approve output production. When grounding assist is enabled at session start, Grill Me can also run an advisory output audit: after you produce or apply the approved output, one read-only auditor (e.g. reviewer, evidence-auditor, oracle) checks it against the codebase before the output phase finishes. The audit is advisory — it never blocks finishing — and off by default to save tokens; the auditor only reviews, never mutates.
+Grill Me maintains a shared-understanding checkpoint, presents structured answer choices, and can use Cymbal or installed read-only scouts for grounding. It keeps interview mode read-only until you explicitly select and approve output production. The answer picker overlay has a Question tab (the choices) plus read-only Checkpoint, Grounding, and Review tabs — switch with Tab/←→ and scroll overflowed tab content with ↑/↓; the edge arrows (`↑` `↕` `↓`) mark remaining overflow. While the startup repo dossier is captured (Cymbal structure + git), the status line shows `🔥 grill · warming up…` so the quiet startup gap is visible instead of looking dead. When the subagent integration is on (default, `/grill subagents on|off`), an end-of-process reviewer pass runs after approved outputs are produced: `grill_run_reviewer` spawns one read-only reviewer through the pi-subagents RPC to verify the session stayed in sync — checkpoint decisions vs produced outputs vs edited files — and returns PASS or a gap list. Gaps are fixed and the pass reruns once; the two-round cap is hard. If no eligible reviewer exists or the run fails, the pass is skipped and the output phase finishes without it.
 
-In the output phase, Grill Me can delegate approved file writes to a write-capable subagent. After you approve outputs, if write-capable subagents are discovered (via `grill_set_writers`), a picker asks whether to delegate file writes to a writer subagent or have the parent write directly. Delegation is per output batch — there is no persistent toggle. When delegating, the parent is blocked from `edit`/`write` and spawns the writer with `subagent({ agent, output, task })`, scoped to the approved output paths; the parent keeps CLI mutations (e.g. `gh issue create`, `git`) for non-file outputs. The advisory audit runs after the writer. If no write-capable subagent exists or the writer fails, the parent falls back to writing directly. `/checkpoint` is an alias for the current Grill Me checkpoint. Install it independently with `--extension grill`.
+In the output phase, Grill Me can delegate approved file writes to a write-capable subagent. After you approve outputs, if write-capable subagents are discovered (via `grill_set_writers`), a picker asks whether to delegate file writes to a writer subagent or have the parent write directly. Delegation is per output batch — there is no persistent toggle. When delegating, the parent is blocked from `edit`/`write` and spawns the writer with `subagent({ agent, output, task })`, scoped to the approved output paths; the parent keeps CLI mutations (e.g. `gh issue create`, `git`) for non-file outputs. The reviewer pass runs after the writer (or after direct parent writes). If no write-capable subagent exists or the writer fails, the parent falls back to writing directly. `/checkpoint` is an alias for the current Grill Me checkpoint. Install it independently with `--extension grill`.
 
 The W&B extension lives at `packages/wandb/`, with `index.ts` and a `package.json` manifest. It adds a session-derived `cache_salt` only to W&B provider requests.
 
