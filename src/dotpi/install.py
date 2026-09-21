@@ -391,11 +391,13 @@ def clean_install(args: argparse.Namespace, root: Path, target: Path) -> None:
         for entry in sorted(source_agent.iterdir()):
             if entry.name == "auth.json" and not include_auth:
                 continue
-            if entry.name == "extensions" and args.no_extensions:
-                continue
             if entry.name == "skills" and args.no_skills:
                 continue
             copy_entry(entry, target / "agent" / entry.name)
+        if not args.no_extensions:
+            extensions_target = target / "agent" / "extensions"
+            for name, source in extension_sources(root).items():
+                copy_entry(source, extensions_target / name)
         if include_auth:
             set_private(target / AUTH)
         rebuild_dependencies(target)

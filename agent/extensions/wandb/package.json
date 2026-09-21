@@ -1,8 +1,0 @@
-{
-  "name": "pi-wandb-inference",
-  "pi": {
-    "extensions": [
-      "index.ts"
-    ]
-  }
-}

@@ -1,16 +1,39 @@
 {
 	"name": "dotpi",
 	"version": "1.0.0",
+	"private": true,
+	"keywords": [
+		"pi-package"
+	],
+	"pi": {
+		"extensions": [
+			"packages/*/index.ts"
+		],
+		"skills": [
+			"agent/skills"
+		]
+	},
+	"engines": {
+		"node": ">=22"
+	},
 	"scripts": {
-		"test": "echo \"Error: no test specified\" && exit 1"
+		"check": "biome check packages && tsc --noEmit",
+		"lint": "biome check packages",
+		"format": "biome check --write packages",
+		"typecheck": "tsc --noEmit",
+		"test": "vitest run",
+		"test:watch": "vitest"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.5.14",
-		"@earendil-works/pi-ai": "^0.86.0",
-		"@earendil-works/pi-coding-agent": "^0.86.0",
-		"@earendil-works/pi-tui": "^0.86.0",
-		"@types/node": "^26.6.2",
-		"pi-subagents": "^0.70.0",
-		"typescript": "^7.0.2"
-	}
+		"@earendil-works/pi-ai": "0.86.0",
+		"@earendil-works/pi-coding-agent": "0.86.0",
+		"@earendil-works/pi-tui": "0.86.0",
+		"@types/node": "26.6.2",
+		"pi-subagents": "0.70.0",
+		"typebox": "1.3.27",
+		"typescript": "7.0.2",
+		"vitest": "5.0.1"
+	},
+	"type": "module"
 }

@@ -1,8 +1,0 @@
-{
-	"name": "pi-jina-web",
-	"pi": {
-		"extensions": [
-			"index.ts"
-		]
-	}
-}

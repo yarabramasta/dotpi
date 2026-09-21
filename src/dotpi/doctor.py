@@ -103,6 +103,13 @@ def doctor_extension_result(extension: Path) -> dict[str, str]:
     for entry in entries:
         if error := doctor_entrypoint(extension, entry):
             return doctor_result(name, "FAIL", f"{extension}: {error}")
+    if (extension / "node_modules").is_dir():
+        return doctor_result(
+            name,
+            "WARN",
+            f"{extension}: valid manifest and entrypoints, "
+            + "but node_modules leaked into the install",
+        )
     return doctor_result(name, "PASS", f"{extension}: valid manifest and entrypoints")
 
 

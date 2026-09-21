@@ -63,7 +63,7 @@ Without `-e`, interactive safe mode shows an extension menu. Non-interactive saf
 
 Skills follow the same selection rules as extensions: without `-S`, interactive safe mode shows a skill menu after the extension menu; non-interactive safe mode requires `-S` filters unless `-N` is used. `-S` and `-N` cannot be combined, but `-e`/`-n` and `-S`/`-N` are independent groups.
 
-`-n` (`--no-extensions`) installs configuration only. Safe and cherry-pick modes leave target extensions untouched; clean mode excludes `agent/extensions` from replacement.
+`-n` (`--no-extensions`) installs configuration only. Safe and cherry-pick modes leave target extensions untouched; clean mode skips extension copying.
 
 `-d` (`--dry-run`) previews JSON changes, backup scope, and extension actions without writing files, creating a backup, rebuilding dependencies, or launching Pi smoke. It does not require `-y`.
 
@@ -78,7 +78,7 @@ Skills follow the same selection rules as extensions: without `-S`, interactive 
 ./dotpi install -m clean -a -y
 ```
 
-Clean mode backs up the entire existing `.pi`, replaces it with this repository's `agent` tree, and copies every extension and skill. `-n` excludes `agent/extensions` and `-N` excludes `agent/skills` from replacement. It skips `auth.json` unless:
+Clean mode backs up the entire existing `.pi`, replaces it with this repository's `agent` tree, and copies every extension from `packages/` and every skill. `-n` skips extensions and `-N` skips `agent/skills`. It skips `auth.json` unless:
 
 - interactive mode: you answer the auth prompt; or
 - non-interactive mode: you pass `--include-auth` (`-a`).
@@ -89,7 +89,7 @@ The full backup is used for clean-install rollback if copying, validation, or sm
 
 ```sh
 ./dotpi install -m cherry-pick -e android-cli -y
-./dotpi install -m cherry-pick -e agent/extensions/jina -t /tmp/pi -y
+./dotpi install -m cherry-pick -e jina -t /tmp/pi -y
 ./dotpi install -m cherry-pick -S python-inline-scripts -y
 ```
 
@@ -201,7 +201,7 @@ Grill Me maintains a shared-understanding checkpoint, presents structured answer
 
 In the output phase, Grill Me can delegate approved file writes to a write-capable subagent. After you approve outputs, if write-capable subagents are discovered (via `grill_set_writers`), a picker asks whether to delegate file writes to a writer subagent or have the parent write directly. Delegation is per output batch — there is no persistent toggle. When delegating, the parent is blocked from `edit`/`write` and spawns the writer with `subagent({ agent, output, task })`, scoped to the approved output paths; the parent keeps CLI mutations (e.g. `gh issue create`, `git`) for non-file outputs. The advisory audit runs after the writer. If no write-capable subagent exists or the writer fails, the parent falls back to writing directly. `/checkpoint` is an alias for the current Grill Me checkpoint. Install it independently with `--extension grill`.
 
-The W&B extension is folder-based at `agent/extensions/wandb/`, with `index.ts` and `package.json`. It adds a session-derived `cache_salt` only to W&B provider requests.
+The W&B extension lives at `packages/wandb/`, with `index.ts` and a `package.json` manifest. It adds a session-derived `cache_salt` only to W&B provider requests.
 
 ## API keys and auth
 
@@ -225,9 +225,43 @@ export JINA_API_KEY='...'
 
 Never commit the actual key. Rotate or revoke it from the same dashboard if exposed.
 
-## Dependencies
+## Repository layout
 
-Dotpi has no root package manifest or lockfile. After copying, dotpi checks the target for a package manifest, lockfile, and compatible package manager. It runs the declared manager when all are available; otherwise it warns and continues. Dependency rebuild failures are warnings. Pi availability and smoke failure are not warnings: they fail and roll back installation.
+Extension and skill sources are managed as a pnpm workspace; the `agent/` tree mirrors `~/.pi/agent` and stays the installer's source of truth:
+
+```text
+packages/               workspace packages (real sources)
+  grill/                Socratic planning extension (pi-grill)
+  jina/                 Jina web tools (pi-jina-web)
+  wandb/                W&B provider extension (pi-wandb-inference)
+  android-cli/          Android tooling extension (pi-android-cli)
+agent/                  mirrors ~/.pi/agent (installer source)
+  skills/               skills (installed by dotpi)
+  settings.json models.json auth.json
+dotpi                   POSIX sh bootstrap for the Python CLI
+src/dotpi               installer/backup/sync CLI (Python)
+```
+
+Workspace wiring: `pnpm-workspace.yaml` globs `packages/*`; root `devDependencies` pin the toolchain exactly (biome, TypeScript, pi-* type packages, typebox, vitest) while extension packages declare them as `peerDependencies: "*"` — the pattern the pi package docs mandate for bundled core packages. `tsc --noEmit` (strict) and `vitest` run against the whole workspace. The repo root `package.json` also carries a `pi` manifest, so the whole repository is installable as a pi package:
+
+```sh
+pi install git:github.com/yarabramasta/dotpi@v1
+```
+
+That clones the repo, installs its dependencies, and loads every extension and skill through the manifest — no npm registry or PAT required. Pin a ref; `pi update --extensions` reconciles the clone to it.
+
+The `dotpi` installer reads extension sources from `packages/*` (any workspace directory with a `package.json` and a `pi` manifest) and never copies `node_modules` or lockfiles to the target. `doctor` warns if an installed extension contains a leaked `node_modules`.
+
+## Dev workflow
+
+```sh
+corepack pnpm install        # one-time (pnpm via corepack)
+pnpm run check               # biome lint + tsc --noEmit
+pnpm test                    # vitest across packages
+pnpm run format              # biome autofix
+python3 -m unittest discover -s src -t src   # dotpi CLI tests
+./dotpi doctor               # target preflight
+```
 
 ## Online installation from GitHub
 

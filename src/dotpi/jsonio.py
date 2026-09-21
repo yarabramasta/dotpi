@@ -25,10 +25,14 @@ def direct_json_sources(root: Path) -> list[Path]:
 
 
 def extension_sources(root: Path) -> dict[str, Path]:
-    extensions = root / "agent" / "extensions"
-    if not extensions.is_dir():
+    packages = root / "packages"
+    if not packages.is_dir():
         return {}
-    return {path.name: path for path in sorted(extensions.iterdir()) if path.is_dir()}
+    return {
+        path.name: path
+        for path in sorted(packages.iterdir())
+        if path.is_dir() and (path / "package.json").is_file()
+    }
 
 
 def skill_sources(root: Path) -> dict[str, Path]:

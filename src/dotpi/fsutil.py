@@ -47,21 +47,36 @@ def set_private(path: Path) -> None:
         die(f"cannot protect {path}: {error}")
 
 
+# Workspace build artifacts must never reach the Pi target; extension sources
+# live in packages/<name> and node_modules (if any) stays behind.
+COPY_IGNORE = shutil.ignore_patterns(
+    "node_modules",
+    ".pnpm",
+    "pnpm-lock.yaml",
+    "package-lock.json",
+    "*.tsbuildinfo",
+)
+
+
 def copy_entry(source: Path, destination: Path, overwrite: bool = False) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
     if source.is_symlink():
-        if destination.exists() or destination.is_symlink():
-            if not overwrite:
-                die(f"path exists: {destination}")
-            remove_entry(destination)
-        destination.symlink_to(os.readlink(source))
-        return
+        # Repo-relative symlink: install real content, never a dangling link.
+        source = source.resolve()
     if source.is_dir():
         if destination.exists() and not overwrite:
             die(f"path exists: {destination}")
         if destination.exists():
             remove_entry(destination)
-        shutil.copytree(source, destination, symlinks=True, copy_function=shutil.copy2)
+        # symlinks=False dereferences inner symlinks so the target gets
+        # real files instead of repo-relative links.
+        shutil.copytree(
+            source,
+            destination,
+            symlinks=False,
+            ignore=COPY_IGNORE,
+            copy_function=shutil.copy2,
+        )
         return
     if destination.exists() and not overwrite:
         die(f"path exists: {destination}")

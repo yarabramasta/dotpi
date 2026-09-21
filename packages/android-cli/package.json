@@ -1,0 +1,16 @@
+{
+	"name": "pi-android-cli",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"pi": {
+		"extensions": [
+			"index.ts"
+		]
+	},
+	"peerDependencies": {
+		"@earendil-works/pi-ai": "*",
+		"@earendil-works/pi-coding-agent": "*",
+		"typebox": "*"
+	}
+}
