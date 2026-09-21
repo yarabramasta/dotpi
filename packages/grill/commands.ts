@@ -58,6 +58,14 @@ export function registerCommands(
 		persist();
 		updateUi(ctx);
 
+		// Startup feedback: the dossier (cymbal structure + git) can take a few
+		// seconds on a cold cache. Show a working indicator so the quiet gap
+		// doesn't look like the extension died; updateUi below restores tokens.
+		ctx.ui.setStatus(
+			"grill-me",
+			ctx.ui.theme.fg("accent", "🔥 grill · warming up…"),
+		);
+
 		// First-class grounding: one compact dossier up front, no per-session
 		// enable/disable decision. Best-effort — failure just skips the section.
 		const dossier = await buildDossier(pi, ctx.cwd);

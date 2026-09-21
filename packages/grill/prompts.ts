@@ -148,23 +148,29 @@ export function appendCheckpointNote(
 		: `${checkpoint.trimEnd()}\n\n${heading}\n\n- ${note}\n`;
 }
 
-export function reviewerStatusText(view: GroundingView): string {
-	if (view.skippedReason)
-		return `⚠ reviewer skipped: ${view.skippedReason}`.slice(0, 100);
-	const source = view.source ? ` · ${view.source}` : "";
-	return `✓ reviewer${source}`.slice(0, 100);
-}
-
 export function reviewerResultText(view: GroundingView): string {
 	if (view.skippedReason) return `Reviewer skipped: ${view.skippedReason}`;
 	return `Reviewer recorded${view.source ? ` (${view.source})` : ""}. Fix reported gaps if any, then call grill_finish_output_phase.`;
 }
 
-export function groundingStatusText(view: GroundingView): string {
-	if (view.skippedReason)
-		return `⚠ grounding skipped: ${view.skippedReason}`.slice(0, 100);
-	const source = view.source ? ` · ${view.source}` : "";
-	return `✓ grounding${source}`.slice(0, 100);
+/** Pure phase-contextual statusline tokens for the single `grill-me` slot.
+ * No TUI/theme access; unit-testable. Interview shows question number (from
+ * open question + decided count), decided total, and grounding state. */
+export function statusTokens(state: GrillState): string {
+	const phase = currentPhase(state);
+	if (phase === "output") {
+		const artifact = state.outputPaths?.[0]?.split("/").pop() ?? "outputs";
+		const writer =
+			state.delegate === true ? ` · ${state.chosenWriter ?? "writer"}` : "";
+		return `🔥 grill → writing ${artifact}${writer}`;
+	}
+	if (phase === "output-selection") return "🔥 grill · pick outputs";
+	const parts = ["🔥 grill"];
+	if (state.currentQuestion) parts.push(`Q${state.decisions.length + 1}`);
+	if (state.decisions.length) parts.push(`${state.decisions.length} decided`);
+	if (state.grounding?.skippedReason) parts.push("⚠ ungrounded");
+	else if (state.grounding) parts.push("grounded");
+	return parts.join(" · ");
 }
 
 export function groundingResultText(view: GroundingView): string {

@@ -1,15 +1,38 @@
-import type { ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
+import type {
+	ExtensionContext,
+	KeybindingsManager,
+	Theme,
+} from "@earendil-works/pi-coding-agent";
 import {
 	DynamicBorder,
 	getMarkdownTheme,
 } from "@earendil-works/pi-coding-agent";
 import {
+	isKeyRelease,
+	isKeyRepeat,
 	Markdown,
 	matchesKey,
+	type OverlayHandle,
 	type TUI,
 	truncateToWidth,
 	visibleWidth,
 } from "@earendil-works/pi-tui";
+import { renderInlineInputRow } from "./inline-input.js";
+import { decideLayout, leftColumnWidth, PREVIEW_PAD_LEFT } from "./layout.js";
+import {
+	initialPickerState,
+	type PickerEnv,
+	type PickerOption,
+	type PickerResult,
+	type PickerState,
+	reducePicker,
+	routePickerKey,
+} from "./picker-state.js";
+import { applyScroll } from "./scroll.js";
+import { readCollapseKey } from "./settings.js";
+import { renderTabContent, renderTabStrip } from "./tabs.js";
+
+export type { PickerOption, PickerResult } from "./picker-state.js";
 
 // English-only since the locales.ts cut; the rpiv-style picker stays custom TUI.
 const EN_STRINGS = {
@@ -26,39 +49,8 @@ const EN_STRINGS = {
 	noteEditorTitle: "Add a note",
 };
 
-export interface PickerOption {
-	value: string;
-	label: string;
-	description?: string;
-	preview?: string;
-}
-
-export interface PickerResult {
-	status: "answered" | "cancelled";
-	value: string;
-	label: string;
-	custom: boolean;
-	note?: string;
-}
-
-type Instruction =
-	| { kind: "pick"; index: number }
-	| { kind: "custom" }
-	| { kind: "note" }
-	| { kind: "cancel" };
-
 const PREVIEW_MAX_LINES = 6;
 
-// Layout constants. Started from rpiv-ask-user-question's values, then tuned for
-// Grill Me: choices column gets the larger share (MAX_LEFT_RATIO 0.6) and a
-// smaller preview floor (40) so options+descriptions never get squeezed by the
-// preview pane.
-const SIDE_BY_SIDE_MIN_WIDTH = 100;
-const COLUMN_GAP = 2;
-const PREVIEW_PAD_LEFT = 1;
-const MIN_LEFT = 30;
-const MAX_LEFT_RATIO = 0.6;
-const MIN_PREVIEW_WIDTH = 40;
 const ACTIVE_POINTER = "❯ ";
 const INACTIVE_POINTER = "  ";
 const CONTINUATION_INDENT = "  ";
@@ -85,11 +77,20 @@ function wrapPlain(text: string, width: number): string[] {
 	return out;
 }
 
-// ponytail: single blocking picker. Reimplements rpiv's ↑/↓+Enter interaction on
-// shared pi-tui primitives instead of vendoring rpiv's ~80KB layered state machine.
-// Options render like rpiv-ask-user-question rows (pointer + number + label, wrapped
-// description indented 2); preview goes side-by-side in a right pane when any option
-// has one and the terminal is wide enough, else stacked inline.
+interface PickerOutcome {
+	kind: "result" | "external";
+	result?: PickerResult;
+	target?: "custom" | "note";
+}
+
+// ponytail: single blocking picker. State lives in a pure reducer
+// (picker-state.ts); this file only renders it and executes effects — editor
+// ejections happen ONLY on explicit Ctrl+G (invariant: everything else edits
+// in place). Overflow scrolling and the side-by-side/stacked preview split
+// come from scroll.ts / layout.ts (lifted from rpiv, grill-tuned constants).
+// Collapse mode (step 6): overlay hidden via OverlayHandle + raw
+// ctx.ui.onTerminalInput capture re-opens it (pattern: rpiv questionnaire
+// session); without raw capture the collapsed state falls back to one dim row.
 export async function showPicker(
 	ctx: ExtensionContext,
 	question: string,
@@ -106,277 +107,472 @@ export async function showPicker(
 		// best effort; the overlay must still open.
 	}
 
-	let note: string | undefined;
-	// eslint-disable-next-line no-constant-condition
-	while (true) {
-		const instruction = await ctx.ui.custom<Instruction | undefined>(
-			(tui: TUI, theme: Theme, _keybindings, done) => {
-				const t = EN_STRINGS;
-				const border = new DynamicBorder((s: string) => theme.fg("accent", s));
-				let selected = 0;
-				// ponytail: preview expand toggle. x drops the line cap so the
-				// full preview shows; also widens the preview column.
-				let expanded = false;
-				let previewCache:
-					| { source: string; width: number; lines: string[] }
-					| undefined;
+	const env: PickerEnv = { options };
+	let state: PickerState = initialPickerState();
+	const cancelled: PickerResult = {
+		status: "cancelled",
+		value: "",
+		label: "",
+		custom: false,
+	};
 
-				function previewLines(
-					source: string | undefined,
-					width: number,
-				): string[] {
-					if (!source) return [];
-					if (
-						previewCache &&
-						previewCache.source === source &&
-						previewCache.width === width
-					) {
-						return previewCache.lines;
-					}
-					const md = new Markdown(source, 0, 0, getMarkdownTheme());
-					const rendered = md.render(Math.max(1, width - 3));
-					md.invalidate();
-					const lines = expanded
-						? rendered
-						: rendered.slice(0, PREVIEW_MAX_LINES);
-					if (!expanded && rendered.length > PREVIEW_MAX_LINES) {
-						lines.push(
-							theme.fg(
-								"dim",
-								`… ${rendered.length - PREVIEW_MAX_LINES} more lines`,
-							),
-						);
-					}
-					previewCache = { source, width, lines };
-					return lines;
+	// --- Collapse-mode wiring (raw capture is the only reopen path while the
+	// overlay is hidden; pi-tui does not route input to hidden overlays). ---
+	const collapseKey = readCollapseKey(ctx);
+	const canReopenWhileHidden =
+		collapseKey !== "off" && typeof ctx.ui.onTerminalInput === "function";
+	let overlayHandle: OverlayHandle | undefined;
+	let tuiRef: TUI | undefined;
+	let hasAnnouncedHide = false;
+	const notifyHide = () => {
+		if (hasAnnouncedHide) return;
+		hasAnnouncedHide = true;
+		ctx.ui.notify?.(
+			`grill picker hidden — press ${collapseKey} to reopen`,
+			"info",
+		);
+	};
+	const removeCollapseListener = canReopenWhileHidden
+		? ctx.ui.onTerminalInput((data) => {
+				const handle = overlayHandle;
+				if (!handle) return undefined;
+				// Other overlays on top (e.g. /btw) keep their keystrokes.
+				if (!handle.isHidden() && !handle.isFocused()) return undefined;
+				if (
+					!matchesKey(data, collapseKey as Parameters<typeof matchesKey>[1])
+				) {
+					return undefined;
 				}
+				// Kitty-protocol press/repeat/release: toggle on the initial press.
+				if (isKeyRelease(data) || isKeyRepeat(data)) return { consume: true };
+				state = { ...state, collapsed: !state.collapsed };
+				handle.setHidden(state.collapsed);
+				if (state.collapsed) notifyHide();
+				tuiRef?.requestRender();
+				return { consume: true };
+			})
+		: undefined;
 
-				return {
-					render(width: number) {
-						const lines: string[] = [];
-						lines.push(...border.render(width));
-						for (const qline of wrapPlain(question, width - 2)) {
-							lines.push(truncateToWidth(theme.bold(qline), width, ""));
+	try {
+		// eslint-disable-next-line no-constant-condition
+		while (true) {
+			const outcome = await ctx.ui.custom<PickerOutcome | undefined>(
+				(tui: TUI, theme: Theme, keybindings: KeybindingsManager, done) => {
+					tuiRef = tui;
+					const t = EN_STRINGS;
+					const border = new DynamicBorder((s: string) =>
+						theme.fg("accent", s),
+					);
+					let previewCache:
+						| {
+								source: string;
+								width: number;
+								expanded: boolean;
+								lines: string[];
+						  }
+						| undefined;
+
+					function previewLines(
+						source: string | undefined,
+						width: number,
+					): string[] {
+						if (!source) return [];
+						if (
+							previewCache &&
+							previewCache.source === source &&
+							previewCache.width === width &&
+							previewCache.expanded === state.expanded
+						) {
+							return previewCache.lines;
 						}
-						const hasPreview = options.some((o) => o.preview);
-						let expandHint = "";
-						if (hasPreview)
-							expandHint = expanded ? ` • ${t.collapse}` : ` • ${t.expand}`;
-						lines.push(
-							truncateToWidth(
+						const md = new Markdown(source, 0, 0, getMarkdownTheme());
+						const rendered = md.render(Math.max(1, width - 3));
+						md.invalidate();
+						const lines = state.expanded
+							? rendered
+							: rendered.slice(0, PREVIEW_MAX_LINES);
+						if (!state.expanded && rendered.length > PREVIEW_MAX_LINES) {
+							lines.push(
 								theme.fg(
 									"dim",
-									`${t.navigate} • ${t.select} • ${t.note}${expandHint} • ${t.cancel}`,
+									`… ${rendered.length - PREVIEW_MAX_LINES} more lines`,
 								),
-								width,
-								"",
-							),
-						);
-
-						const numberWidth = String(options.length + 1).length;
-						const prefixWidth = ACTIVE_POINTER.length + numberWidth + 2; // pointer + digits + ". "
-						const sideBySide = hasPreview && width >= SIDE_BY_SIDE_MIN_WIDTH;
-
-						// Choices are the decision; preview is auxiliary. Give the left
-						// (options + descriptions) column a fixed larger share so long
-						// descriptions don't collapse into a narrow wrapped strip.
-						// ponytail: fixed ratio instead of a label-width cap; the old cap
-						// starved descriptions whenever option labels were short, handing
-						// all spare width to the preview pane.
-						let leftWidth = width;
-						if (sideBySide) {
-							// Expanded (x): shrink the left column so the preview gets ~65%.
-							const leftRatio = expanded ? 0.35 : MAX_LEFT_RATIO;
-							const ratioWidth = Math.floor(width * leftRatio);
-							const available = width - COLUMN_GAP - MIN_PREVIEW_WIDTH;
-							leftWidth = Math.max(
-								MIN_LEFT,
-								Math.min(ratioWidth, Math.max(1, available)),
 							);
 						}
-						const contentWidth = Math.max(1, leftWidth - prefixWidth);
+						previewCache = {
+							source,
+							width,
+							expanded: state.expanded,
+							lines,
+						};
+						return lines;
+					}
 
-						// Option rows, rpiv style: pointer + number + label, wrapped
-						// description indented 2 below each row (visible for every option,
-						// not just the focused one).
-						const leftLines: string[] = [];
-						for (let i = 0; i < options.length; i++) {
-							const option = options[i];
-							const focused = i === selected;
-							const pointer = focused
-								? theme.fg("accent", ACTIVE_POINTER)
-								: INACTIVE_POINTER;
-							const number = String(i + 1).padStart(numberWidth, " ");
-							const label = truncateToWidth(option.label, contentWidth, "…");
-							const styled = focused
-								? theme.fg("accent", theme.bold(label))
-								: label;
-							leftLines.push(
-								truncateToWidth(`${pointer}${number}. ${styled}`, width, ""),
+					return {
+						render(width: number) {
+							if (state.collapsed) {
+								// One dim row, visible or as post-hide fallback.
+								return [
+									theme.fg(
+										"dim",
+										` 🔥 grill picker hidden — press ${collapseKey} to reopen `,
+									),
+								];
+							}
+							const lines: string[] = [];
+							lines.push(...border.render(width));
+
+							// Sticky heading: top border + question + strip + hint.
+							let qCount = 0;
+							for (const qline of wrapPlain(question, width - 2)) {
+								lines.push(truncateToWidth(theme.bold(qline), width, ""));
+								qCount++;
+							}
+							// Tab strip sits between question and hint; active tab accent.
+							lines.push(
+								truncateToWidth(
+									renderTabStrip(state.tab, width, (c: string, s: string) =>
+										theme.fg(c as never, s),
+									),
+									width,
+									"",
+								),
 							);
-							if (option.description) {
-								for (const seg of wrapPlain(option.description, contentWidth)) {
-									leftLines.push(
+							const hasPreview = options.some((o) => o.preview);
+							let expandHint = "";
+							if (hasPreview)
+								expandHint = state.expanded
+									? ` • ${t.collapse}`
+									: ` • ${t.expand}`;
+							lines.push(
+								truncateToWidth(
+									theme.fg(
+										"dim",
+										`${t.navigate} • ${t.select} • ${t.note}${expandHint} • ${t.cancel}`,
+									),
+									width,
+									"",
+								),
+							);
+							// Sticky heading = top border + question lines + strip + hint.
+							const topFixed = 3 + qCount;
+
+							const finish = (
+								focusedRange: [number, number] | undefined,
+								scrollStart?: number,
+							): string[] => {
+								lines.push(...border.render(width));
+								return applyScroll(lines, {
+									topFixed,
+									bottomFixed: 1,
+									focusedRange,
+									termRows: tui.terminal.rows,
+									dim: (s) => theme.fg("dim", s),
+									scrollStart,
+								});
+							};
+
+							// Aux tabs: read-only markdown content, scrollable with ↑/↓.
+							if (state.tab !== 0) {
+								lines.push(...renderTabContent(state.tab, width));
+								return finish(undefined, state.scroll);
+							}
+
+							const numberWidth = String(options.length + 1).length;
+							const prefixWidth = ACTIVE_POINTER.length + numberWidth + 2; // pointer + digits + ". "
+							const sideBySide =
+								decideLayout(width, width) === "side-by-side" && hasPreview;
+
+							// Choices are the decision; preview is auxiliary. Left column
+							// width comes from layout.ts (grill-tuned ratio/floors).
+							const leftWidth = sideBySide
+								? leftColumnWidth(width, state.expanded)
+								: width;
+							const contentWidth = Math.max(1, leftWidth - prefixWidth);
+
+							// Option rows, rpiv style: pointer + number + label, wrapped
+							// description indented 2 below each row (visible for every
+							// option, not just the focused one). rowStart tracks each row's
+							// first line inside the middle content so overflow scroll can
+							// center focus.
+							const leftLines: string[] = [];
+							const rowStart: number[] = [];
+							for (let i = 0; i < options.length; i++) {
+								rowStart[i] = leftLines.length;
+								const option = options[i];
+								const focused = i === state.selected && !state.editing;
+								const pointer = focused
+									? theme.fg("accent", ACTIVE_POINTER)
+									: INACTIVE_POINTER;
+								const number = String(i + 1).padStart(numberWidth, " ");
+								const label = truncateToWidth(option.label, contentWidth, "…");
+								const styled = focused
+									? theme.fg("accent", theme.bold(label))
+									: label;
+								leftLines.push(
+									truncateToWidth(`${pointer}${number}. ${styled}`, width, ""),
+								);
+								if (option.description) {
+									for (const seg of wrapPlain(
+										option.description,
+										contentWidth,
+									)) {
+										leftLines.push(
+											truncateToWidth(
+												CONTINUATION_INDENT + theme.fg("muted", seg),
+												width,
+												"",
+											),
+										);
+									}
+								}
+							}
+
+							// "Type something." sentinel row / inline custom-answer editor.
+							rowStart[options.length] = leftLines.length;
+							const customFocus =
+								state.selected === options.length && !state.editing;
+							const cPointer = customFocus
+								? theme.fg("accent", ACTIVE_POINTER)
+								: state.editing
+									? theme.fg("accent", ACTIVE_POINTER)
+									: INACTIVE_POINTER;
+							const sentinelPrefix = `${cPointer}${String(options.length + 1).padStart(numberWidth, " ")}. `;
+							if (state.editing) {
+								// Inline draft editor: cursor-marked, wrapped, accent-styled.
+								for (const row of renderInlineInputRow({
+									buffer: state.draft,
+									cursorOffset: state.cursor,
+									rowPrefix: sentinelPrefix,
+									continuationPrefix: " ".repeat(visibleWidth(sentinelPrefix)),
+									contentWidth: Math.max(
+										1,
+										width - visibleWidth(sentinelPrefix),
+									),
+									selectedText: (text) => theme.fg("accent", theme.bold(text)),
+								})) {
+									leftLines.push(truncateToWidth(row, width, ""));
+								}
+							} else {
+								const cLabel = customFocus
+									? theme.fg("accent", theme.bold(t.typeSomething))
+									: t.typeSomething;
+								leftLines.push(
+									truncateToWidth(`${sentinelPrefix}${cLabel}`, width, ""),
+								);
+							}
+
+							const focusedOption = options[state.selected];
+
+							// Committed note line, or the inline note editor in its place.
+							if (state.noteEditing) {
+								const notePrefix = `${theme.fg("success", `${t.noteHeader}: `)}`;
+								for (const row of renderInlineInputRow({
+									buffer: state.noteDraft,
+									cursorOffset: state.noteCursor,
+									rowPrefix: notePrefix,
+									continuationPrefix: " ".repeat(6),
+									contentWidth: Math.max(1, width - 6),
+									selectedText: (text) => theme.fg("success", text),
+								})) {
+									leftLines.push(truncateToWidth(row, width, ""));
+								}
+							} else if (state.note) {
+								leftLines.push(
+									truncateToWidth(
+										theme.fg("success", `${t.noteHeader}: ${state.note}`),
+										width,
+										"",
+									),
+								);
+							}
+
+							// Middle content + focused range (middle-relative rows).
+							let focusedRange: [number, number] | undefined;
+							if (sideBySide) {
+								const rightWidth = Math.max(
+									1,
+									width - leftWidth - 2 - PREVIEW_PAD_LEFT,
+								);
+
+								const rightLines = focusedOption?.preview
+									? previewLines(focusedOption.preview, rightWidth).map((pl) =>
+											truncateToWidth(
+												" ".repeat(PREVIEW_PAD_LEFT) + pl,
+												width,
+												"",
+											),
+										)
+									: [];
+								const rows = Math.max(leftLines.length, rightLines.length);
+								for (let r = 0; r < rows; r++) {
+									const leftRaw = leftLines[r] ?? "";
+									const rightRaw = rightLines[r] ?? "";
+									const leftClamped = truncateToWidth(leftRaw, leftWidth, "");
+									const leftPad = " ".repeat(
+										Math.max(0, leftWidth - visibleWidth(leftClamped)),
+									);
+									const gap = rightRaw ? " ".repeat(2) : "";
+									lines.push(
 										truncateToWidth(
-											CONTINUATION_INDENT + theme.fg("muted", seg),
+											`${leftClamped}${leftPad}${gap}${rightRaw}`,
 											width,
 											"",
 										),
 									);
 								}
-							}
-						}
+								const focusStart = rowStart[state.selected];
+								if (focusStart !== undefined) {
+									const end = rowStart[state.selected + 1] ?? leftLines.length;
+									focusedRange = [focusStart, Math.max(focusStart + 1, end)];
+								}
+							} else {
+								lines.push(...leftLines);
 
-						// "Type something." sentinel row, same prefix shape.
-						const customFocus = selected === options.length;
-						const cPointer = customFocus
-							? theme.fg("accent", ACTIVE_POINTER)
-							: INACTIVE_POINTER;
-						const cLabel = customFocus
-							? theme.fg("accent", theme.bold(t.typeSomething))
-							: t.typeSomething;
-						leftLines.push(
-							truncateToWidth(
-								`${cPointer}${String(options.length + 1).padStart(numberWidth, " ")}. ${cLabel}`,
-								width,
-								"",
-							),
-						);
-
-						const focusedOption = options[selected];
-
-						if (note) {
-							leftLines.push(
-								truncateToWidth(
-									theme.fg("success", `${t.noteHeader}: ${note}`),
-									width,
-									"",
-								),
-							);
-						}
-
-						if (sideBySide) {
-							const rightWidth = Math.max(
-								1,
-								width - leftWidth - COLUMN_GAP - PREVIEW_PAD_LEFT,
-							);
-
-							const rightLines = focusedOption?.preview
-								? previewLines(focusedOption.preview, rightWidth).map((pl) =>
+								// Inline markdown preview for the focused option (narrow).
+								if (focusedOption?.preview) {
+									lines.push(
 										truncateToWidth(
-											" ".repeat(PREVIEW_PAD_LEFT) + pl,
+											theme.fg("accent", `── ${t.preview} ──`),
 											width,
 											"",
 										),
-									)
-								: [];
-							const rows = Math.max(leftLines.length, rightLines.length);
-							for (let r = 0; r < rows; r++) {
-								const leftRaw = leftLines[r] ?? "";
-								const rightRaw = rightLines[r] ?? "";
-								const leftClamped = truncateToWidth(leftRaw, leftWidth, "");
-								const leftPad = " ".repeat(
-									Math.max(0, leftWidth - visibleWidth(leftClamped)),
-								);
-								const gap = rightRaw ? " ".repeat(COLUMN_GAP) : "";
-								lines.push(
-									truncateToWidth(
-										`${leftClamped}${leftPad}${gap}${rightRaw}`,
-										width,
-										"",
-									),
-								);
-							}
-						} else {
-							lines.push(...leftLines);
-
-							// Inline markdown preview for the focused option (narrow/no-preview).
-							if (focusedOption?.preview) {
-								lines.push(
-									truncateToWidth(
-										theme.fg("accent", `── ${t.preview} ──`),
-										width,
-										"",
-									),
-								);
-								for (const pline of previewLines(
-									focusedOption.preview,
-									width,
-								)) {
-									lines.push(truncateToWidth(pline, width, ""));
+									);
+									const block = previewLines(focusedOption.preview, width);
+									for (const pline of block) {
+										lines.push(truncateToWidth(pline, width, ""));
+									}
+									if (state.selected < options.length) {
+										const focusStart = rowStart[state.selected];
+										const end =
+											(rowStart[state.selected + 1] ?? leftLines.length) +
+											block.length +
+											1; // +1: preview header row belongs to the focused block
+										focusedRange = [focusStart, Math.max(focusStart + 1, end)];
+									}
 								}
 							}
-						}
+							if (
+								focusedRange === undefined &&
+								rowStart[state.selected] !== undefined
+							) {
+								const focusStart = rowStart[state.selected];
+								const end = rowStart[state.selected + 1] ?? leftLines.length;
+								focusedRange = [focusStart, Math.max(focusStart + 1, end)];
+							}
 
-						lines.push(...border.render(width));
-						return lines;
-					},
-					invalidate() {
-						border.invalidate();
-						previewCache = undefined;
-					},
-					handleInput(data: string) {
-						if (matchesKey(data, "up")) {
-							selected = Math.max(0, selected - 1);
-							tui.requestRender();
-						} else if (matchesKey(data, "down")) {
-							selected = Math.min(options.length, selected + 1);
-							tui.requestRender();
-						} else if (matchesKey(data, "enter")) {
-							if (selected === options.length) done({ kind: "custom" });
-							else done({ kind: "pick", index: selected });
-						} else if (matchesKey(data, "n")) {
-							done({ kind: "note" });
-						} else if (matchesKey(data, "escape")) {
-							done({ kind: "cancel" });
-						} else if (matchesKey(data, "x")) {
-							// Toggle preview expand; drop cache so cap re-applies on collapse.
-							expanded = !expanded;
+							// Sticky footer + overflow scroll (sticky heading/footer,
+							// middle window centered on the focused row; no-op when it fits).
+							return finish(focusedRange);
+						},
+						invalidate() {
+							border.invalidate();
 							previewCache = undefined;
+						},
+						handleInput(data: string) {
+							const action = routePickerKey(
+								data,
+								state,
+								env,
+								keybindings,
+								collapseKey,
+							);
+							if (action.kind === "ignore") return;
+							const prevCollapsed = state.collapsed;
+							const { state: next, effects } = reducePicker(state, action, env);
+							state = next;
+							// In-band collapse (fallback mode or unfocused overlay):
+							// mirror the raw-listener behavior on the overlay handle.
+							if (
+								state.collapsed !== prevCollapsed &&
+								canReopenWhileHidden &&
+								overlayHandle
+							) {
+								overlayHandle.setHidden(state.collapsed);
+								if (state.collapsed) notifyHide();
+							}
+							const doneEffect = effects.find((e) => e.kind === "done");
+							if (doneEffect && doneEffect.kind === "done") {
+								done({ kind: "result", result: doneEffect.result });
+								return;
+							}
+							const extEffect = effects.find(
+								(e) => e.kind === "open_external_editor",
+							);
+							if (extEffect && extEffect.kind === "open_external_editor") {
+								done({ kind: "external", target: extEffect.target });
+								return;
+							}
 							tui.requestRender();
-						}
-					},
-				};
-			},
-			{
-				overlay: true,
-				overlayOptions: {
-					anchor: "bottom-center",
-					width: "100%",
-					maxHeight: "100%",
-					margin: { left: 0, right: 0, bottom: 0 },
+						},
+					};
 				},
-			},
-		);
-
-		if (instruction == null || instruction.kind === "cancel") {
-			return { status: "cancelled", value: "", label: "", custom: false, note };
-		}
-		if (instruction.kind === "note") {
-			const edited = await ctx.ui.editor(
-				EN_STRINGS.noteEditorTitle,
-				note ?? "",
+				{
+					overlay: true,
+					overlayOptions: {
+						anchor: "bottom-center",
+						width: "100%",
+						maxHeight: "100%",
+						margin: { left: 0, right: 0, bottom: 0 },
+					},
+					onHandle: (handle) => {
+						overlayHandle = handle;
+					},
+				},
 			);
-			if (edited !== undefined) note = edited.trim() || undefined;
-			continue;
-		}
-		if (instruction.kind === "custom") {
-			const edited = await ctx.ui.editor(EN_STRINGS.customEditorTitle, "");
-			if (edited?.trim()) {
-				const value = edited.trim();
-				return { status: "answered", value, label: value, custom: true, note };
+
+			if (outcome == null) {
+				return { ...cancelled, note: state.note };
 			}
-			continue;
+
+			if (outcome.kind === "result") {
+				return outcome.result ?? cancelled;
+			}
+
+			// Explicit Ctrl+G ejection (the only editor modal in a round).
+			if (outcome.target === "custom") {
+				const edited = await ctx.ui.editor(
+					EN_STRINGS.customEditorTitle,
+					state.draft,
+				);
+				if (edited?.trim()) {
+					return {
+						status: "answered",
+						value: edited.trim(),
+						label: edited.trim(),
+						custom: true,
+						note: state.note,
+					};
+				}
+				// Cancelled or emptied: empty draft drops, keep browsing.
+				if (edited !== undefined) {
+					state = { ...state, editing: false, draft: "", cursor: 0 };
+				} else {
+					state = { ...state, editing: false };
+				}
+				continue;
+			}
+
+			{
+				const edited = await ctx.ui.editor(
+					EN_STRINGS.noteEditorTitle,
+					state.noteDraft,
+				);
+				if (edited !== undefined) {
+					const trimmed = edited.trim();
+					state = {
+						...state,
+						noteEditing: false,
+						noteDraft: edited,
+						noteCursor: edited.length,
+						note: trimmed || undefined,
+					};
+				} else {
+					state = { ...state, noteEditing: false };
+				}
+			}
 		}
-		const option = options[instruction.index];
-		if (!option)
-			return { status: "cancelled", value: "", label: "", custom: false, note };
-		return {
-			status: "answered",
-			value: option.value,
-			label: option.label,
-			custom: false,
-			note,
-		};
+	} finally {
+		removeCollapseListener?.();
 	}
 }
