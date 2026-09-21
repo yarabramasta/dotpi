@@ -193,7 +193,9 @@ async function withStatus(
 ): Promise<string> {
 	if (status) {
 		onUpdate?.({ content: [{ type: "text", text: status }], details: {} });
-		if (ctx?.hasUI) ctx.ui.setStatus("jina", status);
+		if (ctx?.hasUI) {
+			ctx.ui.setStatus("jina", ctx.ui.theme.fg("accent", `● ${status}`));
+		}
 	}
 	try {
 		return await run();
@@ -443,9 +445,12 @@ export default function jinaExtension(pi: ExtensionAPI) {
 	});
 
 	pi.on("session_start", async (_event, ctx) => {
+		const themed = ctx.ui.theme.fg.bind(ctx.ui.theme);
 		ctx.ui.setStatus(
 			"jina",
-			resolveApiKey() ? "Jina web tools ready" : "Jina API key missing",
+			resolveApiKey()
+				? `${themed("success", "●")} jina`
+				: `${themed("error", "●")} jina ${themed("dim", "key missing")}`,
 		);
 	});
 }

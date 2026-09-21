@@ -1,9 +1,10 @@
 import { existsSync, readdirSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import type {
 	ExtensionAPI,
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
+import { Text } from "@earendil-works/pi-tui";
 import { registerDocsTool } from "./tools/docs.js";
 import { registerEmulatorTool } from "./tools/emulator.js";
 import { registerInfoTool } from "./tools/info.js";
@@ -16,6 +17,7 @@ import { registerRunTool } from "./tools/run.js";
 import { registerScreenTool } from "./tools/screen.js";
 import { registerSdkTool } from "./tools/sdk.js";
 import { registerStudioTool } from "./tools/studio.js";
+import { short } from "./utils.js";
 
 // ponytail: marker-based discovery avoids running slow Gradle commands at startup.
 const MODULE_SKIP = new Set(["node_modules", "build", "dist"]);
@@ -76,7 +78,7 @@ function registerCommands(pi: ExtensionAPI, enableStudioTool: () => void) {
 		description: "Initialize Android CLI environment and install skills",
 		handler: async (_args, ctx) => {
 			ctx.ui.notify("Running android init...", "info");
-			ctx.ui.setStatus("android", "initializing…");
+			ctx.ui.setStatus("android", ctx.ui.theme.fg("accent", "▲ initializing…"));
 			try {
 				const result = await pi.exec("android", ["init"], { timeout: 60_000 });
 				ctx.ui.notify(
@@ -100,7 +102,7 @@ function registerCommands(pi: ExtensionAPI, enableStudioTool: () => void) {
 			);
 			if (!ok) return;
 			ctx.ui.notify("Updating Android CLI...", "info");
-			ctx.ui.setStatus("android", "updating…");
+			ctx.ui.setStatus("android", ctx.ui.theme.fg("accent", "▲ updating…"));
 			try {
 				const result = await pi.exec("android", ["update"], {
 					timeout: 120_000,
@@ -149,6 +151,20 @@ export default function androidCliExtension(pi: ExtensionAPI) {
 	let studioAvailable = false;
 	let active = true;
 
+	const widget = { project: "", cli: "", sdk: "", studio: false };
+
+	const refreshWidget = (ctx: ExtensionContext) => {
+		if (!widget.project) return;
+		ctx.ui.setWidget("android", (_tui, theme) => {
+			let line = theme.fg("accent", "▲ ");
+			line += theme.fg("toolTitle", theme.bold(widget.project));
+			if (widget.cli) line += theme.fg("muted", ` · CLI ${widget.cli}`);
+			if (widget.sdk) line += theme.fg("dim", ` · SDK: ${widget.sdk}`);
+			if (widget.studio) line += theme.fg("success", " · Studio ●");
+			return new Text(line, 0, 0);
+		});
+	};
+
 	pi.on("session_shutdown", () => {
 		active = false;
 	});
@@ -181,12 +197,12 @@ export default function androidCliExtension(pi: ExtensionAPI) {
 			const sdkMatch = result.stdout?.match(/^sdk:\s*(.+)$/m);
 			const versionMatch = result.stdout?.match(/^version:\s*(.+)$/m);
 			if (sdkMatch) {
-				ctx.ui.setWidget("android", [
-					`android · CLI ${versionMatch?.[1] ?? "?"} · SDK: ${sdkMatch[1]}`,
-				]);
+				widget.cli = versionMatch?.[1] ?? "?";
+				widget.sdk = short(sdkMatch[1].trim(), 40);
+				refreshWidget(ctx);
 			}
 		} catch {
-			// CLI not available — keep project status
+			// CLI not available — keep project-only widget
 		}
 	};
 
@@ -198,6 +214,8 @@ export default function androidCliExtension(pi: ExtensionAPI) {
 			if (!active) return;
 			if (check.code === 0 && check.stdout?.includes("READY")) {
 				enableStudioTool();
+				widget.studio = true;
+				refreshWidget(ctx);
 				ctx.ui.notify(
 					"Android Studio detected — android_studio tool enabled",
 					"info",
@@ -223,7 +241,8 @@ export default function androidCliExtension(pi: ExtensionAPI) {
 			return;
 		}
 
-		ctx.ui.setWidget("android", [`android · ${projectDir}`]);
+		widget.project = basename(projectDir);
+		refreshWidget(ctx);
 
 		// Parallel detection — do not await, never block the session
 		void detectSdk(ctx);

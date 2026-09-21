@@ -56,7 +56,9 @@ export async function runAndroid(
 	const { status, ctx, onUpdate } = opts ?? {};
 	if (status) {
 		onUpdate?.({ content: [{ type: "text", text: status }], details: {} });
-		if (ctx?.hasUI) ctx.ui.setStatus("android", status);
+		if (ctx?.hasUI) {
+			ctx.ui.setStatus("android", ctx.ui.theme.fg("accent", `▲ ${status}`));
+		}
 	}
 	try {
 		return await androidExec(pi, args, {
