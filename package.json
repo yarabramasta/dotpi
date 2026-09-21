@@ -10,6 +10,7 @@
 		"@earendil-works/pi-coding-agent": "^0.86.0",
 		"@earendil-works/pi-tui": "^0.86.0",
 		"@types/node": "^26.6.2",
+		"pi-subagents": "^0.70.0",
 		"typescript": "^7.0.2"
 	}
 }

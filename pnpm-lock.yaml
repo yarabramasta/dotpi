@@ -23,6 +23,9 @@ importers:
       '@types/node':
         specifier: ^26.6.2
         version: 26.6.2
+      pi-subagents:
+        specifier: ^0.70.0
+        version: 0.70.0(@earendil-works/pi-agent-core@0.86.0(ws@8.21.3))(@earendil-works/pi-ai@0.86.0(ws@8.21.3))(@earendil-works/pi-coding-agent@0.86.0(ws@8.21.3))(@earendil-works/pi-tui@0.86.0)
       typescript:
         specifier: ^7.0.2
         version: 7.0.2
@@ -553,6 +556,11 @@ packages:
     cpu: [x64]
     os: [win32]
 
+  acorn@8.18.0:
+    resolution: {integrity: sha512-lGq+9yr1/GuAWaVYIHRjvvySG5/4VfKIvC8EWxStPdcDh/Ka7FG3twP6v4d5BkravUilhIAsG4Qj83t02LWUPQ==}
+    engines: {node: '>=0.4.0'}
+    hasBin: true
+
   agent-base@7.1.4:
     resolution: {integrity: sha512-MnA+YT8fwfJPgBx3m60MNqakm30XOkyIoH1y6huTQvC0PwZG7ki8NacLBcrPbNoo8vEZy7Jpuk7+jMO+CUovTQ==}
     engines: {node: '>= 14'}
@@ -748,6 +756,24 @@ packages:
     resolution: {integrity: sha512-ojmeN0qd+y0jszEtoY48r0Peq5dwMEkIlCOu6Q5f41lfkswXuKtYrhgoTpLnyIcHm24Uhqx+5Tqm2InSwLhE6Q==}
     engines: {node: '>=8'}
 
+  pi-subagents@0.70.0:
+    resolution: {integrity: sha512-UkGCym5fFKc1VGRzzE8F2govFwez7zvCOHNV0o+LnNwI/y6QbZNo3U6kIeK9hdBHGAL3e5a+UGiROc4mZR/8lg==}
+    hasBin: true
+    peerDependencies:
+      '@earendil-works/pi-agent-core': '*'
+      '@earendil-works/pi-ai': '>=0.80.0'
+      '@earendil-works/pi-coding-agent': '*'
+      '@earendil-works/pi-tui': '*'
+    peerDependenciesMeta:
+      '@earendil-works/pi-agent-core':
+        optional: true
+      '@earendil-works/pi-ai':
+        optional: true
+      '@earendil-works/pi-coding-agent':
+        optional: true
+      '@earendil-works/pi-tui':
+        optional: true
+
   proper-lockfile@4.1.2:
     resolution: {integrity: sha512-TjNPblN4BwAWMXU8s9AEz4JmQxnD1NNL7bNOY/AKUzyamc379FWASUhc/K1pL2noVb+XmZKLL68cjzLsiOAMaA==}
 
@@ -800,6 +826,9 @@ packages:
   tslib@2.8.1:
     resolution: {integrity: sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w==}
 
+  typebox@1.1.38:
+    resolution: {integrity: sha512-pZ0aQPmMmXoUvSbeuWf/Hzsc+avNw/Zd6VeE8CFgkVGWyuHPJvqeJJDeJqLve+K70LvjYIoleGcoJHPT17cWoA==}
+
   typebox@1.3.27:
     resolution: {integrity: sha512-zu+jc1pcy4UiNThxikUr36f0Rybk9PEeCg/NE6adeWr/SKsdNO4EzZHYRDlv2YCVAfj3Odq3dESSo/jNyoBXzA==}
 
@@ -810,6 +839,10 @@ packages:
 
   undici-types@8.9.0:
     resolution: {integrity: sha512-KTDyRTYX8sWmKXAikPHHSyc63CRPETMctyjKFupcC6OBLXT3xsN0e9aF7m+mIXutFWpUXuedtowG7iLOzp0kQg==}
+
+  undici@8.10.0:
+    resolution: {integrity: sha512-HvltHd7avK13QIw/oLe4qoOLyoVSoafqJ2jYOrtMRBkbYT31eiBQ8O0ehRKZiEZCMEyLFQNIADpgCWC5fALvYQ==}
+    engines: {node: '>=22.19.0'}
 
   undici@8.10.2:
     resolution: {integrity: sha512-/y4/bH9YNU5hi9NIrpOuvGXFcxrj3CMrV+/AYpowAYTpHn8gX/XPFjNy766FPoYY0miQhdW977JFWKGNhBdwyQ==}
@@ -835,6 +868,11 @@ packages:
         optional: true
       utf-8-validate:
         optional: true
+
+  yaml@2.8.3:
+    resolution: {integrity: sha512-AvbaCLOO2Otw/lW5bmh9d/WEdcDFdQp2Z2ZUH3pX9U2ihyUY0nvLv7J6TrWowklRGPYbB/IuIMfYgxaCPg5Bpg==}
+    engines: {node: '>= 14.6'}
+    hasBin: true
 
   yaml@2.9.0:
     resolution: {integrity: sha512-2AvhNX3mb8zd6Zy7INTtSpl1F15HW6Wnqj0srWlkKLcpYl/gMIMJiyuGq2KeI2YFxUPjdlB+3Lc10seMLtL4cA==}
@@ -1359,6 +1397,8 @@ snapshots:
   '@typescript/typescript-win32-x64@7.0.2':
     optional: true
 
+  acorn@8.18.0: {}
+
   agent-base@7.1.4: {}
 
   agent-base@9.0.0: {}
@@ -1564,6 +1604,19 @@ snapshots:
 
   path-key@3.1.1: {}
 
+  pi-subagents@0.70.0(@earendil-works/pi-agent-core@0.86.0(ws@8.21.3))(@earendil-works/pi-ai@0.86.0(ws@8.21.3))(@earendil-works/pi-coding-agent@0.86.0(ws@8.21.3))(@earendil-works/pi-tui@0.86.0):
+    dependencies:
+      acorn: 8.18.0
+      jiti: 2.7.0
+      typebox: 1.1.38
+      undici: 8.10.0
+      yaml: 2.8.3
+    optionalDependencies:
+      '@earendil-works/pi-agent-core': 0.86.0(ws@8.21.3)
+      '@earendil-works/pi-ai': 0.86.0(ws@8.21.3)
+      '@earendil-works/pi-coding-agent': 0.86.0(ws@8.21.3)
+      '@earendil-works/pi-tui': 0.86.0
+
   proper-lockfile@4.1.2:
     dependencies:
       graceful-fs: 4.2.11
@@ -1611,6 +1664,8 @@ snapshots:
 
   tslib@2.8.1: {}
 
+  typebox@1.1.38: {}
+
   typebox@1.3.27: {}
 
   typescript@7.0.2:
@@ -1638,6 +1693,8 @@ snapshots:
 
   undici-types@8.9.0: {}
 
+  undici@8.10.0: {}
+
   undici@8.10.2: {}
 
   web-streams-polyfill@3.3.3: {}
@@ -1647,5 +1704,7 @@ snapshots:
       isexe: 2.0.0
 
   ws@8.21.3: {}
+
+  yaml@2.8.3: {}
 
   yaml@2.9.0: {}
