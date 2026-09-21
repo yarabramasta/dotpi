@@ -11,15 +11,15 @@ Repository root mirrors `~/.pi`. The installer previews changes, protects backup
 ```sh
 git clone git@github.com:yarabramasta/dotpi.git
 cd dotpi
-./dotpi install --mode=safe
+./dotpi install
 ```
 
-`./dotpi` is a shell launcher for the `src/dotpi` Python package (`python3 -m dotpi`). Python 3, Pi, and common macOS/Linux tools are required. Install runs offline checks, then one isolated Pi smoke session. Missing Pi or a failed smoke check rolls the install back.
+`./dotpi` is a shell launcher for the `src/dotpi` Python package (`python3 -m dotpi`). Python 3, Pi, and common macOS/Linux tools are required. Install runs offline checks, then one isolated Pi smoke session. Missing Pi or a failed smoke check rolls the install back. `install` defaults to safe mode; pass `-m clean` or `-m cherry-pick` for the destructive or selective modes.
 
 Use a fixture instead of your real home while testing:
 
 ```sh
-./dotpi install --mode=clean --target=/tmp/dotpi-fixture --yes
+./dotpi install -m clean -t /tmp/dotpi-fixture -y
 ```
 
 Run the Python test suite:
@@ -32,7 +32,7 @@ Check or refresh dotpi without touching your Pi target:
 
 ```sh
 ./dotpi doctor
-./dotpi update --dry-run
+./dotpi update -d
 ```
 
 ## Install modes
@@ -40,10 +40,10 @@ Check or refresh dotpi without touching your Pi target:
 ### Safe
 
 ```sh
-./dotpi install --mode=safe
-./dotpi install --mode=safe --extension jina,wandb
-./dotpi install --mode=safe --no-extensions
-./dotpi install --mode=safe --extension jina,wandb --dry-run
+./dotpi install
+./dotpi install -e jina,wandb
+./dotpi install -n
+./dotpi install -e jina,wandb -d
 ```
 
 Safe mode:
@@ -52,83 +52,94 @@ Safe mode:
 2. Copies every direct `agent/*.json` except `auth.json`.
 3. Shows all JSON differences.
 4. Creates a protected backup of existing JSON.
-5. Asks for one confirmation, or requires `--yes` when non-interactive.
+5. Asks for one confirmation, or requires `-y` when non-interactive.
 6. Atomically writes JSON and copies selected extensions.
 7. Validates files and runs isolated Pi smoke.
 
-Existing selected extensions are refused. Use `--force` to overwrite them. Forced extension directories are not backed up and cannot be restored by dotpi if a later check fails. New extension files are removed and JSON is rolled back on failure.
+Existing selected extensions are refused. Use `--force` (`-f`) to overwrite them. Forced extension directories are not backed up and cannot be restored by dotpi if a later check fails. New extension files are removed and JSON is rolled back on failure.
 
-Without `--extension`, interactive safe mode shows an extension menu. Non-interactive safe mode requires one or more extension filters unless `--no-extensions` is used. `--extension` and `--no-extensions` cannot be combined.
+Without `-e`, interactive safe mode shows an extension menu. Non-interactive safe mode requires one or more extension filters unless `-n` is used. `-e` and `-n` cannot be combined.
 
-`--no-extensions` installs configuration only. Safe and cherry-pick modes leave target extensions untouched; clean mode excludes `agent/extensions` from replacement.
+`-n` (`--no-extensions`) installs configuration only. Safe and cherry-pick modes leave target extensions untouched; clean mode excludes `agent/extensions` from replacement.
 
-`--dry-run` previews JSON changes, backup scope, and extension actions without writing files, creating a backup, rebuilding dependencies, or launching Pi smoke. It does not require `--yes`.
+`-d` (`--dry-run`) previews JSON changes, backup scope, and extension actions without writing files, creating a backup, rebuilding dependencies, or launching Pi smoke. It does not require `-y`.
 
 ### Clean
 
 ```sh
-./dotpi install --mode=clean
-./dotpi install --mode=clean --no-extensions
-./dotpi install --mode=clean --dry-run
-./dotpi install --mode=clean --yes
-./dotpi install --mode=clean --include-auth --yes
+./dotpi install -m clean
+./dotpi install -m clean -n
+./dotpi install -m clean -d
+./dotpi install -m clean -y
+./dotpi install -m clean -a -y
 ```
 
 Clean mode backs up the entire existing `.pi`, replaces it with this repository's `agent` tree, and copies every extension. It skips `auth.json` unless:
 
 - interactive mode: you answer the auth prompt; or
-- non-interactive mode: you pass `--include-auth`.
+- non-interactive mode: you pass `--include-auth` (`-a`).
 
 The full backup is used for clean-install rollback if copying, validation, or smoke fails.
 
 ### Cherry-pick
 
 ```sh
-./dotpi install --mode=cherry-pick --extension android-cli --yes
-./dotpi install --mode=cherry-pick --extension agent/extensions/jina --target=/tmp/pi --yes
+./dotpi install -m cherry-pick -e android-cli -y
+./dotpi install -m cherry-pick -e agent/extensions/jina -t /tmp/pi -y
 ```
 
-Cherry-pick copies selected extension directories only. It never copies `auth.json`. Existing extensions require `--force`.
+Cherry-pick copies selected extension directories only. It never copies `auth.json`. Existing extensions require `--force` (`-f`).
 
 ## Commands
 
-All mutating commands prompt in a terminal. Non-interactive commands must pass `--yes` or stop before changing files.
+All mutating commands prompt in a terminal. Non-interactive commands must pass `--yes` (`-y`) or stop before changing files.
 
 ```text
-./dotpi install --mode=safe|clean|cherry-pick [options]
-./dotpi doctor [--target PATH] [--json]
-./dotpi update [--dry-run] [--yes]
-./dotpi sync [--settings] [--models] [--apply] [--target PATH] [--yes]
-./dotpi backup [paths...] [--target PATH] [--yes]
-./dotpi restore BACKUP_ID [paths...] [--target PATH] [--yes]
-./dotpi list [--target PATH]
-./dotpi delete BACKUP_ID [--target PATH] [--yes]
-./dotpi prune --keep N [--target PATH] [--yes]
-./dotpi prune --older-than 30d [--target PATH] [--yes]
+./dotpi install [-m safe|clean|cherry-pick] [-f] [-a] [-e NAME | -n] [-d] [-t PATH] [-y]
+./dotpi doctor [-t PATH] [-j]
+./dotpi update [-d] [-y]
+./dotpi sync [-s] [-M] [-A | -d] [-j] [-t PATH] [-y]
+./dotpi backup [paths...] [-t PATH] [-y]
+./dotpi restore BACKUP_ID [paths...] [-t PATH] [-y]
+./dotpi list [-t PATH]
+./dotpi delete BACKUP_ID [-t PATH] [-y]
+./dotpi prune -k N [-t PATH] [-y]
+./dotpi prune -o 30d [-t PATH] [-y]
 ```
 
-Useful install options:
+Every flag has a short and a long form; both are accepted everywhere and the examples above use the short form.
 
-- `--target PATH` — use target other than `~/.pi`.
-- `--extension NAME[,NAME...]` — select extensions by name or path. Repeat it as needed.
-- `--no-extensions` — install configuration without copying extensions; mutually exclusive with `--extension`.
-- `--include-auth` — clean mode only; include example `auth.json`.
-- `--force` — allow selected extension overwrite; not recoverable through extension backups.
-- `--yes` — explicit approval for non-interactive operation.
-- `--dry-run` — preview install without changing files or running validation.
+| Short | Long | Commands | Meaning |
+| --- | --- | --- | --- |
+| `-t PATH` | `--target` | all | use a target other than `~/.pi` |
+| `-y` | `--yes` | mutating commands | explicit approval for non-interactive operation |
+| `-m MODE` | `--mode` | install | `safe` (default), `clean`, or `cherry-pick` |
+| `-f` | `--force` | install | allow selected extension overwrite; not recoverable through extension backups |
+| `-a` | `--include-auth` | install | clean mode only; include example `auth.json` |
+| `-e NAME[,NAME...]` | `--extension` | install | select extensions by name or path; repeat or comma-separate (`-e jina,wandb`) |
+| `-n` | `--no-extensions` | install | install configuration without copying extensions; mutually exclusive with `-e` |
+| `-d` | `--dry-run` | install, update, sync | preview without changing files, backups, or Git state |
+| `-j` | `--json` | doctor, sync | emit machine-readable results |
+| `-s` | `--settings` | sync | review `settings.json` |
+| `-M` | `--models` | sync | review `models.json` |
+| `-A` | `--apply` | sync | apply reviewed, conflict-free files |
+| `-k N` | `--keep` | prune | keep newest N backups |
+| `-o DUR` | `--older-than` | prune | delete backups older than duration (`30d`, `12h`, `45m`, `2w`) |
+
+Note: `-d` means dry-run here, not the GNU `-n` convention — `-n` is reserved for `--no-extensions`. The online-install one-shot examples below keep long forms for copy-paste clarity.
 
 ## Doctor, update, and sync
 
-`doctor` is a quick, read-only preflight. It checks target layout, direct JSON validity, and installed extension manifests/entrypoints. It never reads `agent/auth.json`, runs package managers, or launches Pi. Use `--json` for scripts.
+`doctor` is a quick, read-only preflight. It checks target layout, direct JSON validity, and installed extension manifests/entrypoints. It never reads `agent/auth.json`, runs package managers, or launches Pi. Use `-j` (`--json`) for scripts.
 
-`update` fast-forwards this local dotpi checkout from its configured Git upstream. It refuses dirty, detached, missing-upstream, or diverged states. It never changes `~/.pi`; use `--dry-run` to query upstream without changing Git metadata.
+`update` fast-forwards this local dotpi checkout from its configured Git upstream. It refuses dirty, detached, missing-upstream, or diverged states. It never changes `~/.pi`; use `-d` (`--dry-run`) to query upstream without changing Git metadata.
 
 `sync` is separate and opt-in. First version reviews or applies existing `settings.json` and `models.json` only:
 
 ```sh
-./dotpi sync --settings --dry-run
-./dotpi sync --settings --models --dry-run
-./dotpi sync --settings --apply --yes
+./dotpi sync -s -d
+./dotpi sync -s -M -d
+./dotpi sync -s -A -y
 ```
 
 Sync requires explicit file flags and defaults to review-only. Provider/default-provider or provider-object differences block apply. Sensitive values and provider URLs are redacted. Missing target files are not created. Apply creates a protected backup and rolls back all selected files on failure. Extension code syncing is deferred.
@@ -142,14 +153,14 @@ Backups live beside the target: `~/.pi-backups` for the default target. Each tim
 ./dotpi backup
 
 # Explicit repository-relative paths
-./dotpi backup agent/settings.json agent/models.json --yes
+./dotpi backup agent/settings.json agent/models.json -y
 
 ./dotpi list
-./dotpi restore 20260101T120000Z-ab12cd34 --yes
-./dotpi restore 20260101T120000Z-ab12cd34 agent/settings.json --yes
-./dotpi delete 20260101T120000Z-ab12cd34 --yes
-./dotpi prune --keep 5 --yes
-./dotpi prune --older-than 30d --yes
+./dotpi restore 20260101T120000Z-ab12cd34 -y
+./dotpi restore 20260101T120000Z-ab12cd34 agent/settings.json -y
+./dotpi delete 20260101T120000Z-ab12cd34 -y
+./dotpi prune -k 5 -y
+./dotpi prune -o 30d -y
 ```
 
 Backup and restore always show their paths and confirm before changing anything. Restore makes a safety backup of existing destination paths first. `prune` never runs implicitly and requires exactly one explicit retention rule.
