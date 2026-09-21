@@ -4,12 +4,12 @@ set -eu
 case $0 in
 	*/*)
 		script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-		if [ -f "$script_dir/dotpi.py" ]; then
+		if [ -d "$script_dir/src/dotpi" ]; then
 			if ! command -v python3 >/dev/null 2>&1; then
 				echo "dotpi: python3 is required" >&2
 				exit 127
 			fi
-			exec python3 "$script_dir/dotpi.py" "$@"
+			exec env PYTHONPATH="$script_dir/src" python3 -m dotpi "$@"
 		fi
 		;;
 esac
@@ -31,4 +31,4 @@ trap 'rm -rf "$tmp"' EXIT INT TERM
 curl -fsSL "$repo/archive/$ref.tar.gz" -o "$tmp/repo.tar.gz"
 mkdir "$tmp/repo"
 tar -xzf "$tmp/repo.tar.gz" -C "$tmp/repo" --strip-components=1
-python3 "$tmp/repo/dotpi.py" "$@"
+exec env PYTHONPATH="$tmp/repo/src" python3 -m dotpi "$@"

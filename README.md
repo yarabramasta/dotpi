@@ -14,12 +14,18 @@ cd dotpi
 ./dotpi install --mode=safe
 ```
 
-`./dotpi` is a shell launcher for `dotpi.py`. Python 3, Pi, and common macOS/Linux tools are required. Install runs offline checks, then one isolated Pi smoke session. Missing Pi or a failed smoke check rolls the install back.
+`./dotpi` is a shell launcher for the `src/dotpi` Python package (`python3 -m dotpi`). Python 3, Pi, and common macOS/Linux tools are required. Install runs offline checks, then one isolated Pi smoke session. Missing Pi or a failed smoke check rolls the install back.
 
 Use a fixture instead of your real home while testing:
 
 ```sh
 ./dotpi install --mode=clean --target=/tmp/dotpi-fixture --yes
+```
+
+Run the Python test suite:
+
+```sh
+python3 -m unittest discover -s src -t src
 ```
 
 Check or refresh dotpi without touching your Pi target:
@@ -216,7 +222,7 @@ rm -rf /tmp/dotpi-src
 mkdir -p /tmp/dotpi-src
 tar -xzf /tmp/dotpi.tar.gz -C /tmp/dotpi-src --strip-components=1
 less /tmp/dotpi-src/README.md
-less /tmp/dotpi-src/dotpi.py
+less /tmp/dotpi-src/src/dotpi/cli.py
 /tmp/dotpi-src/dotpi install --mode=safe --extension jina,wandb
 ```
 
