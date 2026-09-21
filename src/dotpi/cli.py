@@ -21,13 +21,19 @@ from .update import update_command
 
 def add_target(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
-        "--target", default=None, help="target Pi directory (default: ~/.pi)"
+        "-t",
+        "--target",
+        default=None,
+        help="target Pi directory (default: ~/.pi)",
     )
 
 
 def add_confirmation(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
-        "--yes", action="store_true", help="approve non-interactive changes"
+        "-y",
+        "--yes",
+        action="store_true",
+        help="approve non-interactive changes",
     )
 
 
@@ -39,29 +45,42 @@ def build_parser() -> argparse.ArgumentParser:
 
     install = commands.add_parser("install", help="install repository content")
     install.add_argument(
-        "--mode", choices=("safe", "clean", "cherry-pick"), required=True
+        "-m",
+        "--mode",
+        choices=("safe", "clean", "cherry-pick"),
+        default="safe",
+        help="install mode (default: safe)",
     )
     install.add_argument(
-        "--force", action="store_true", help="overwrite existing selected extensions"
+        "-f",
+        "--force",
+        action="store_true",
+        help="overwrite existing selected extensions",
     )
     install.add_argument(
+        "-a",
         "--include-auth",
         action="store_true",
         help="copy example auth.json in clean mode",
     )
     extension_group = install.add_mutually_exclusive_group()
     extension_group.add_argument(
+        "-e",
         "--extension",
         action="append",
         help="extension name or path; repeat or comma-separate",
     )
     extension_group.add_argument(
+        "-n",
         "--no-extensions",
         action="store_true",
         help="install configuration without copying extensions",
     )
     install.add_argument(
-        "--dry-run", action="store_true", help="preview install without changing files"
+        "-d",
+        "--dry-run",
+        action="store_true",
+        help="preview install without changing files",
     )
     add_target(install)
     add_confirmation(install)
@@ -71,14 +90,17 @@ def build_parser() -> argparse.ArgumentParser:
         "doctor", help="check Pi target health without changing files"
     )
     doctor.add_argument(
-        "--json", action="store_true", help="emit machine-readable results"
+        "-j", "--json", action="store_true", help="emit machine-readable results"
     )
     add_target(doctor)
     doctor.set_defaults(function=doctor_command)
 
     update = commands.add_parser("update", help="update this dotpi checkout")
     update.add_argument(
-        "--dry-run", action="store_true", help="preview without changing Git state"
+        "-d",
+        "--dry-run",
+        action="store_true",
+        help="preview without changing Git state",
     )
     add_confirmation(update)
     update.set_defaults(function=update_command)
@@ -86,17 +108,22 @@ def build_parser() -> argparse.ArgumentParser:
     sync = commands.add_parser(
         "sync", help="review or apply repository config to an existing Pi target"
     )
-    sync.add_argument("--settings", action="store_true", help="review settings.json")
-    sync.add_argument("--models", action="store_true", help="review models.json")
+    sync.add_argument(
+        "-s", "--settings", action="store_true", help="review settings.json"
+    )
+    sync.add_argument("-M", "--models", action="store_true", help="review models.json")
     sync_action = sync.add_mutually_exclusive_group()
     sync_action.add_argument(
-        "--apply", action="store_true", help="apply reviewed, conflict-free files"
+        "-A", "--apply", action="store_true", help="apply reviewed, conflict-free files"
     )
     sync_action.add_argument(
-        "--dry-run", action="store_true", help="review without changing files"
+        "-d",
+        "--dry-run",
+        action="store_true",
+        help="review without changing files",
     )
     sync.add_argument(
-        "--json", action="store_true", help="emit machine-readable results"
+        "-j", "--json", action="store_true", help="emit machine-readable results"
     )
     add_target(sync)
     add_confirmation(sync)
@@ -129,9 +156,11 @@ def build_parser() -> argparse.ArgumentParser:
         "prune", help="delete backups by explicit retention rule"
     )
     group = prune.add_mutually_exclusive_group()
-    group.add_argument("--keep", type=int, help="keep newest N backups")
+    group.add_argument("-k", "--keep", type=int, help="keep newest N backups")
     group.add_argument(
-        "--older-than", help="delete backups older than duration, e.g. 30d"
+        "-o",
+        "--older-than",
+        help="delete backups older than duration, e.g. 30d",
     )
     add_target(prune)
     add_confirmation(prune)
