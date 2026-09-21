@@ -1,17 +1,3 @@
-export const ASSIST_OPTIONS = [
-	{
-		value: "yes",
-		label: "Enable grounding assist (Recommended)",
-		description:
-			"Use cymbal first, then an installed read-only scout for interview grounding AND a read-only auditor for output audit (advisory, never blocks).",
-	},
-	{
-		value: "no",
-		label: "Continue without subagents",
-		description: "Keep this Grill Me session local and lightweight.",
-	},
-];
-
 export const DELEGATE_OPTIONS = [
 	{
 		value: "yes",

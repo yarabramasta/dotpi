@@ -43,7 +43,6 @@ We are starting a grill-me session to reach shared understanding before producin
 - Research mode: ${state.researchMode}
 - Grounding: first-class (auto dossier at start; cymbal spot-checks + read-only scouts as needed)
 - Eligible grounding scouts: ${state.availableScouts.length ? state.availableScouts.map((scout) => scout.name).join(", ") : "none discovered"}
-- Eligible output auditors: ${state.availableAuditors.length ? state.availableAuditors.map((a) => a.name).join(", ") : "none discovered"}
 - Eligible write delegates: ${state.availableWriters.length ? state.availableWriters.map((w) => w.name).join(", ") : "none discovered"}
 - Output preference: ${describeOutputPreference(state)}
 
@@ -126,8 +125,8 @@ ${
 `
 		: ""
 }${
-	state.outputAudit
-		? `- Last output audit: ${state.outputAudit.skippedReason ? `skipped — ${state.outputAudit.skippedReason}` : (state.outputAudit.source ?? "recorded")}\n`
+	state.reviewer
+		? `- Last reviewer: ${state.reviewer.skippedReason ? `skipped — ${state.reviewer.skippedReason}` : (state.reviewer.source ?? "recorded")} (rounds: ${state.reviewerRounds}/2)\n`
 		: ""
 }${
 	state.lastChangeSummary
@@ -149,16 +148,16 @@ export function appendCheckpointNote(
 		: `${checkpoint.trimEnd()}\n\n${heading}\n\n- ${note}\n`;
 }
 
-export function outputAuditStatusText(view: GroundingView): string {
+export function reviewerStatusText(view: GroundingView): string {
 	if (view.skippedReason)
-		return `⚠ output audit skipped: ${view.skippedReason}`.slice(0, 100);
+		return `⚠ reviewer skipped: ${view.skippedReason}`.slice(0, 100);
 	const source = view.source ? ` · ${view.source}` : "";
-	return `✓ output audit${source}`.slice(0, 100);
+	return `✓ reviewer${source}`.slice(0, 100);
 }
 
-export function outputAuditResultText(view: GroundingView): string {
-	if (view.skippedReason) return `Output audit skipped: ${view.skippedReason}`;
-	return `Output audit recorded${view.source ? ` (${view.source})` : ""}. Revise the output if needed, then call grill_finish_output_phase.`;
+export function reviewerResultText(view: GroundingView): string {
+	if (view.skippedReason) return `Reviewer skipped: ${view.skippedReason}`;
+	return `Reviewer recorded${view.source ? ` (${view.source})` : ""}. Fix reported gaps if any, then call grill_finish_output_phase.`;
 }
 
 export function groundingStatusText(view: GroundingView): string {

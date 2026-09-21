@@ -10,9 +10,11 @@ import { Markdown, matchesKey, truncateToWidth } from "@earendil-works/pi-tui";
 import { buildDossier } from "./dossier.js";
 import { initialCheckpoint, statusMarkdown } from "./prompts.js";
 import type { GrillHelpers } from "./runtime.js";
+import { readSubagentsDefault } from "./settings.js";
 import {
 	asIntent,
 	asResearchMode,
+	asSubagentsValue,
 	cloneState,
 	DEFAULT_STATE,
 	firstWord,
@@ -34,6 +36,12 @@ export function registerCommands(
 		ctx: ExtensionContext,
 		partial: Partial<GrillState> = {},
 	): Promise<void> {
+		// First-class grounding: one compact dossier up front, no per-session
+		// enable/disable decision. Best-effort — failure just skips the section.
+		// Subagent integration defaults from settings, overridable per session.
+		if (typeof partial.subagents !== "boolean") {
+			partial.subagents = readSubagentsDefault(ctx);
+		}
 		runtime.state = {
 			...cloneState(DEFAULT_STATE),
 			...partial,
@@ -228,7 +236,22 @@ export function registerCommands(
 			if (command === "help") {
 				pi.sendMessage({
 					customType: "grill-me-help",
-					content: `# Grill Me commands\n\n- /grill <topic>\n- /grill stop\n- /checkpoint [edit|chat]\n- /grill checkpoint [edit|chat]\n- /grill status\n- /grill intent auto|plan|learn|research|content|decide\n- /grill output <one or more outputs> (preference only; approval still required)\n- /grill research off|ask|auto\n\nGrill Me uses one thorough default Socratic style. The assistant must use the hardcoded output-selection phase before ending the interview, producing outputs, or stopping without outputs.\n\nWhen grounding assist is enabled, the session start picker also enables an advisory output audit: in the output phase, after producing/applying the approved output, the assistant runs one read-only auditor (grill_set_auditors → subagent → grill_show_output_audit). The audit is advisory and never blocks grill_finish_output_phase; it can be skipped if no eligible auditor exists.\n\nIn the output-selection phase, the assistant may discover write-capable subagents with grill_set_writers; if any exist, grill_enter_output_phase asks (via a picker) whether to delegate approved file writes to a writer subagent or have the parent write directly. When delegating, the parent is blocked from edit/write (keeps CLI mutations like gh/git), the writer subagent performs file writes scoped to the approved output paths, then the advisory audit runs. Delegation is per output batch; there is no persistent toggle.\n\nState (checkpoint, phase, alternatives, current question) auto-persists every change. Switching model mid-session is safe. Reloading pi into the same session resumes the grill automatically — the status chip returns and the next turn re-injects the prompt and checkpoint.`,
+					content: `# Grill Me commands
+
+- /grill <topic> — start a session
+- /grill stop — stop the session
+- /grill status — show session status
+- /grill checkpoint [edit|chat] — show/edit the checkpoint (also /checkpoint)
+- /grill intent auto|plan|learn|research|content|decide
+- /grill output <one or more outputs> (preference only; approval still required)
+- /grill research off|ask|auto
+- /grill subagents on|off — toggle the first-class subagent integration (auto grounding scouts, end-of-process reviewer, write delegation)
+
+Grill Me uses one thorough default Socratic style. Grounding is first-class: a compact repo dossier is captured automatically at session start; per-question spot-checks use cymbal tools and read-only scouts.
+
+Subagent integration defaults from ~/.pi/agent/grill.json ({ "subagents": true|false }) or .pi/grill.json in the project; /grill subagents overrides per session. When on, the session uses installed read-only scouts for grounding, an end-of-process reviewer pass (grill_run_reviewer: checkpoint vs produced outputs vs edited files, PASS or gap list, 2-round cap), and optional write delegation in the approved output phase.
+
+The mandatory output-selection phase still gates all output production: grill_enter_output_selection_phase → user choice → grill_enter_output_phase. State auto-persists every change; switching model mid-session is safe. Old grill sessions from previous versions are not resumed after upgrading.`,
 					display: true,
 				});
 				return;
@@ -242,11 +265,9 @@ export function registerCommands(
 				runtime.state.approvedOutputPlan = undefined;
 				runtime.state.currentQuestion = undefined;
 				runtime.state.alternatives = [];
-				runtime.state.auditing = false;
-				runtime.state.auditTask = undefined;
-				runtime.state.availableAuditors = [];
-				runtime.state.outputAudit = undefined;
 				runtime.state.availableWriters = [];
+				runtime.state.reviewer = undefined;
+				runtime.state.reviewerRounds = 0;
 				runtime.state.delegate = undefined;
 				runtime.state.chosenWriter = undefined;
 				runtime.state.outputPaths = undefined;
@@ -318,6 +339,30 @@ export function registerCommands(
 				persist();
 				updateUi(ctx);
 				ctx.ui.notify(`Grill research mode: ${value}`, "info");
+				return;
+			}
+
+			if (command === "subagents") {
+				const value = asSubagentsValue(rest);
+				if (!runtime.state.active && value === undefined) {
+					ctx.ui.notify("Usage: /grill subagents on|off", "warning");
+					return;
+				}
+				if (value === undefined) {
+					ctx.ui.notify(
+						`Subagent integration: ${runtime.state.subagents ? "on" : "off"}. Toggle with /grill subagents on|off.`,
+						"info",
+					);
+					return;
+				}
+				runtime.state.subagents = value;
+				runtime.state.lastChangeSummary = `Subagent integration ${value ? "enabled" : "disabled"}`;
+				persist();
+				updateUi(ctx);
+				ctx.ui.notify(
+					`Grill subagent integration: ${value ? "on" : "off"}.`,
+					"info",
+				);
 				return;
 			}
 

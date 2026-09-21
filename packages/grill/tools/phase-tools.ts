@@ -414,10 +414,9 @@ export function registerPhaseTools(
 			runtime.state.outputPhase = true;
 			runtime.state.approvedOutputPlan = params.outputPlan;
 			runtime.state.outputPaths = approvedOutputPaths(params.outputPlan);
-			runtime.state.auditing = false;
-			runtime.state.auditTask = undefined;
-			runtime.state.availableAuditors = [];
-			runtime.state.outputAudit = undefined;
+			runtime.state.availableWriters = [];
+			runtime.state.reviewer = undefined;
+			runtime.state.reviewerRounds = 0;
 			runtime.state.lastChangeSummary = runtime.state.delegate
 				? `Entered approved output phase (delegating file writes to ${runtime.state.chosenWriter ?? "?"})`
 				: "Entered approved output phase (parent writes directly)";
@@ -459,10 +458,6 @@ export function registerPhaseTools(
 			runtime.state.outputPhase = false;
 			runtime.state.outputSelection = undefined;
 			runtime.state.approvedOutputPlan = undefined;
-			runtime.state.auditing = false;
-			runtime.state.auditTask = undefined;
-			runtime.state.availableAuditors = [];
-			runtime.state.outputAudit = undefined;
 			runtime.state.delegate = undefined;
 			runtime.state.chosenWriter = undefined;
 			runtime.state.outputPaths = undefined;

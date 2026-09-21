@@ -2,7 +2,7 @@ import type {
 	ExtensionAPI,
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import { groundingStatusText, outputAuditStatusText } from "./prompts.js";
+import { groundingStatusText, reviewerStatusText } from "./prompts.js";
 import {
 	cloneState,
 	currentPhase,
@@ -25,7 +25,7 @@ export function createRuntime(pi: ExtensionAPI): GrillHelpers {
 		if (!runtime.state.active) {
 			ctx.ui.setStatus("grill-me", undefined);
 			ctx.ui.setStatus("grill-grounding", undefined);
-			ctx.ui.setStatus("grill-output-audit", undefined);
+			ctx.ui.setStatus("grill-reviewer", undefined);
 			ctx.ui.setStatus("grill-writer", undefined);
 			return;
 		}
@@ -60,11 +60,11 @@ export function createRuntime(pi: ExtensionAPI): GrillHelpers {
 				: undefined,
 		);
 		ctx.ui.setStatus(
-			"grill-output-audit",
-			state.outputAudit?.skippedReason
-				? ctx.ui.theme.fg("warning", outputAuditStatusText(state.outputAudit))
-				: state.outputAudit
-					? ctx.ui.theme.fg("success", outputAuditStatusText(state.outputAudit))
+			"grill-reviewer",
+			state.reviewer?.skippedReason
+				? ctx.ui.theme.fg("warning", reviewerStatusText(state.reviewer))
+				: state.reviewer
+					? ctx.ui.theme.fg("success", reviewerStatusText(state.reviewer))
 					: undefined,
 		);
 		ctx.ui.setStatus(

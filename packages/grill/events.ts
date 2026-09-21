@@ -11,6 +11,7 @@ import {
 	LEGACY_DEFAULT_OUTPUT_PREFERENCE,
 	runtime,
 	STATE_ENTRY_TYPE,
+	STATE_SCHEMA_VERSION,
 } from "./state.js";
 
 export function registerEvents(pi: ExtensionAPI, helpers: GrillHelpers): void {
@@ -19,37 +20,9 @@ export function registerEvents(pi: ExtensionAPI, helpers: GrillHelpers): void {
 	pi.on("tool_call", async (event) => {
 		if (!runtime.state.active) return;
 
-		// Audit-window enforcement: while an output audit is in progress in
-		// the output phase, only subagent spawns targeting an eligible
-		// read-only auditor are allowed. Production subagents the parent may
-		// otherwise spawn are blocked only during this window; it is cleared
-		// by grill_show_output_audit.
-		if (
-			runtime.state.auditing &&
-			runtime.state.outputPhase &&
-			event.toolName === "subagent"
-		) {
-			const input = (event.input ?? {}) as {
-				action?: string;
-				agent?: string;
-			};
-			const isManagement =
-				typeof input.action === "string" && input.action.length > 0;
-			if (!isManagement) {
-				const target =
-					typeof input.agent === "string" ? input.agent.trim() : "";
-				const allowed = runtime.state.availableAuditors.some(
-					(a) => a.name === target,
-				);
-				if (!target || !allowed) {
-					return {
-						block: true,
-						reason:
-							"Grill Me output audit is in progress. While auditing, subagent spawns must target one of the eligible read-only auditors set by grill_set_auditors. Record the audit result with grill_show_output_audit to clear the window and unblock other subagent calls.",
-					};
-				}
-			}
-		}
+		// Audit-window enforcement removed: the audit flow was replaced by the
+		// end-of-process reviewer pass (grill_run_reviewer), which spawns its own
+		// read-only reviewer via the pi-subagents RPC and needs no spawn window.
 
 		// Write-delegation enforcement (approved output phase only): when the
 		// user chose to delegate file writes, the parent is blocked from
@@ -149,6 +122,10 @@ export function registerEvents(pi: ExtensionAPI, helpers: GrillHelpers): void {
 				entry.customType === STATE_ENTRY_TYPE &&
 				entry.data
 			) {
+				// Schema gate: only resume entries written by the current schema.
+				// Old grill sessions are not resumable (accepted scope cut), but
+				// /reload restore within a current-version session still works.
+				if (entry.data.schemaVersion !== STATE_SCHEMA_VERSION) continue;
 				runtime.state = { ...cloneState(DEFAULT_STATE), ...entry.data };
 				if (runtime.state.outputPreference === LEGACY_DEFAULT_OUTPUT_PREFERENCE)
 					runtime.state.outputPreference = "";
@@ -157,13 +134,12 @@ export function registerEvents(pi: ExtensionAPI, helpers: GrillHelpers): void {
 						? "output"
 						: "interview";
 				if (runtime.state.phase !== "output") runtime.state.outputPhase = false;
+				if (typeof runtime.state.subagents !== "boolean")
+					runtime.state.subagents = true;
 				if (!Array.isArray(runtime.state.availableScouts))
 					runtime.state.availableScouts = [];
-				if (!Array.isArray(runtime.state.availableAuditors))
-					runtime.state.availableAuditors = [];
 				if (!Array.isArray(runtime.state.availableWriters))
 					runtime.state.availableWriters = [];
-				if (runtime.state.phase !== "output") runtime.state.auditing = false;
 				if (runtime.state.phase !== "output") {
 					runtime.state.delegate = undefined;
 					runtime.state.chosenWriter = undefined;
@@ -174,6 +150,13 @@ export function registerEvents(pi: ExtensionAPI, helpers: GrillHelpers): void {
 					typeof runtime.state.grounding !== "object"
 				)
 					runtime.state.grounding = undefined;
+				if (
+					runtime.state.reviewer &&
+					typeof runtime.state.reviewer !== "object"
+				)
+					runtime.state.reviewer = undefined;
+				if (typeof runtime.state.reviewerRounds !== "number")
+					runtime.state.reviewerRounds = 0;
 			}
 		}
 		updateUi(ctx);

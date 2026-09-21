@@ -18,18 +18,10 @@ export type SubagentsSetting = boolean;
 
 export interface ScoutsDetails {
 	scouts: ScoutAgent[];
-	assistEnabled?: boolean;
 }
 export interface WritersDetails {
 	writers: ScoutAgent[];
 	phase?: GrillPhase;
-}
-export interface AuditorsDetails {
-	auditors: ScoutAgent[];
-	assistEnabled?: boolean;
-	phase?: GrillPhase;
-	auditTask?: string;
-	auditing?: boolean;
 }
 
 export interface GrillAlternative {
@@ -62,10 +54,8 @@ export interface GrillState {
 	subagents: SubagentsSetting;
 	availableScouts: ScoutAgent[];
 	grounding?: GroundingView & { at: number };
-	availableAuditors: ScoutAgent[];
-	outputAudit?: GroundingView & { at: number };
-	auditing?: boolean;
-	auditTask?: string;
+	reviewer?: GroundingView & { at: number };
+	reviewerRounds: number;
 	availableWriters: ScoutAgent[];
 	delegate?: boolean;
 	chosenWriter?: string;
@@ -81,9 +71,15 @@ export interface GrillState {
 	currentQuestion?: string;
 	updatedAt: number;
 	lastChangeSummary?: string;
+	schemaVersion: number;
+	titleSet?: boolean;
 }
 
 export const STATE_ENTRY_TYPE = "grill-me-state";
+/** Bump when GrillState shape changes incompatibly; old sessions are not
+ * resumed (accepted scope cut), but /reload restore within a session still
+ * works for entries written by the same version. */
+export const STATE_SCHEMA_VERSION = 2;
 export const LEGACY_DEFAULT_OUTPUT_PREFERENCE =
 	"design-doc by default; adapt/recommend near readiness";
 
@@ -104,16 +100,15 @@ export const DEFAULT_STATE: GrillState = {
 	subagents: true,
 	availableScouts: [],
 	grounding: undefined,
-	availableAuditors: [],
-	outputAudit: undefined,
-	auditing: false,
-	auditTask: undefined,
+	reviewer: undefined,
+	reviewerRounds: 0,
 	availableWriters: [],
 	delegate: undefined,
 	chosenWriter: undefined,
 	outputPaths: undefined,
 	currentQuestion: undefined,
 	updatedAt: Date.now(),
+	schemaVersion: STATE_SCHEMA_VERSION,
 };
 
 export const INTENTS = [
@@ -242,6 +237,18 @@ export function asResearchMode(value: unknown): ResearchMode | undefined {
 		(RESEARCH_MODES as readonly string[]).includes(value)
 		? (value as ResearchMode)
 		: undefined;
+}
+
+/** Parse the /grill subagents on|off argument. Pure and exported for tests. */
+export function asSubagentsValue(
+	value: string | undefined,
+): boolean | undefined {
+	const normalized = value?.trim().toLowerCase();
+	if (normalized === "on" || normalized === "true" || normalized === "yes")
+		return true;
+	if (normalized === "off" || normalized === "false" || normalized === "no")
+		return false;
+	return undefined;
 }
 
 export function firstWord(text: string): string {

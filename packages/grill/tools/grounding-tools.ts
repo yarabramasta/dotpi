@@ -62,6 +62,17 @@ export function registerGroundingTools(
 					details: { scouts: [] },
 				};
 			}
+			if (runtime.state.subagents === false) {
+				return {
+					content: [
+						{
+							type: "text",
+							text: "Subagent integration is OFF for this session. Enable with /grill subagents on.",
+						},
+					],
+					details: { scouts: [] },
+				};
+			}
 			const scouts = eligibleScouts(params.agents as ScoutAgent[]);
 			runtime.state.availableScouts = scouts;
 			runtime.state.lastChangeSummary = scouts.length
@@ -125,6 +136,17 @@ export function registerGroundingTools(
 			if (!runtime.state.active) {
 				return {
 					content: [{ type: "text", text: "No active Grill Me session." }],
+					details: {},
+				};
+			}
+			if (runtime.state.subagents === false) {
+				return {
+					content: [
+						{
+							type: "text",
+							text: "Subagent integration is OFF for this session. Enable with /grill subagents on.",
+						},
+					],
 					details: {},
 				};
 			}
@@ -207,6 +229,17 @@ export function registerGroundingTools(
 			if (!runtime.state.active) {
 				return {
 					content: [{ type: "text", text: "No active Grill Me session." }],
+					details: { writers: [] },
+				};
+			}
+			if (runtime.state.subagents === false) {
+				return {
+					content: [
+						{
+							type: "text",
+							text: "Subagent integration is OFF for this session. The parent writes outputs directly. Enable with /grill subagents on.",
+						},
+					],
 					details: { writers: [] },
 				};
 			}
