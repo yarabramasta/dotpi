@@ -15,7 +15,8 @@
     "npm:@firstpick/pi-themes-bundle",
     "npm:pi-tool-display",
     "npm:pi-tidy-footer",
-    "npm:pi-tool-repair"
+    "npm:pi-tool-repair",
+    "npm:pi-mcp-adapter"
   ],
   "theme": "gruvbox-dark",
   "defaultProvider": "wandb",
