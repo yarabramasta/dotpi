@@ -3,7 +3,7 @@ export const DELEGATE_OPTIONS = [
 		value: "yes",
 		label: "Delegate file writes to a writer subagent (Recommended)",
 		description:
-			"A write-capable subagent performs the approved file writes; the parent stays read-only for files and keeps CLI mutations (gh/git). The advisory audit runs after. Costs extra tokens.",
+			"A write-capable subagent performs the approved file writes; the parent stays read-only for files and keeps CLI mutations (gh/git). The end-of-process reviewer pass runs after. Costs extra tokens.",
 	},
 	{
 		value: "no",

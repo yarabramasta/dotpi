@@ -217,7 +217,7 @@ export function buildSystemPrompt(state: GrillState): string {
 	const phase = currentPhase(state);
 	const delegationGuidance =
 		state.delegate === true
-			? `Write delegation is ON for this batch: the parent is blocked from edit/write; spawn the writer subagent (${state.chosenWriter ?? "the chosen writer"}) with subagent({ agent, output, task }) where output is an approved output path; the extension blocks writer spawns whose output is outside the approved plan. The parent keeps CLI mutations (gh/git). Run the writer BEFORE the advisory audit (the audit window blocks non-auditor spawns). If the writer fails or times out, fall back to finishing the writes yourself and notify the user.`
+			? `Write delegation is ON for this batch: the parent is blocked from edit/write; spawn the writer subagent (${state.chosenWriter ?? "the chosen writer"}) with subagent({ agent, output, task }) where output is an approved output path; the extension blocks writer spawns whose output is outside the approved plan. The parent keeps CLI mutations (gh/git). Run the writer BEFORE the end-of-process reviewer pass (grill_run_reviewer). If the writer fails or times out, fall back to finishing the writes yourself and notify the user.`
 			: state.delegate === false
 				? "Write delegation is OFF for this batch: the parent writes the approved outputs directly."
 				: "";

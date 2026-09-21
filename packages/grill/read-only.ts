@@ -7,15 +7,23 @@ function shellSegments(command: string): string[] {
 
 function isReadOnlyGit(args: string[]): boolean {
 	const sub = args[1];
+	if (sub === "branch" || sub === "remote") {
+		// git branch <name> creates; -d/-D/-m/-M/-c mutate. git remote add/set-url/
+		// rename/remove/prune mutate; only the bare listing forms are read-only.
+		const mutatingFlags =
+			/^-(d|D|m|M|c)$|^--(delete|move|copy|edit|set-url|add|rename|remove|prune|update)$/;
+		const rest = args.slice(2);
+		const hasBareToken = rest.some((token) => !token.startsWith("-"));
+		const hasMutatingFlag = rest.some((token) => mutatingFlags.test(token));
+		return !hasBareToken && !hasMutatingFlag;
+	}
 	return [
 		"status",
 		"log",
 		"diff",
 		"show",
-		"branch",
 		"grep",
 		"ls-files",
-		"remote",
 		"rev-parse",
 		"describe",
 	].includes(sub);
@@ -114,6 +122,19 @@ export function isProbablyReadOnlyBash(command: string): boolean {
 				"echo",
 			].includes(cmd)
 		) {
+			// Allowlisted commands can still mutate via specific flags.
+			if (
+				cmd === "sed" &&
+				args.slice(1).some((a) => /^-i/.test(a) || /^--in-place/.test(a))
+			)
+				return false;
+			if (
+				cmd === "find" &&
+				/(-delete(\s|$)|-(exec|execdir|ok|okdir|fls|fprint[0-9a-z]*)\b)/.test(
+					trimmed,
+				)
+			)
+				return false;
 			continue;
 		}
 		if (["npm", "pnpm", "yarn"].includes(cmd)) {

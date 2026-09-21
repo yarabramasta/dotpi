@@ -48,9 +48,27 @@ interface AsyncCompletePayload {
 	[key: string]: unknown;
 }
 
+/** Extract the child run id from a pi-subagents RPC spawn reply. The reply
+ * data is the tool result projection { text, details } where details carries
+ * { mode, runId, asyncId } for single-child spawns. Pure and exported for
+ * tests. */
+export function extractRunId(reply: RpcReply | undefined): string | undefined {
+	const details = reply?.data?.details as
+		| { runId?: string; id?: string }
+		| undefined;
+	return (
+		details?.runId ??
+		details?.id ??
+		reply?.data?.runId ??
+		reply?.data?.id ??
+		undefined
+	);
+}
+
 /** Spawn one read-only reviewer through the pi-subagents RPC and resolve with
  * its report. Extension-driven spawn (first-class): the model never launches
- * the reviewer itself. Returns undefined fields when the run cannot start. */
+ * the reviewer itself. Listeners are registered once and always detached on
+ * settle (reply failure, no run id, completion, or timeout). */
 function spawnReviewer(
 	pi: ExtensionAPI,
 	agent: string,
@@ -63,61 +81,17 @@ function spawnReviewer(
 	return new Promise((resolve) => {
 		let runId: string | undefined;
 		let settled = false;
-		const offReply = pi.events.on(
-			`subagents:rpc:v1:reply:${requestId}`,
-			(data: unknown) => {
-				const reply = data as RpcReply | undefined;
-				if (!reply?.success) {
-					resolve({
-						summary: "",
-						skippedReason: `pi-subagents spawn failed: ${reply?.error?.message ?? "unknown error"}`,
-					});
-					return;
-				}
-				runId = reply.data?.runId ?? reply.data?.id;
-				if (!runId) {
-					resolve({
-						summary: "",
-						skippedReason: "pi-subagents spawn returned no run id",
-					});
-				}
-			},
-		);
-		const offComplete = pi.events.on(ASYNC_COMPLETE_EVENT, (data: unknown) => {
-			if (!runId) return;
-			const payload = data as AsyncCompletePayload | undefined;
-			if (payload?.runId !== runId) return;
-			const child = payload.results?.find((r) => r?.summary);
-			const summary = child?.summary ?? payload.summary;
-			resolve(
-				summary
-					? { summary: summary.slice(0, 12000) }
-					: {
-							summary: "",
-							skippedReason: "reviewer completed without a report",
-						},
-			);
-		});
-		const timeout = setTimeout(() => {
-			resolve({
-				summary: "",
-				skippedReason: `reviewer run timed out after ${Math.round(REVIEWER_TIMEOUT_MS / 60_000)} min`,
-			});
-		}, REVIEWER_TIMEOUT_MS);
-		timeout.unref?.();
+		let timeout: ReturnType<typeof setTimeout> | undefined;
 
-		// Single settle guard: first resolve wins, listeners detached.
-		const guardedResolve = (view: GroundingView | undefined) => {
+		const guardedResolve = (view: GroundingView) => {
 			if (settled) return;
 			settled = true;
-			clearTimeout(timeout);
+			if (timeout) clearTimeout(timeout);
 			offReply();
 			offComplete();
 			resolve(view);
 		};
-		// Wrap the two inline resolvers through guardedResolve.
-		offReply();
-		offComplete();
+
 		const replyHandler = (data: unknown) => {
 			const reply = data as RpcReply | undefined;
 			if (!reply?.success) {
@@ -127,7 +101,7 @@ function spawnReviewer(
 				});
 				return;
 			}
-			runId = reply.data?.runId ?? reply.data?.id;
+			runId = extractRunId(reply);
 			if (!runId) {
 				guardedResolve({
 					summary: "",
@@ -135,6 +109,7 @@ function spawnReviewer(
 				});
 			}
 		};
+
 		const completeHandler = (data: unknown) => {
 			if (!runId) return;
 			const payload = data as AsyncCompletePayload | undefined;
@@ -150,8 +125,20 @@ function spawnReviewer(
 						},
 			);
 		};
-		pi.events.on(`subagents:rpc:v1:reply:${requestId}`, replyHandler);
-		pi.events.on(ASYNC_COMPLETE_EVENT, completeHandler);
+
+		const offReply = pi.events.on(
+			`subagents:rpc:v1:reply:${requestId}`,
+			replyHandler,
+		);
+		const offComplete = pi.events.on(ASYNC_COMPLETE_EVENT, completeHandler);
+
+		timeout = setTimeout(() => {
+			guardedResolve({
+				summary: "",
+				skippedReason: `reviewer run timed out after ${Math.round(REVIEWER_TIMEOUT_MS / 60_000)} min`,
+			});
+		}, REVIEWER_TIMEOUT_MS);
+		timeout.unref?.();
 
 		pi.events.emit(RPC_REQUEST_EVENT, {
 			version: 1,

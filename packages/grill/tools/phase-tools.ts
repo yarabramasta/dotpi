@@ -414,7 +414,9 @@ export function registerPhaseTools(
 			runtime.state.outputPhase = true;
 			runtime.state.approvedOutputPlan = params.outputPlan;
 			runtime.state.outputPaths = approvedOutputPaths(params.outputPlan);
-			runtime.state.availableWriters = [];
+			// Keep availableWriters populated through the output phase: events.ts
+			// uses it to block writer spawns whose output path is outside the
+			// approved plan. Cleared again in finish_output_phase.
 			runtime.state.reviewer = undefined;
 			runtime.state.reviewerRounds = 0;
 			runtime.state.lastChangeSummary = runtime.state.delegate

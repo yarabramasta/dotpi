@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import { composeDossier, type DossierParts } from "../dossier.ts";
 import { asSubagentsValue, DEFAULT_STATE } from "../state.ts";
 import { shouldRewriteTitle, titleFromTopic } from "../title.ts";
+import { extractRunId } from "../tools/reviewer-tools.ts";
 
 describe("composeDossier", () => {
 	test("empty parts produce empty string", () => {
@@ -30,6 +31,29 @@ describe("composeDossier", () => {
 		const dossier = composeDossier({ structure });
 		expect(dossier.length).toBeLessThanOrEqual(2214); // cap + "\n… (truncated)"
 		expect(dossier.endsWith("… (truncated)")).toBe(true);
+	});
+});
+
+describe("extractRunId", () => {
+	test("reads details.runId first (pi-subagents projection shape)", () => {
+		expect(
+			extractRunId({
+				success: true,
+				data: {
+					text: "spawned",
+					details: { mode: "single", runId: "abc-123" },
+				},
+			}),
+		).toBe("abc-123");
+		expect(
+			extractRunId({ success: true, data: { details: { id: "xyz" } } }),
+		).toBe("xyz");
+	});
+
+	test("falls back to top-level ids and handles missing", () => {
+		expect(extractRunId({ success: true, data: { runId: "top" } })).toBe("top");
+		expect(extractRunId({ success: true, data: {} })).toBeUndefined();
+		expect(extractRunId(undefined)).toBeUndefined();
 	});
 });
 
