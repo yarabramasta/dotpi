@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { composeDossier, type DossierParts } from "../dossier.ts";
 import { asSubagentsValue, DEFAULT_STATE } from "../state.ts";
+import { shouldRewriteTitle, titleFromTopic } from "../title.ts";
 
 describe("composeDossier", () => {
 	test("empty parts produce empty string", () => {
@@ -54,5 +55,41 @@ describe("state defaults", () => {
 		expect(DEFAULT_STATE.subagents).toBe(true);
 		expect(DEFAULT_STATE.schemaVersion).toBeGreaterThanOrEqual(2);
 		expect(DEFAULT_STATE.reviewerRounds).toBe(0);
+	});
+});
+
+describe("shouldRewriteTitle", () => {
+	test("rewrites unset and generic grill titles", () => {
+		expect(shouldRewriteTitle(undefined)).toBe(true);
+		expect(shouldRewriteTitle("")).toBe(true);
+		expect(shouldRewriteTitle("Start a Grill Me session for this topic:")).toBe(
+			true,
+		);
+		expect(shouldRewriteTitle("grill")).toBe(true);
+		expect(shouldRewriteTitle("/grill auth refactor")).toBe(true);
+	});
+
+	test("keeps custom titles", () => {
+		expect(shouldRewriteTitle("Refactor auth module")).toBe(false);
+		expect(shouldRewriteTitle("pi - my-project")).toBe(false);
+	});
+});
+
+describe("titleFromTopic", () => {
+	test("short topic passes through with prefix", () => {
+		expect(titleFromTopic("auth refactor")).toBe("grill: auth refactor");
+	});
+
+	test("long topic cuts at word boundary under 40 chars", () => {
+		const title = titleFromTopic(
+			"complete re-design of the grill extension with dialog style UX and subagents",
+		);
+		expect(title.startsWith("grill: ")).toBe(true);
+		expect(title.length).toBeLessThanOrEqual(48); // "grill: " + 40 + ellipsis
+		expect(title.endsWith("…")).toBe(true);
+	});
+
+	test("empty topic falls back", () => {
+		expect(titleFromTopic("   ")).toBe("grill: untitled");
 	});
 });

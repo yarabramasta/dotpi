@@ -25,6 +25,7 @@ import {
 	RESEARCH_MODES,
 	runtime,
 } from "./state.js";
+import { shouldRewriteTitle, titleFromTopic } from "./title.js";
 
 export function registerCommands(
 	pi: ExtensionAPI,
@@ -66,6 +67,14 @@ export function registerCommands(
 		runtime.state.lastChangeSummary = dossier
 			? "Grounding dossier captured"
 			: "Grounding dossier unavailable (cymbal/git)";
+
+		// Session-title fix: rewrite generic grill-default titles so resume lists
+		// are distinguishable. Custom user titles are left alone.
+		if (shouldRewriteTitle(pi.getSessionName?.())) {
+			pi.setSessionName?.(titleFromTopic(topic));
+			runtime.state.titleSet = true;
+		}
+
 		persist();
 		updateUi(ctx);
 
