@@ -55,7 +55,7 @@ def build_parser() -> argparse.ArgumentParser:
         "-f",
         "--force",
         action="store_true",
-        help="overwrite existing selected extensions",
+        help="overwrite existing selected extensions and skills",
     )
     install.add_argument(
         "-a",
@@ -75,6 +75,19 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-extensions",
         action="store_true",
         help="install configuration without copying extensions",
+    )
+    skill_group = install.add_mutually_exclusive_group()
+    skill_group.add_argument(
+        "-S",
+        "--skill",
+        action="append",
+        help="skill name; repeat or comma-separate",
+    )
+    skill_group.add_argument(
+        "-N",
+        "--no-skills",
+        action="store_true",
+        help="install configuration without copying skills",
     )
     install.add_argument(
         "-d",

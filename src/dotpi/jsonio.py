@@ -31,7 +31,16 @@ def extension_sources(root: Path) -> dict[str, Path]:
     return {path.name: path for path in sorted(extensions.iterdir()) if path.is_dir()}
 
 
-def validate_source(root: Path, include_extensions: bool = True) -> None:
+def skill_sources(root: Path) -> dict[str, Path]:
+    skills = root / "agent" / "skills"
+    if not skills.is_dir():
+        return {}
+    return {path.name: path for path in sorted(skills.iterdir()) if path.is_dir()}
+
+
+def validate_source(
+    root: Path, include_extensions: bool = True, include_skills: bool = True
+) -> None:
     if not (root / "agent").is_dir():
         die("repository has no agent directory")
     for path in direct_json_sources(root):
@@ -39,22 +48,28 @@ def validate_source(root: Path, include_extensions: bool = True) -> None:
     auth = root / AUTH
     if auth.exists():
         parse_json(auth)
-    if not include_extensions:
+    if include_extensions:
+        for name, extension in extension_sources(root).items():
+            manifest_path = extension / "package.json"
+            if not manifest_path.is_file():
+                die(f"extension {name} has no package.json")
+            manifest = parse_json(manifest_path)
+            if not isinstance(manifest, dict) or not isinstance(
+                manifest.get("pi"), dict
+            ):
+                die(f"extension {name} package.json has no pi manifest")
+            entries = manifest["pi"].get("extensions")
+            if not isinstance(entries, list) or not entries:
+                die(f"extension {name} has no pi extension entrypoint")
+            for entry in entries:
+                entry_path = extension / str(entry)
+                if not entry_path.is_file():
+                    die(f"extension {name} entrypoint is missing: {entry}")
+    if not include_skills:
         return
-    for name, extension in extension_sources(root).items():
-        manifest_path = extension / "package.json"
-        if not manifest_path.is_file():
-            die(f"extension {name} has no package.json")
-        manifest = parse_json(manifest_path)
-        if not isinstance(manifest, dict) or not isinstance(manifest.get("pi"), dict):
-            die(f"extension {name} package.json has no pi manifest")
-        entries = manifest["pi"].get("extensions")
-        if not isinstance(entries, list) or not entries:
-            die(f"extension {name} has no pi extension entrypoint")
-        for entry in entries:
-            entry_path = extension / str(entry)
-            if not entry_path.is_file():
-                die(f"extension {name} entrypoint is missing: {entry}")
+    for name, skill in skill_sources(root).items():
+        if not (skill / "SKILL.md").is_file():
+            die(f"skill {name} has no SKILL.md")
 
 
 def json_preview(source: Path, destination: Path) -> str | None:

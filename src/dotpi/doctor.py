@@ -106,6 +106,54 @@ def doctor_extension_result(extension: Path) -> dict[str, str]:
     return doctor_result(name, "PASS", f"{extension}: valid manifest and entrypoints")
 
 
+def doctor_skill_result(skill: Path) -> dict[str, str]:
+    name = f"skill:{skill.name}"
+    if skill.is_symlink():
+        return doctor_result(name, "FAIL", f"{skill}: symlink not followed")
+    if not skill.is_dir():
+        return doctor_result(
+            name,
+            "FAIL",
+            f"{skill}: wrong type; expected directory",
+        )
+    try:
+        readable = os.access(skill, os.R_OK | os.X_OK)
+    except OSError as error:
+        return doctor_result(name, "FAIL", f"{skill}: not readable: {error}")
+    if not readable:
+        return doctor_result(name, "FAIL", f"{skill}: not readable")
+    skill_path = skill / "SKILL.md"
+    if skill_path.is_symlink() or not skill_path.is_file():
+        return doctor_result(name, "FAIL", f"{skill_path}: missing readable file")
+    try:
+        skill_readable = os.access(skill_path, os.R_OK)
+    except OSError as error:
+        return doctor_result(name, "FAIL", f"{skill_path}: not readable: {error}")
+    if not skill_readable:
+        return doctor_result(name, "FAIL", f"{skill_path}: not readable")
+    return doctor_result(name, "PASS", f"{skill}: valid SKILL.md")
+
+
+def doctor_component_dir(root: Path, label: str, entry_check) -> list[dict[str, str]]:
+    if not root.exists() and not root.is_symlink():
+        return [doctor_result(label, "PASS", f"no installed {label}")]
+    if root.is_symlink() or not root.is_dir():
+        return [doctor_result(label, "FAIL", f"{root}: invalid {label} directory")]
+    try:
+        readable = os.access(root, os.R_OK | os.X_OK)
+    except OSError as error:
+        return [doctor_result(label, "FAIL", f"{root}: not readable: {error}")]
+    if not readable:
+        return [doctor_result(label, "FAIL", f"{root}: not readable")]
+    try:
+        entries = sorted(
+            path for path in root.iterdir() if path.is_dir() or path.is_symlink()
+        )
+    except OSError as error:
+        return [doctor_result(label, "FAIL", f"cannot list {root}: {error}")]
+    return [entry_check(path) for path in entries]
+
+
 def doctor_command(args: argparse.Namespace) -> None:
     target = target_path(args.target)
     checks: list[dict[str, str]] = []
@@ -121,6 +169,7 @@ def doctor_command(args: argparse.Namespace) -> None:
         checks.append(doctor_result("auth", "SKIP", "agent prerequisite failed"))
         checks.append(doctor_result("config", "SKIP", "agent prerequisite failed"))
         checks.append(doctor_result("extensions", "SKIP", "agent prerequisite failed"))
+        checks.append(doctor_result("skills", "SKIP", "agent prerequisite failed"))
     else:
         agent_ok, agent_message = doctor_readable_directory(agent)
         checks.append(
@@ -134,6 +183,7 @@ def doctor_command(args: argparse.Namespace) -> None:
             checks.append(
                 doctor_result("extensions", "SKIP", "agent prerequisite failed")
             )
+            checks.append(doctor_result("skills", "SKIP", "agent prerequisite failed"))
         else:
             auth = agent / AUTH.name
             checks.append(
@@ -161,53 +211,15 @@ def doctor_command(args: argparse.Namespace) -> None:
                     )
                 )
             extensions_root = agent / "extensions"
-            if not extensions_root.exists() and not extensions_root.is_symlink():
-                checks.append(
-                    doctor_result("extensions", "PASS", "no installed extensions")
+            checks.extend(
+                doctor_component_dir(
+                    extensions_root, "extensions", doctor_extension_result
                 )
-            elif extensions_root.is_symlink() or not extensions_root.is_dir():
-                checks.append(
-                    doctor_result(
-                        "extensions",
-                        "FAIL",
-                        f"{extensions_root}: invalid extensions directory",
-                    )
-                )
-            else:
-                try:
-                    readable = os.access(extensions_root, os.R_OK | os.X_OK)
-                except OSError as error:
-                    checks.append(
-                        doctor_result(
-                            "extensions",
-                            "FAIL",
-                            f"{extensions_root}: not readable: {error}",
-                        )
-                    )
-                    readable = False
-                if not readable:
-                    checks.append(
-                        doctor_result(
-                            "extensions", "FAIL", f"{extensions_root}: not readable"
-                        )
-                    )
-                else:
-                    try:
-                        extensions = sorted(
-                            path
-                            for path in extensions_root.iterdir()
-                            if path.is_dir() or path.is_symlink()
-                        )
-                    except OSError as error:
-                        checks.append(
-                            doctor_result(
-                                "extensions",
-                                "FAIL",
-                                f"cannot list {extensions_root}: {error}",
-                            )
-                        )
-                        extensions = []
-                    checks.extend(doctor_extension_result(path) for path in extensions)
+            )
+            skills_root = agent / "skills"
+            checks.extend(
+                doctor_component_dir(skills_root, "skills", doctor_skill_result)
+            )
     overall = (
         "FAIL"
         if any(check["status"] == "FAIL" for check in checks)
