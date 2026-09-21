@@ -11,6 +11,11 @@ export type Intent =
 export type ResearchMode = "off" | "ask" | "auto";
 export type GrillPhase = "interview" | "output-selection" | "output";
 
+/** Master switch for the first-class subagent integration (PRD: spawn can be
+ * deactivated via settings/command). Defaults on; gated by settings file and
+ * /grill subagents on|off. */
+export type SubagentsSetting = boolean;
+
 export interface ScoutsDetails {
 	scouts: ScoutAgent[];
 	assistEnabled?: boolean;
@@ -52,8 +57,9 @@ export interface GrillState {
 	checkpoint: string;
 	phase: GrillPhase;
 	outputPhase: boolean;
+	dossier?: { text: string; at: number };
 	decisions: GrillDecision[];
-	assistEnabled?: boolean;
+	subagents: SubagentsSetting;
 	availableScouts: ScoutAgent[];
 	grounding?: GroundingView & { at: number };
 	availableAuditors: ScoutAgent[];
@@ -94,7 +100,8 @@ export const DEFAULT_STATE: GrillState = {
 	approvedOutputPlan: undefined,
 	alternatives: [],
 	decisions: [],
-	assistEnabled: undefined,
+	dossier: undefined,
+	subagents: true,
 	availableScouts: [],
 	grounding: undefined,
 	availableAuditors: [],

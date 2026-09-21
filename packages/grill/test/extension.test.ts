@@ -9,8 +9,6 @@ const TOOL_NAMES = [
 	"grill_set_scouts",
 	"grill_show_grounding",
 	"grill_set_writers",
-	"grill_set_auditors",
-	"grill_show_output_audit",
 	"grill_enter_output_selection_phase",
 	"grill_finish_output_selection_phase",
 	"grill_enter_output_phase",
@@ -67,7 +65,6 @@ describe("buildSystemPrompt", () => {
 			...cloneState(DEFAULT_STATE),
 			active: true,
 			topic: "Example topic",
-			assistEnabled: true,
 		};
 		const first = buildSystemPrompt(state);
 		const second = buildSystemPrompt(state);

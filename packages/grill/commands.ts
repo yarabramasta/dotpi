@@ -7,8 +7,7 @@ import {
 	getMarkdownTheme,
 } from "@earendil-works/pi-coding-agent";
 import { Markdown, matchesKey, truncateToWidth } from "@earendil-works/pi-tui";
-import { ASSIST_OPTIONS } from "./options.js";
-import { showPicker } from "./picker.js";
+import { buildDossier } from "./dossier.js";
 import { initialCheckpoint, statusMarkdown } from "./prompts.js";
 import type { GrillHelpers } from "./runtime.js";
 import {
@@ -50,25 +49,20 @@ export function registerCommands(
 		persist();
 		updateUi(ctx);
 
-		if (ctx.hasUI) {
-			const result = await showPicker(
-				ctx,
-				"Use installed read-only subagents to ground this Grill Me session?",
-				ASSIST_OPTIONS,
-			);
-			runtime.state.assistEnabled =
-				result.status === "answered" && result.value === "yes";
-		} else {
-			runtime.state.assistEnabled = false;
-		}
-		runtime.state.lastChangeSummary = runtime.state.assistEnabled
-			? "Grounding assist enabled for this session"
-			: "Grounding assist disabled for this session";
+		// First-class grounding: one compact dossier up front, no per-session
+		// enable/disable decision. Best-effort — failure just skips the section.
+		const dossier = await buildDossier(pi, ctx.cwd);
+		runtime.state.dossier = dossier
+			? { text: dossier, at: Date.now() }
+			: undefined;
+		runtime.state.lastChangeSummary = dossier
+			? "Grounding dossier captured"
+			: "Grounding dossier unavailable (cymbal/git)";
 		persist();
 		updateUi(ctx);
 
 		pi.sendUserMessage(
-			`Start a Grill Me session for this topic:\n\n${topic}\n\nGrounding assist is ${runtime.state.assistEnabled ? "enabled" : "disabled"} for this session. Begin by updating the checkpoint if needed, seed or maintain the coverage checklist and decision branches, then call grill_set_alternatives with 2-5 concrete answer choices and ask the first focused Socratic question. Call grill_set_alternatives so an ↑/↓ + Enter picker overlay opens; it returns the user's structured answer as the tool result, which you record in the checkpoint before asking the next question. Use the single thorough grilling style. When the interview is ready to end, the mandatory hardcoded output-selection phase must be entered with grill_enter_output_selection_phase before producing outputs or stopping.`,
+			`Start a Grill Me session for this topic:\n\n${topic}\n\nGrounding is first-class for this session: the repo dossier below was captured automatically; use cymbal tools for spot-checks and grill_set_scouts + one read-only scout when cymbal cannot answer.\n\n${dossier ? `Repo grounding dossier (auto-captured at session start):\n\n${dossier}\n\n` : ""}Begin by updating the checkpoint if needed, seed or maintain the coverage checklist and decision branches, then call grill_set_alternatives with 2-5 concrete answer choices and ask the first focused Socratic question. Call grill_set_alternatives so an ↑/↓ + Enter picker overlay opens; it returns the user's structured answer as the tool result, which you record in the checkpoint before asking the next question. Use the single thorough grilling style. When the interview is ready to end, the mandatory hardcoded output-selection phase must be entered with grill_enter_output_selection_phase before producing outputs or stopping.`,
 		);
 	}
 

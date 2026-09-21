@@ -41,7 +41,7 @@ We are starting a grill-me session to reach shared understanding before producin
 - Intent: ${state.intent}
 - Grilling style: thorough Socratic interview
 - Research mode: ${state.researchMode}
-- Grounding assist: ${state.assistEnabled === undefined ? "unanswered" : state.assistEnabled ? "enabled" : "disabled"}
+- Grounding: first-class (auto dossier at start; cymbal spot-checks + read-only scouts as needed)
 - Eligible grounding scouts: ${state.availableScouts.length ? state.availableScouts.map((scout) => scout.name).join(", ") : "none discovered"}
 - Eligible output auditors: ${state.availableAuditors.length ? state.availableAuditors.map((a) => a.name).join(", ") : "none discovered"}
 - Eligible write delegates: ${state.availableWriters.length ? state.availableWriters.map((w) => w.name).join(", ") : "none discovered"}
@@ -102,11 +102,9 @@ export function statusMarkdown(state: GrillState): string {
 - Intent: ${state.intent}
 - Style: thorough default
 - Research: ${state.researchMode}
-- Grounding assist: ${state.assistEnabled === undefined ? "unanswered" : state.assistEnabled ? "on" : "off"}
-- Eligible scouts: ${state.availableScouts.length ? state.availableScouts.map((scout) => scout.name).join(", ") : "(none discovered)"}
-- Eligible write delegates: ${state.availableWriters.length ? state.availableWriters.map((w) => w.name).join(", ") : "(none discovered)"}${state.delegate === true ? ` (active: ${state.chosenWriter ?? "?"})` : state.delegate === false ? " (parent writes)" : ""}
 - Phase: ${phaseLabel(state)}
 - Output preference: ${describeOutputPreference(state)}
+- Subagent integration: ${state.subagents === false ? "off (/grill subagents on to re-enable)" : "on (/grill subagents off to disable)"}
 ${
 	state.outputSelection
 		? `- Output selection rationale: ${state.outputSelection.readinessRationale}
@@ -217,11 +215,9 @@ export function buildSystemPrompt(state: GrillState): string {
 	};
 
 	const groundingGuidance =
-		state.assistEnabled === true
-			? 'Grounding assist is enabled. Before each repo-relevant question, use cymbal_* tools first when they can answer. If cymbal cannot answer, call subagent({ action: "list", capabilities: true }), pass its live capability rows to grill_set_scouts, then run one eligible read-only scout with subagent({ agent, task }). Call grill_show_grounding with a concise evidence summary before the question. If grounding fails, call grill_show_grounding with skippedReason and continue ungrounded. If a scout reports follow-up work, use subagent mission.create/missionId for durable escalation rather than silently launching repeated work.'
-			: state.assistEnabled === false
-				? "Grounding assist is disabled for this session. Do not call subagents for Grill Me grounding."
-				: "Grounding assist was not answered. Ask the user before using subagents for Grill Me grounding.";
+		state.subagents === false
+			? "Subagent integration is OFF for this session (/grill subagents on re-enables). Ground with cymbal tools only; do not call subagents."
+			: 'Grounding is first-class. A compact repo dossier was captured at session start — use it; before each repo-relevant question, use cymbal_* tools first when they can answer. If cymbal cannot answer, call subagent({ action: "list", capabilities: true }), pass its live capability rows to grill_set_scouts, then run one eligible read-only scout with subagent({ agent, task }). Call grill_show_grounding with a concise evidence summary before the question. If grounding fails, call grill_show_grounding with skippedReason and continue ungrounded. If a scout reports follow-up work, use subagent mission.create/missionId for durable escalation rather than silently launching repeated work.';
 
 	const phase = currentPhase(state);
 	const delegationGuidance =
@@ -236,7 +232,7 @@ export function buildSystemPrompt(state: GrillState): string {
 			: "";
 	const outputPhaseGuidance =
 		phase === "output"
-			? `Approved output phase: produce only the approved outputs. If a required mutation is blocked by permissions, auth, or repo setup, ask the user instead of bypassing or faking success. ${GITHUB_REPO_PERMISSION_GUIDANCE} ${delegationGuidance} When done, call grill_finish_output_phase.${state.assistEnabled === true ? ' If grounding/output audit is enabled, after producing/applying the approved output, run ONE advisory output audit: call subagent({ action: "list", capabilities: true }), pass the rows to grill_set_auditors (which derives the audit task from the approved plan; you may override it), run one eligible auditor with subagent({ agent, task }), then record the result with grill_show_output_audit. The audit is advisory and never blocks grill_finish_output_phase. If no eligible auditor exists or the run fails, call grill_show_output_audit with a skippedReason and skip the audit. While the audit window is active (after grill_set_auditors, before grill_show_output_audit), subagent spawns must target one of the eligible auditors; other subagent calls are blocked until the audit is recorded.' : ""}`
+			? `Approved output phase: produce only the approved outputs. If a required mutation is blocked by permissions, auth, or repo setup, ask the user instead of bypassing or faking success. ${GITHUB_REPO_PERMISSION_GUIDANCE} ${delegationGuidance} When done, call grill_finish_output_phase. If subagent integration is on, run ONE end-of-process reviewer pass: call subagent({ action: "list", capabilities: true }), pass the rows to grill_run_reviewer (it spawns one read-only reviewer, records PASS or a gap list, and caps at 2 rounds). If gaps are reported, fix them, then call grill_run_reviewer once more; the cap is hard.`
 			: phase === "output-selection"
 				? `You are in the mandatory output-selection phase. Do not ask new interview questions unless the user chooses to continue grilling. Ask the user to choose outputs/continue/review/stop from the active output-selection alternatives. If they approve concrete output production, call grill_enter_output_phase. If they choose to continue or stop without output, call grill_finish_output_selection_phase.${writerDiscoveryGuidance}`
 				: "You are in read-only interview mode. Do not implement, write files, create issues, install packages, run mutating commands, or stop the Grill Me work. When ready to end the interview, first update the checkpoint if needed, then call grill_enter_output_selection_phase to enter the mandatory hardcoded output-selection phase before output production or stopping.";
@@ -247,10 +243,8 @@ export function buildSystemPrompt(state: GrillState): string {
 
 	const prompt = `\n\n[GRILL ME EXTENSION ACTIVE]\nTopic:\n${state.topic}\n\nConfiguration:\n- Intent preset: ${state.intent}\n- Grilling style: thorough default
 - Research mode: ${state.researchMode}
-- Grounding assist: ${state.assistEnabled === undefined ? "unanswered" : state.assistEnabled ? "enabled" : "disabled"}
-- Eligible grounding scouts: ${state.availableScouts.length ? state.availableScouts.map((scout) => scout.name).join(", ") : "none discovered"}
-- Eligible output auditors: ${state.availableAuditors.length ? state.availableAuditors.map((a) => a.name).join(", ") : "none discovered"}
-- Eligible write delegates: ${state.availableWriters.length ? state.availableWriters.map((w) => w.name).join(", ") : "none discovered"}
+- Grounding: first-class (auto dossier at start; cymbal spot-checks + read-only scouts as needed)
+- Subagent integration: ${state.subagents === false ? "off (/grill subagents on re-enables)" : "on"}
 - Output preference: ${describeOutputPreference(state)}
 - Phase: ${phase}\n- Output phase: ${state.outputPhase ? "yes" : "no"}${outputSelectionSummary}\n\nCurrent checkpoint:\n${state.checkpoint || "(No checkpoint yet.)"}\n\nCurrent picker alternatives (shown in the ↑/↓ + Enter overlay):\n${state.alternatives.length ? state.alternatives.map((a) => `- ${a.label}: ${a.value}${a.description ? ` (${a.description})` : ""}`).join("\n") : "(None set.)"}\n\nDecisions so far:\n${state.decisions.length ? state.decisions.map((d) => `- ${d.question} → ${d.label}${d.note ? ` (note: ${d.note})` : ""}`).join("\n") : "(None recorded.)"}\n\nBehavior:\n- Apply the Socratic method to reach shared understanding of the topic.\n- Avoid hardcoded interview phases. Adapt the dimensions you explore to the subject and to the user's expertise.\n- The output-selection phase is the one hardcoded terminal phase: it is mandatory before stopping the Grill Me work, stopping without outputs, or producing outputs.\n- Treat desired outcome mode as important: learning, building, researching, content/tutorial creation, decision review, etc.\n- Do not set or assume a default output mode for the session. A missing output preference means no output has been chosen yet, not design-doc or any other default.\n- Treat /grill output as a preference only, not production approval. Always explicitly ask/confirm which output(s) to produce before output production.\n- Support 1..n outputs in one approved output plan; for example, a design doc AND uploaded GitHub issues.\n- The output-selection phase must explicitly mention concrete output destinations by name. Use this catalog and allow custom combinations:\n${outputDestinationOptionsMarkdown()}\n- ${groundingGuidance}
 - Ask mostly one focused question at a time. Small grouped questions are allowed only when inseparable.
