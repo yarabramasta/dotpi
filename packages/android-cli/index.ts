@@ -1,6 +1,9 @@
 import { existsSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type {
+	ExtensionAPI,
+	ExtensionContext,
+} from "@earendil-works/pi-coding-agent";
 import { registerDocsTool } from "./tools/docs.js";
 import { registerEmulatorTool } from "./tools/emulator.js";
 import { registerInfoTool } from "./tools/info.js";
@@ -15,6 +18,31 @@ import { registerSdkTool } from "./tools/sdk.js";
 import { registerStudioTool } from "./tools/studio.js";
 
 // ponytail: marker-based discovery avoids running slow Gradle commands at startup.
+const MODULE_SKIP = new Set(["node_modules", "build", "dist"]);
+
+const MANIFEST_PATHS = [
+	"src/main/AndroidManifest.xml",
+	"src/androidMain/AndroidManifest.xml", // Kotlin Multiplatform android target
+];
+
+function listModuleDirs(directory: string): string[] {
+	try {
+		return readdirSync(directory, { withFileTypes: true }).flatMap((entry) =>
+			entry.isDirectory() &&
+			!entry.name.startsWith(".") &&
+			!MODULE_SKIP.has(entry.name)
+				? [join(directory, entry.name)]
+				: [],
+		);
+	} catch {
+		return [];
+	}
+}
+
+function hasAndroidManifest(directory: string): boolean {
+	return MANIFEST_PATHS.some((file) => existsSync(join(directory, file)));
+}
+
 function isAndroidProject(directory: string): boolean {
 	const root = resolve(directory);
 	const hasGradleFiles = [
@@ -25,22 +53,16 @@ function isAndroidProject(directory: string): boolean {
 	].some((file) => existsSync(join(root, file)));
 	if (!hasGradleFiles) return false;
 
-	const hasManifest = [
-		"src/main/AndroidManifest.xml",
-		"app/src/main/AndroidManifest.xml",
-	].some((file) => existsSync(join(root, file)));
-	if (hasManifest) return true;
+	if (hasAndroidManifest(root)) return true;
 
-	// Support projects whose Android module is not named "app".
-	try {
-		return readdirSync(root, { withFileTypes: true }).some(
-			(entry) =>
-				entry.isDirectory() &&
-				existsSync(join(root, entry.name, "src/main/AndroidManifest.xml")),
-		);
-	} catch {
-		return false;
+	// Modules nest up to two levels deep: app/, apps/member/, core/ui/ …
+	for (const moduleDir of listModuleDirs(root)) {
+		if (hasAndroidManifest(moduleDir)) return true;
+		for (const nested of listModuleDirs(moduleDir)) {
+			if (hasAndroidManifest(nested)) return true;
+		}
 	}
+	return false;
 }
 
 function findAndroidProject(
@@ -54,11 +76,18 @@ function registerCommands(pi: ExtensionAPI, enableStudioTool: () => void) {
 		description: "Initialize Android CLI environment and install skills",
 		handler: async (_args, ctx) => {
 			ctx.ui.notify("Running android init...", "info");
-			const result = await pi.exec("android", ["init"], { timeout: 60_000 });
-			ctx.ui.notify(
-				result.stdout?.trim() || "android init completed",
-				result.code === 0 ? "info" : "error",
-			);
+			ctx.ui.setStatus("android", "initializing…");
+			try {
+				const result = await pi.exec("android", ["init"], { timeout: 60_000 });
+				ctx.ui.notify(
+					result.stdout?.trim() || "android init completed",
+					result.code === 0 ? "info" : "error",
+				);
+			} catch (error) {
+				ctx.ui.notify(`android init failed: ${error}`, "error");
+			} finally {
+				ctx.ui.setStatus("android", undefined);
+			}
 		},
 	});
 
@@ -71,13 +100,20 @@ function registerCommands(pi: ExtensionAPI, enableStudioTool: () => void) {
 			);
 			if (!ok) return;
 			ctx.ui.notify("Updating Android CLI...", "info");
-			const result = await pi.exec("android", ["update"], {
-				timeout: 120_000,
-			});
-			ctx.ui.notify(
-				result.stdout?.trim() || "android update completed",
-				result.code === 0 ? "info" : "error",
-			);
+			ctx.ui.setStatus("android", "updating…");
+			try {
+				const result = await pi.exec("android", ["update"], {
+					timeout: 120_000,
+				});
+				ctx.ui.notify(
+					result.stdout?.trim() || "android update completed",
+					result.code === 0 ? "info" : "error",
+				);
+			} catch (error) {
+				ctx.ui.notify(`android update failed: ${error}`, "error");
+			} finally {
+				ctx.ui.setStatus("android", undefined);
+			}
 		},
 	});
 
@@ -111,6 +147,11 @@ export default function androidCliExtension(pi: ExtensionAPI) {
 	let toolsRegistered = false;
 	let commandsRegistered = false;
 	let studioAvailable = false;
+	let active = true;
+
+	pi.on("session_shutdown", () => {
+		active = false;
+	});
 
 	const enableStudioTool = () => {
 		if (studioAvailable) return;
@@ -132,40 +173,29 @@ export default function androidCliExtension(pi: ExtensionAPI) {
 		toolsRegistered = true;
 	};
 
-	pi.on("session_start", async (_event, ctx) => {
-		const projectDir = findAndroidProject([ctx.cwd, process.cwd()]);
-		if (!projectDir) {
-			ctx.ui.setStatus("android-cli", "");
-			return;
-		}
-
-		registerAndroidTools();
-		if (!commandsRegistered) {
-			registerCommands(pi, enableStudioTool);
-			commandsRegistered = true;
-		}
-		ctx.ui.setStatus("android-cli", `Android project: ${projectDir}`);
-
-		// Show SDK info in status
+	// ponytail: fire-and-forget background detection — status fills in, session never blocks
+	const detectSdk = async (ctx: ExtensionContext) => {
 		try {
 			const result = await pi.exec("android", ["info"], { timeout: 10_000 });
+			if (!active) return;
 			const sdkMatch = result.stdout?.match(/^sdk:\s*(.+)$/m);
 			const versionMatch = result.stdout?.match(/^version:\s*(.+)$/m);
 			if (sdkMatch) {
-				ctx.ui.setStatus(
-					"android-cli",
-					`Android CLI ${versionMatch?.[1] ?? ""} · SDK: ${sdkMatch[1]}`,
-				);
+				ctx.ui.setWidget("android", [
+					`android · CLI ${versionMatch?.[1] ?? "?"} · SDK: ${sdkMatch[1]}`,
+				]);
 			}
 		} catch {
 			// CLI not available — keep project status
 		}
+	};
 
-		// Auto-detect Android Studio
+	const detectStudio = async (ctx: ExtensionContext) => {
 		try {
 			const check = await pi.exec("android", ["studio", "check"], {
 				timeout: 10_000,
 			});
+			if (!active) return;
 			if (check.code === 0 && check.stdout?.includes("READY")) {
 				enableStudioTool();
 				ctx.ui.notify(
@@ -176,5 +206,27 @@ export default function androidCliExtension(pi: ExtensionAPI) {
 		} catch {
 			// Studio not running — skip
 		}
+	};
+
+	pi.on("session_start", async (_event, ctx) => {
+		active = true;
+		const projectDir = findAndroidProject([ctx.cwd, process.cwd()]);
+
+		registerAndroidTools();
+		if (!commandsRegistered) {
+			registerCommands(pi, enableStudioTool);
+			commandsRegistered = true;
+		}
+		if (!projectDir) {
+			ctx.ui.setStatus("android-cli", "");
+			ctx.ui.setWidget("android", undefined);
+			return;
+		}
+
+		ctx.ui.setWidget("android", [`android · ${projectDir}`]);
+
+		// Parallel detection — do not await, never block the session
+		void detectSdk(ctx);
+		void detectStudio(ctx);
 	});
 }

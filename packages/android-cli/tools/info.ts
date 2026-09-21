@@ -1,6 +1,13 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-import { androidExec, formatExecResult, toolResult } from "../utils.js";
+import {
+	androidExec,
+	formatExecResult,
+	resultRow,
+	rowHead,
+	toolResult,
+} from "../utils.js";
 
 export function registerInfoTool(pi: ExtensionAPI) {
 	pi.registerTool({
@@ -27,6 +34,20 @@ export function registerInfoTool(pi: ExtensionAPI) {
 			}
 
 			return toolResult(formatExecResult(result), info);
+		},
+		renderCall(_args, theme) {
+			return new Text(rowHead(theme, "android_info"), 0, 0);
+		},
+		renderResult(result, { expanded }, theme, context) {
+			const sdk = result.details?.sdk as string | undefined;
+			const version = result.details?.version as string | undefined;
+			const line = sdk
+				? `${version ?? "android"} · SDK: ${sdk}`
+				: "environment info";
+			return resultRow(theme, !context.isError, line, result, {
+				expanded,
+				hint: true,
+			});
 		},
 	});
 }

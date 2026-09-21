@@ -1,10 +1,17 @@
 import { StringEnum } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import {
 	androidExec,
 	confirmGate,
 	formatExecResult,
+	partialRow,
+	resultRow,
+	rowHead,
+	runAndroid,
+	short,
+	toolCancelled,
 	toolError,
 	toolResult,
 } from "../utils.js";
@@ -26,7 +33,7 @@ export function registerSdkTool(pi: ExtensionAPI) {
 			pattern: Type.Optional(Type.String()),
 			allVersions: Type.Optional(Type.Boolean()),
 		}),
-		async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+		async execute(_toolCallId, params, signal, onUpdate, ctx) {
 			const { action, packages, channel, pattern, allVersions } = params;
 			const channelArgs =
 				channel === "beta"
@@ -34,6 +41,7 @@ export function registerSdkTool(pi: ExtensionAPI) {
 					: channel === "canary"
 						? ["--canary"]
 						: [];
+			const packageList = packages?.length ? packages.join(", ") : "";
 
 			switch (action) {
 				case "install": {
@@ -45,11 +53,16 @@ export function registerSdkTool(pi: ExtensionAPI) {
 						"Install SDK packages",
 						`Install: ${packages.join(", ")}`,
 					);
-					if (!granted) return toolError("Cancelled by user");
-					const result = await androidExec(
+					if (!granted) return toolCancelled();
+					const result = await runAndroid(
 						pi,
 						["sdk", "install", ...packages, ...channelArgs],
-						{ signal },
+						{
+							signal,
+							status: `installing ${short(packageList)}…`,
+							ctx,
+							onUpdate,
+						},
 					);
 					return toolResult(formatExecResult(result));
 				}
@@ -61,9 +74,14 @@ export function registerSdkTool(pi: ExtensionAPI) {
 						"Update SDK packages",
 						`Update: ${target}`,
 					);
-					if (!granted) return toolError("Cancelled by user");
+					if (!granted) return toolCancelled();
 					const args = ["sdk", "update", ...(packages ?? []), ...channelArgs];
-					const result = await androidExec(pi, args, { signal });
+					const result = await runAndroid(pi, args, {
+						signal,
+						status: `updating ${short(target)}…`,
+						ctx,
+						onUpdate,
+					});
 					return toolResult(formatExecResult(result));
 				}
 
@@ -76,9 +94,12 @@ export function registerSdkTool(pi: ExtensionAPI) {
 						"Remove SDK packages",
 						`Remove: ${packages.join(", ")}`,
 					);
-					if (!granted) return toolError("Cancelled by user");
-					const result = await androidExec(pi, ["sdk", "remove", ...packages], {
+					if (!granted) return toolCancelled();
+					const result = await runAndroid(pi, ["sdk", "remove", ...packages], {
 						signal,
+						status: `removing ${short(packageList)}…`,
+						ctx,
+						onUpdate,
 					});
 					return toolResult(formatExecResult(result));
 				}
@@ -92,6 +113,27 @@ export function registerSdkTool(pi: ExtensionAPI) {
 					return toolResult(formatExecResult(result));
 				}
 			}
+		},
+		renderCall(args, theme) {
+			let head = rowHead(theme, "android_sdk", args.action);
+			if (args.packages?.length) {
+				head += ` ${theme.fg("dim", short(args.packages.join(", ")))}`;
+			}
+			if (args.channel) head += ` ${theme.fg("dim", args.channel)}`;
+			return new Text(head, 0, 0);
+		},
+		renderResult(result, { expanded, isPartial }, theme, context) {
+			if (isPartial) return partialRow(theme, `sdk ${context.args.action}…`);
+			return resultRow(
+				theme,
+				!context.isError,
+				`sdk ${context.args.action}`,
+				result,
+				{
+					expanded,
+					hint: true,
+				},
+			);
 		},
 	});
 }

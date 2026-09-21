@@ -1,8 +1,14 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import {
 	androidExec,
 	formatExecResult,
+	partialRow,
+	resultRow,
+	rowHead,
+	runAndroid,
+	short,
 	toolResult,
 	tryParseJson,
 } from "../utils.js";
@@ -23,7 +29,7 @@ export function registerProjectCreateTool(pi: ExtensionAPI) {
 			minSdk: Type.Optional(Type.String()),
 			listTemplates: Type.Optional(Type.Boolean()),
 		}),
-		async execute(_toolCallId, params, signal) {
+		async execute(_toolCallId, params, signal, onUpdate, ctx) {
 			if (params.listTemplates) {
 				const result = await androidExec(pi, ["create", "--list"], { signal });
 				return toolResult(formatExecResult(result));
@@ -34,8 +40,41 @@ export function registerProjectCreateTool(pi: ExtensionAPI) {
 			if (params.template) args.push(params.template);
 			if (params.minSdk) args.push(`--minSdk=${params.minSdk}`);
 
-			const result = await androidExec(pi, args, { signal });
+			const result = await runAndroid(pi, args, {
+				signal,
+				status: `creating ${short(params.name, 32)}…`,
+				ctx,
+				onUpdate,
+			});
 			return toolResult(formatExecResult(result));
+		},
+		renderCall(args, theme) {
+			const head = rowHead(
+				theme,
+				"android_project_create",
+				args.listTemplates ? "list templates" : args.name,
+			);
+			if (args.template && !args.listTemplates) {
+				return new Text(`${head} ${theme.fg("dim", args.template)}`, 0, 0);
+			}
+			return new Text(head, 0, 0);
+		},
+		renderResult(result, { expanded, isPartial }, theme, context) {
+			if (isPartial) {
+				return partialRow(
+					theme,
+					`creating ${short(context.args.name ?? "", 32)}…`,
+				);
+			}
+			return resultRow(
+				theme,
+				!context.isError,
+				context.args.listTemplates
+					? "templates"
+					: `project ${context.args.name}`,
+				result,
+				{ expanded, hint: true },
+			);
 		},
 	});
 }
@@ -53,11 +92,16 @@ export function registerProjectDescribeTool(pi: ExtensionAPI) {
 		parameters: Type.Object({
 			projectDir: Type.Optional(Type.String()),
 		}),
-		async execute(_toolCallId, params, signal) {
+		async execute(_toolCallId, params, signal, onUpdate, ctx) {
 			const args = ["describe"];
 			if (params.projectDir) args.push(`--project_dir=${params.projectDir}`);
 
-			const result = await androidExec(pi, args, { signal });
+			const result = await runAndroid(pi, args, {
+				signal,
+				status: "analyzing project…",
+				ctx,
+				onUpdate,
+			});
 			const parsed = tryParseJson(result.stdout);
 
 			if (parsed && typeof parsed === "object") {
@@ -68,6 +112,24 @@ export function registerProjectDescribeTool(pi: ExtensionAPI) {
 			}
 
 			return toolResult(formatExecResult(result));
+		},
+		renderCall(args, theme) {
+			return new Text(
+				rowHead(
+					theme,
+					"android_project_describe",
+					args.projectDir ? short(args.projectDir) : undefined,
+				),
+				0,
+				0,
+			);
+		},
+		renderResult(result, { expanded, isPartial }, theme, context) {
+			if (isPartial) return partialRow(theme, "analyzing project…");
+			return resultRow(theme, !context.isError, "project analyzed", result, {
+				expanded,
+				hint: true,
+			});
 		},
 	});
 }

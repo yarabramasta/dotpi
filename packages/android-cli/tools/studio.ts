@@ -1,9 +1,14 @@
 import { StringEnum } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import {
-	androidExec,
 	formatExecResult,
+	partialRow,
+	resultRow,
+	rowHead,
+	runAndroid,
+	short,
 	toolError,
 	toolResult,
 	tryParseJson,
@@ -41,7 +46,7 @@ export function registerStudioTool(pi: ExtensionAPI) {
 			outputImageFile: Type.Optional(Type.String()),
 			printSemantics: Type.Optional(Type.Boolean()),
 		}),
-		async execute(_toolCallId, params, signal) {
+		async execute(_toolCallId, params, signal, onUpdate, ctx) {
 			const {
 				action,
 				path,
@@ -50,7 +55,7 @@ export function registerStudioTool(pi: ExtensionAPI) {
 				artifacts,
 				pid,
 				project,
-				short,
+				short: shortFlag,
 				contextFile,
 				outputImageFile,
 				printSemantics,
@@ -73,7 +78,7 @@ export function registerStudioTool(pi: ExtensionAPI) {
 				case "find-declaration": {
 					if (!symbol) return toolError("symbol required for find-declaration");
 					args = ["studio", "find-declaration", symbol];
-					if (short) args.push("--short");
+					if (shortFlag) args.push("--short");
 					if (contextFile) args.push("--context-file", contextFile);
 					break;
 				}
@@ -81,7 +86,7 @@ export function registerStudioTool(pi: ExtensionAPI) {
 				case "find-usages": {
 					if (!symbol) return toolError("symbol required for find-usages");
 					args = ["studio", "find-usages", symbol];
-					if (short) args.push("--short");
+					if (shortFlag) args.push("--short");
 					break;
 				}
 
@@ -114,7 +119,12 @@ export function registerStudioTool(pi: ExtensionAPI) {
 			if (pid) args.push("--pid", pid);
 			if (project) args.push("--project", project);
 
-			const result = await androidExec(pi, args, { signal });
+			const result = await runAndroid(pi, args, {
+				signal,
+				status: `studio ${action}…`,
+				ctx,
+				onUpdate,
+			});
 			const formatted = formatExecResult(result);
 			const parsed = tryParseJson(result.stdout);
 
@@ -123,6 +133,25 @@ export function registerStudioTool(pi: ExtensionAPI) {
 			}
 
 			return toolResult(formatted);
+		},
+		renderCall(args, theme) {
+			let head = rowHead(theme, "android_studio", args.action);
+			const target = args.path ?? args.symbol ?? args.composable;
+			if (target) head += ` ${theme.fg("dim", short(target))}`;
+			if (args.artifacts?.length) {
+				head += ` ${theme.fg("dim", short(args.artifacts.join(", ")))}`;
+			}
+			return new Text(head, 0, 0);
+		},
+		renderResult(result, { expanded, isPartial }, theme, context) {
+			if (isPartial) return partialRow(theme, `studio ${context.args.action}…`);
+			return resultRow(
+				theme,
+				!context.isError,
+				`studio ${context.args.action}`,
+				result,
+				{ expanded, hint: true },
+			);
 		},
 	});
 }

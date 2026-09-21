@@ -1,12 +1,24 @@
+import { basename } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import {
-	androidExec,
 	confirmGate,
 	formatExecResult,
-	toolError,
+	partialRow,
+	resultRow,
+	rowHead,
+	runAndroid,
+	short,
+	toolCancelled,
 	toolResult,
 } from "../utils.js";
+
+const apkList = (apks: string) =>
+	apks
+		.split(",")
+		.map((apk) => basename(apk.trim()))
+		.join(", ");
 
 export function registerRunTool(pi: ExtensionAPI) {
 	pi.registerTool({
@@ -36,13 +48,13 @@ export function registerRunTool(pi: ExtensionAPI) {
 				}),
 			),
 		}),
-		async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+		async execute(_toolCallId, params, signal, onUpdate, ctx) {
 			const granted = await confirmGate(
 				ctx,
 				"Deploy APK",
 				`Deploy ${params.apks} to ${params.device || "default device"}?`,
 			);
-			if (!granted) return toolError("Cancelled by user");
+			if (!granted) return toolCancelled();
 
 			const args = ["run", `--apks=${params.apks}`];
 			if (params.device) args.push(`--device=${params.device}`);
@@ -50,8 +62,33 @@ export function registerRunTool(pi: ExtensionAPI) {
 			if (params.debug) args.push("--debug");
 			if (params.type) args.push(`--type=${params.type}`);
 
-			const result = await androidExec(pi, args, { signal });
+			const result = await runAndroid(pi, args, {
+				signal,
+				status: `deploying ${short(apkList(params.apks))}…`,
+				ctx,
+				onUpdate,
+			});
 			return toolResult(formatExecResult(result));
+		},
+		renderCall(args, theme) {
+			let head = rowHead(theme, "android_run", apkList(args.apks));
+			if (args.device) head += ` ${theme.fg("dim", `→ ${args.device}`)}`;
+			return new Text(head, 0, 0);
+		},
+		renderResult(result, { expanded, isPartial }, theme, context) {
+			if (isPartial) {
+				return partialRow(
+					theme,
+					`deploying ${short(apkList(context.args.apks))}…`,
+				);
+			}
+			return resultRow(
+				theme,
+				!context.isError,
+				context.isError ? "deploy failed" : "deployed",
+				result,
+				{ expanded, hint: true },
+			);
 		},
 	});
 }
