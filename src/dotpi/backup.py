@@ -245,9 +245,9 @@ def parse_duration(value: str) -> dt.timedelta:
 
 def prune_command(args: argparse.Namespace) -> None:
     if args.keep is None and args.older_than is None:
-        die("prune requires --keep N or --older-than duration")
+        die("prune requires --keep N (-k) or --older-than duration (-o)")
     if args.keep is not None and args.older_than is not None:
-        die("prune accepts --keep or --older-than, not both")
+        die("prune accepts --keep (-k) or --older-than (-o), not both")
     target = target_path(args.target)
     root = backup_root(target)
     directories = []
@@ -268,7 +268,7 @@ def prune_command(args: argparse.Namespace) -> None:
         doomed = [path for _, path in directories[args.keep :]]
     else:
         if args.older_than is None:
-            die("prune requires --older-than duration")
+            die("prune requires --older-than duration (-o)")
         cutoff = dt.datetime.now(dt.timezone.utc) - parse_duration(str(args.older_than))
         doomed = [path for created, path in directories if created < cutoff]
     if not doomed:

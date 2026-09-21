@@ -16,10 +16,10 @@ def require_confirmation(args: argparse.Namespace, action: str) -> None:
     if args.yes:
         return
     if not is_interactive(args):
-        die(f"non-interactive {action} requires --yes; no changes made")
+        die(f"non-interactive {action} requires --yes (-y); no changes made")
     try:
         answer = input(f"{action}. Continue? [y/N] ").strip().lower()
     except EOFError:
-        die(f"non-interactive {action} requires --yes; no changes made")
+        die(f"non-interactive {action} requires --yes (-y); no changes made")
     if answer not in {"y", "yes"}:
         die("cancelled; no changes made", 1)

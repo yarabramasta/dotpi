@@ -50,7 +50,7 @@ def select_extensions(args: argparse.Namespace, sources: dict[str, Path]) -> lis
                 selected.append(name)
         return selected
     if not is_interactive(args):
-        die("non-interactive install requires --extension filters")
+        die("non-interactive install requires --extension (-e) filters")
     if not sources:
         return []
     print("Available extensions:")
@@ -108,16 +108,16 @@ def cherry_pick_install(args: argparse.Namespace, root: Path, target: Path) -> N
     sources = extension_sources(root)
     selected = select_extensions(args, sources)
     if not selected:
-        die("extension install requires --extension filters")
+        die("extension install requires --extension (-e) filters")
     conflicts = extension_conflicts(target, selected, sources)
     if conflicts and not args.force:
         die(
             f"extension already exists: {', '.join(conflicts)}; "
-            "use --force to overwrite"
+            "use --force (-f) to overwrite"
         )
     if conflicts and args.force:
         warn(
-            "--force will overwrite extensions without a recoverable backup: "
+            "--force (-f) will overwrite extensions without a recoverable backup: "
             + ", ".join(conflicts)
         )
     if args.dry_run:
@@ -149,11 +149,11 @@ def safe_or_cherry_install(args: argparse.Namespace, root: Path, target: Path) -
     if conflicts and not args.force:
         die(
             f"extension already exists: {', '.join(conflicts)}; "
-            "use --force to overwrite"
+            "use --force (-f) to overwrite"
         )
     if conflicts and args.force:
         warn(
-            "--force will overwrite extensions without a recoverable "
+            "--force (-f) will overwrite extensions without a recoverable "
             "extension backup: " + ", ".join(conflicts)
         )
 
@@ -243,7 +243,7 @@ def clean_install(args: argparse.Namespace, root: Path, target: Path) -> None:
     source_agent = root / "agent"
     include_auth = args.include_auth
     if include_auth and not (source_agent / "auth.json").is_file():
-        die("--include-auth requested but agent/auth.json is missing")
+        die("--include-auth (-a) requested but agent/auth.json is missing")
     if (
         not include_auth
         and is_interactive(args)
@@ -254,7 +254,7 @@ def clean_install(args: argparse.Namespace, root: Path, target: Path) -> None:
     if not include_auth:
         print("Skipping agent/auth.json")
     if args.force:
-        warn("clean mode already replaces target; --force is ignored")
+        warn("clean mode already replaces target; --force (-f) is ignored")
     existing = (
         [path.relative_to(target) for path in target.rglob("*")]
         if target.is_dir()
@@ -329,7 +329,7 @@ def install_command(args: argparse.Namespace) -> None:
     ensure_target_safe(target)
     validate_source(root, include_extensions=not args.no_extensions)
     if args.include_auth and args.mode != "clean":
-        die("--include-auth is valid only with --mode=clean")
+        die("--include-auth (-a) is valid only with --mode=clean")
     if args.mode == "clean":
         clean_install(args, root, target)
     elif args.mode == "cherry-pick":
