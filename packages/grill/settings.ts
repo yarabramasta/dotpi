@@ -3,9 +3,35 @@ import { join } from "node:path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { CONFIG_DIR_NAME, getAgentDir } from "@earendil-works/pi-coding-agent";
 
+declare module "./state.js" {
+	interface GrillState {
+		isolationSetting?: "worktrees" | "gitbutler" | "slices" | "auto";
+		sessionIsolationOverride?: "worktrees" | "gitbutler" | "slices" | "auto";
+		resolvedIsolation?: { backend: string; reason: string };
+	}
+}
+
 interface GrillSettings {
 	subagents?: boolean;
 	collapseKey?: string;
+	isolation?: string;
+}
+
+export const ISOLATION_SETTINGS = [
+	"worktrees",
+	"gitbutler",
+	"slices",
+	"auto",
+] as const;
+export type IsolationSettingLocal = (typeof ISOLATION_SETTINGS)[number];
+
+export function asIsolationSetting(
+	value: unknown,
+): IsolationSettingLocal | undefined {
+	return typeof value === "string" &&
+		(ISOLATION_SETTINGS as readonly string[]).includes(value)
+		? (value as IsolationSettingLocal)
+		: undefined;
 }
 
 /** Optional settings for the grill extension. Defaults: subagents on,
@@ -35,6 +61,20 @@ export function readSubagentsDefault(ctx: ExtensionContext): boolean {
 		return globalSettings.subagents;
 	}
 	return true;
+}
+
+/** Resolve the isolation backend default: project > global > undefined.
+ * Consumers apply "auto" as the fallback default. */
+export function readIsolationDefault(
+	ctx: ExtensionContext,
+): IsolationSettingLocal | undefined {
+	const project = ctx.isProjectTrusted()
+		? readSettings(join(ctx.cwd, CONFIG_DIR_NAME, "grill.json"))
+		: undefined;
+	const projectValue = asIsolationSetting(project?.isolation);
+	if (projectValue !== undefined) return projectValue;
+	const globalSettings = readSettings(join(getAgentDir(), "grill.json"));
+	return asIsolationSetting(globalSettings?.isolation);
 }
 
 /** Default collapse key: ctrl+] is free in mainstream terminals/multiplexers.

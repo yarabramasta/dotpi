@@ -52,6 +52,14 @@ export interface GrillState {
 	dossier?: { text: string; at: number };
 	decisions: GrillDecision[];
 	subagents: SubagentsSetting;
+	/** Isolation backend preference from settings (fed by settings.ts at /grill
+	 * start). "auto" lets the output phase choose. */
+	isolationSetting?: "worktrees" | "gitbutler" | "slices" | "auto";
+	/** Session-only isolation override set by commands.ts (/grill isolation);
+	 * never persisted to settings files. */
+	sessionIsolationOverride?: "worktrees" | "gitbutler" | "slices" | "auto";
+	/** Effective isolation backend chosen for this output batch. */
+	resolvedIsolation?: { backend: string; reason: string };
 	availableScouts: ScoutAgent[];
 	grounding?: GroundingView & { at: number };
 	reviewer?: GroundingView & { at: number };
@@ -60,6 +68,9 @@ export interface GrillState {
 	delegate?: boolean;
 	chosenWriter?: string;
 	outputPaths?: string[];
+	outputSlices?: { paths: string[] }[];
+	writerDiscoveryRequired?: boolean;
+	writersUnavailable?: boolean;
 	outputSelection?: {
 		readinessRationale: string;
 		recommendedOutputs: string;

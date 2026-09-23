@@ -35,7 +35,7 @@ export function registerEvents(pi: ExtensionAPI, helpers: GrillHelpers): void {
 				return {
 					block: true,
 					reason:
-						"Grill Me is delegating file writes to a writer subagent this batch. Spawn the writer with subagent({ agent, output, task }) where output is an approved output path; the parent keeps CLI mutations (gh/git) only. If the writer is unavailable or fails, fall back to finishing the writes yourself and notify the user.",
+						"Grill Me is delegating file writes to writer subagents this batch. Slice the approved paths (runtime.state.outputSlices) and spawn one writer per slice with subagent({ agent: <writer>, output: <approved path from that slice>, task: <that slice's spec> }); each writer must only edit the paths in its assigned slice (enforced by the task spec; runtime gates spawns to the whole approved plan). If a writer fails, finish its slice yourself and notify the user. Parent keeps CLI mutations (gh/git) only.",
 				};
 			}
 			if (event.toolName === "subagent") {
@@ -140,11 +140,38 @@ export function registerEvents(pi: ExtensionAPI, helpers: GrillHelpers): void {
 					runtime.state.availableScouts = [];
 				if (!Array.isArray(runtime.state.availableWriters))
 					runtime.state.availableWriters = [];
+				const isolationValues = new Set([
+					"worktrees",
+					"gitbutler",
+					"slices",
+					"auto",
+				]);
+				if (!isolationValues.has(runtime.state.isolationSetting as string))
+					runtime.state.isolationSetting = undefined;
+				if (
+					!isolationValues.has(runtime.state.sessionIsolationOverride as string)
+				)
+					runtime.state.sessionIsolationOverride = undefined;
+				if (!Array.isArray(runtime.state.outputSlices))
+					runtime.state.outputSlices = [];
 				if (runtime.state.phase !== "output") {
 					runtime.state.delegate = undefined;
 					runtime.state.chosenWriter = undefined;
 					runtime.state.outputPaths = undefined;
+					runtime.state.outputSlices = [];
+					runtime.state.writerDiscoveryRequired = undefined;
+					runtime.state.writersUnavailable = undefined;
+					runtime.state.resolvedIsolation = undefined;
 				}
+				if (
+					typeof runtime.state.resolvedIsolation !== "object" ||
+					runtime.state.resolvedIsolation === null ||
+					typeof runtime.state.resolvedIsolation.backend !== "string" ||
+					typeof runtime.state.resolvedIsolation.reason !== "string"
+				)
+					runtime.state.resolvedIsolation = undefined;
+				if (runtime.state.phase !== "output-selection")
+					runtime.state.writerDiscoveryRequired = undefined;
 				if (
 					runtime.state.grounding &&
 					typeof runtime.state.grounding !== "object"

@@ -162,7 +162,11 @@ export function statusTokens(state: GrillState): string {
 		const artifact = state.outputPaths?.[0]?.split("/").pop() ?? "outputs";
 		const writer =
 			state.delegate === true ? ` · ${state.chosenWriter ?? "writer"}` : "";
-		return `🔥 grill → writing ${artifact}${writer}`;
+		const iso =
+			state.delegate === true && state.resolvedIsolation?.backend
+				? ` · iso:${state.resolvedIsolation.backend}`
+				: "";
+		return `🔥 grill → writing ${artifact}${writer}${iso}`;
 	}
 	if (phase === "output-selection") return "🔥 grill · pick outputs";
 	const parts = ["🔥 grill"];
@@ -221,15 +225,18 @@ export function buildSystemPrompt(state: GrillState): string {
 			: 'Grounding is first-class. A compact repo dossier was captured at session start — use it; before each repo-relevant question, use cymbal_* tools first when they can answer. If cymbal cannot answer, call subagent({ action: "list", capabilities: true }), pass its live capability rows to grill_set_scouts, then run one eligible read-only scout with subagent({ agent, task }). Call grill_show_grounding with a concise evidence summary before the question. If grounding fails, call grill_show_grounding with skippedReason and continue ungrounded. If a scout reports follow-up work, use subagent mission.create/missionId for durable escalation rather than silently launching repeated work.';
 
 	const phase = currentPhase(state);
+	const isolationBackendGuidance = state.resolvedIsolation
+		? ` Isolation: ${state.resolvedIsolation.backend} — ${state.resolvedIsolation.reason}. worktrees = writer spawns carry worktree:true + baseRef:HEAD; writers commit in managed worktrees and MUST end reports with a BRANCH: <name> line; parent merges reported branches sequentially, pausing and notifying on conflicts. gitbutler = parent pre-creates branches with but branch new; writers collect their own change IDs via but diff AFTER editing and commit via but commit -b <branch> <ids> -m (always -m/--no-message, never bare but commit, never but push). slices = today's shared-cwd behavior. Effective backend + reason is chosen once per batch at grill_enter_output_phase and shown in the picker; unavailable forced backends degrade to slices with a note.`
+		: "";
 	const delegationGuidance =
 		state.delegate === true
-			? `Write delegation is ON for this batch: the parent is blocked from edit/write; spawn the writer subagent (${state.chosenWriter ?? "the chosen writer"}) with subagent({ agent, output, task }) where output is an approved output path; the extension blocks writer spawns whose output is outside the approved plan. The parent keeps CLI mutations (gh/git). Run the writer BEFORE the end-of-process reviewer pass (grill_run_reviewer). If the writer fails or times out, fall back to finishing the writes yourself and notify the user.`
+			? `Write delegation is ON for this batch: the parent is blocked from edit/write. Slice the approved paths into disjoint file sets (≤3 writers, 5 for plans with 6+ paths; slices live in runtime.state.outputSlices). Spawn one writer subagent per slice with subagent({ agent: <writer>, output: <approved path from that slice>, task: <that slice's spec> }); every file in a slice must be edited by that writer only. The extension blocks writer spawns whose output is outside the approved plan. The parent keeps CLI mutations (gh/git). Run all writers BEFORE the end-of-process reviewer pass (grill_run_reviewer). If a writer fails, finish its slice yourself with an explicit notification.${isolationBackendGuidance}`
 			: state.delegate === false
 				? "Write delegation is OFF for this batch: the parent writes the approved outputs directly."
 				: "";
 	const writerDiscoveryGuidance =
 		phase === "output-selection"
-			? ' After the user approves outputs, if they may want to delegate file writes, call subagent({ action: "list", capabilities: true }) and pass the rows to grill_set_writers to discover write-capable delegates. grill_enter_output_phase will then ask (via a picker) whether to delegate; the picker is skipped if no write delegate exists.'
+			? ' After the user approves outputs, grill_enter_output_phase enforces writer discovery when subagent integration is on and delegation is unset: call subagent({ action: "list", capabilities: true }), filter write-capable executable agents (mutation tools include edit/write, or name ends with "writer"), pass the rows to grill_set_writers, then re-call grill_enter_output_phase. If writers are found, the delegate picker appears; if the user chooses to delegate, slice the approved paths into ≤3 disjoint file sets (5 for large plans) and spawn one writer subagent per slice, never assigning the same file to two writers. If a writer fails, finish its slice yourself and notify the user. Parent keeps CLI mutations (gh/git) only. If subagent integration is off (/grill subagents off or config), parent writes directly and the delegation gate is skipped. No new config knobs.'
 			: "";
 	const outputPhaseGuidance =
 		phase === "output"

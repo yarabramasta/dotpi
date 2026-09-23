@@ -139,8 +139,24 @@ export function insertText(
 	};
 }
 
-/** Apply one input chunk to a buffer: printable insert or "\x7f" grapheme
- * delete-before-cursor. */
+/** Delete the preceding whitespace + word, leaving the cursor where the
+ * removed chunk began. `cursor === 0` is a no-op. */
+function deleteWordBackward(
+	buffer: string,
+	cursor: number,
+): { buffer: string; cursor: number } {
+	if (cursor <= 0) return { buffer, cursor };
+	let start = cursor;
+	while (start > 0 && /\s/.test(buffer[start - 1])) start--;
+	while (start > 0 && !/\s/.test(buffer[start - 1])) start--;
+	return {
+		buffer: buffer.slice(0, start) + buffer.slice(cursor),
+		cursor: start,
+	};
+}
+
+/** Apply one input chunk to a buffer: printable insert, "\x7f" grapheme
+ * delete-before-cursor, or "\x17"/"\x1b\x7f" delete-word-backward. */
 function applyEdit(
 	buffer: string,
 	cursor: number,
@@ -152,6 +168,18 @@ function applyEdit(
 		return {
 			buffer: buffer.slice(0, cursor - width) + buffer.slice(cursor),
 			cursor: cursor - width,
+		};
+	}
+	if (data === "\x17" || data === "\x1b\x7f") {
+		return deleteWordBackward(buffer, cursor);
+	}
+	if (data === "\x15") {
+		if (cursor <= 0) return { buffer, cursor };
+		const lineStart = buffer.lastIndexOf("\n", cursor - 1);
+		const nextCursor = lineStart === -1 ? 0 : lineStart;
+		return {
+			buffer: buffer.slice(0, nextCursor) + buffer.slice(cursor),
+			cursor: nextCursor,
 		};
 	}
 	return insertText(buffer, cursor, data);
@@ -354,6 +382,7 @@ function isConfirm(kb: PickerKeybindings, data: string): boolean {
 const EXTERNAL_ID = "app.editor.external";
 const CLEAR_ID = "tui.editor.deleteToLineStart";
 const BACKSPACE_ID = "tui.editor.deleteCharBackward";
+const DELETE_WORD_BACKWARD_ID = "tui.editor.deleteWordBackward";
 
 /** Map raw input to a PickerAction via pi keybinding ids. Mode-dispatched like
  * rpiv's key-router; pure. `tui.input.newLine` is checked before confirm in
@@ -387,11 +416,17 @@ export function routePickerKey(
 			return { kind: "note_edit", data: "\n" };
 		}
 		if (isConfirm(kb, data)) return { kind: "note_close" };
-		if (kb.matches(data, CLEAR_ID)) return { kind: "input_clear" };
+		if (kb.matches(data, CLEAR_ID)) return { kind: "note_edit", data: "\x15" };
 		if (kb.matches(data, EXTERNAL_ID))
 			return { kind: "external", target: "note" };
 		if (kb.matches(data, BACKSPACE_ID))
 			return { kind: "note_edit", data: "\x7f" };
+		if (
+			kb.matches(data, DELETE_WORD_BACKWARD_ID) ||
+			data === "\x17" ||
+			data === "\x1b\x7f"
+		)
+			return { kind: "note_edit", data: "\x17" };
 		if (kb.matches(data, "tui.editor.cursorLeft"))
 			return { kind: "cursor_left" };
 		if (kb.matches(data, "tui.editor.cursorRight"))
@@ -406,11 +441,17 @@ export function routePickerKey(
 			return { kind: "input_edit", data: "\n" };
 		}
 		if (isConfirm(kb, data)) return { kind: "confirm" };
-		if (kb.matches(data, CLEAR_ID)) return { kind: "input_clear" };
+		if (kb.matches(data, CLEAR_ID)) return { kind: "input_edit", data: "\x15" };
 		if (kb.matches(data, EXTERNAL_ID))
 			return { kind: "external", target: "custom" };
 		if (kb.matches(data, BACKSPACE_ID))
 			return { kind: "input_edit", data: "\x7f" };
+		if (
+			kb.matches(data, DELETE_WORD_BACKWARD_ID) ||
+			data === "\x17" ||
+			data === "\x1b\x7f"
+		)
+			return { kind: "input_edit", data: "\x17" };
 		if (kb.matches(data, "tui.editor.cursorLeft"))
 			return { kind: "cursor_left" };
 		if (kb.matches(data, "tui.editor.cursorRight"))

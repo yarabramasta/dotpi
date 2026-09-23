@@ -196,14 +196,14 @@ export function registerGroundingTools(
 		name: "grill_set_writers",
 		label: "Set Grill Write Delegates",
 		description:
-			'Filter the live subagent capability list to executable write-capable agents for delegating approved-output file writes. Call after subagent({ action: "list", capabilities: true }).',
+			'Filter the live subagent capability list to write-capable output delegates. Call after subagent({ action: "list", capabilities: true }). Passing zero eligible rows disables delegation for the session and the parent writes directly.',
 		promptSnippet:
 			"Filter installed subagents to write-capable output delegates",
 		promptGuidelines: [
 			'When the user chooses to delegate output writes, call subagent({ action: "list", capabilities: true }) once, then pass its live agent capability rows to grill_set_writers.',
 			"grill_set_writers returns write-capable agents (canonical-first): mutating tools, external CLI/job runner, or writer-named. Use the first as the delegate.",
 			"Spawn the delegate with subagent({ agent, output, task }) where `output` is an approved output path and `task` is the approved output plan; the extension blocks writer spawns whose `output` is outside the approved plan.",
-			"If no write-capable agent exists, the delegate picker is skipped and the parent writes directly.",
+			"If no eligible writer is discovered, grill_set_writers marks writers unavailable and delegation is skipped this session — parent writes directly. Call it again with eligible rows to re-enable the delegate picker.",
 		],
 		parameters: Type.Object({
 			agents: Type.Array(
@@ -245,9 +245,10 @@ export function registerGroundingTools(
 			}
 			const writers = eligibleWriters(params.agents as ScoutAgent[]);
 			runtime.state.availableWriters = writers;
+			runtime.state.writersUnavailable = writers.length === 0;
 			runtime.state.lastChangeSummary = writers.length
 				? `Discovered ${writers.length} eligible write delegate${writers.length === 1 ? "" : "s"}`
-				: "No eligible write delegate discovered; parent writes directly";
+				: "No eligible write delegate discovered; parent writes directly this session (pass rows later to re-enable delegation)";
 			persist();
 			return {
 				content: [
@@ -255,7 +256,7 @@ export function registerGroundingTools(
 						type: "text",
 						text: writers.length
 							? `Eligible write delegates (canonical-first): ${writers.map((w) => w.name).join(", ")}. Use the first with subagent({ agent, output, task }) where output is an approved output path; the extension blocks writer spawns whose output is outside the approved plan. The parent keeps CLI mutations (gh/git).`
-							: "No eligible write delegate found. The parent writes directly (current behavior).",
+							: "No eligible write-capable subagents discovered. Delegation will be skipped: parent writes directly. Pass writer rows later to re-enable the delegate picker.",
 					},
 				],
 				details: { writers, phase: currentPhase(runtime.state) },

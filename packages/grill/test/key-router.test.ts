@@ -97,8 +97,11 @@ describe("routePickerKey: editing (custom draft)", () => {
 		expect(route("\r", editing)).toEqual({ kind: "confirm" });
 	});
 
-	test("ctrl+u → input_clear, ctrl+g → external custom", () => {
-		expect(route("\x15", editing)).toEqual({ kind: "input_clear" });
+	test("ctrl+u → delete to line start, ctrl+g → external custom", () => {
+		expect(route("\x15", editing)).toEqual({
+			kind: "input_edit",
+			data: "\x15",
+		});
 		expect(route("\x07", editing)).toEqual({
 			kind: "external",
 			target: "custom",
@@ -109,6 +112,25 @@ describe("routePickerKey: editing (custom draft)", () => {
 		expect(route("\x7f", editing)).toEqual({
 			kind: "input_edit",
 			data: "\x7f",
+		});
+	});
+
+	test("option+backspace raw sequences → word delete", () => {
+		expect(route("\x17", editing)).toEqual({
+			kind: "input_edit",
+			data: "\x17",
+		});
+		expect(route("\x1b\x7f", editing)).toEqual({
+			kind: "input_edit",
+			data: "\x17",
+		});
+	});
+
+	test("deleteWordBackward keybinding → word delete", () => {
+		const kb = makeKb({ "tui.editor.deleteWordBackward": "\x17" });
+		expect(route("\x17", editing, kb)).toEqual({
+			kind: "input_edit",
+			data: "\x17",
 		});
 	});
 
@@ -138,13 +160,35 @@ describe("routePickerKey: note mode", () => {
 		expect(route("\x1b\r", noting)).toEqual({ kind: "note_edit", data: "\n" });
 	});
 
-	test("ctrl+g → external note, ctrl+u → input_clear", () => {
+	test("ctrl+g → external note, ctrl+u → delete to line start", () => {
 		expect(route("\x07", noting)).toEqual({ kind: "external", target: "note" });
-		expect(route("\x15", noting)).toEqual({ kind: "input_clear" });
+		expect(route("\x15", noting)).toEqual({
+			kind: "note_edit",
+			data: "\x15",
+		});
 	});
 
 	test("text → note_edit", () => {
 		expect(route("abc", noting)).toEqual({ kind: "note_edit", data: "abc" });
+	});
+
+	test("option+backspace raw sequences → word delete", () => {
+		expect(route("\x17", noting)).toEqual({
+			kind: "note_edit",
+			data: "\x17",
+		});
+		expect(route("\x1b\x7f", noting)).toEqual({
+			kind: "note_edit",
+			data: "\x17",
+		});
+	});
+
+	test("deleteWordBackward keybinding → word delete", () => {
+		const kb = makeKb({ "tui.editor.deleteWordBackward": "\x17" });
+		expect(route("\x17", noting, kb)).toEqual({
+			kind: "note_edit",
+			data: "\x17",
+		});
 	});
 });
 

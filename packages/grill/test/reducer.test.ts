@@ -205,6 +205,78 @@ describe("reducePicker: note", () => {
 		expect(state.noteDraft).toBe("");
 		expect(effects).toEqual([]);
 	});
+
+	test("note_edit \\x17 deletes previous word at end of draft", () => {
+		const s = {
+			...initialPickerState(),
+			noteEditing: true,
+			noteDraft: "hello world",
+			noteCursor: 11,
+		};
+		const { state } = step(s, { kind: "note_edit", data: "\x17" });
+		expect(state.noteDraft).toBe("hello ");
+		expect(state.noteCursor).toBe(6);
+	});
+
+	test("note_edit \\x17 deletes the only word to empty", () => {
+		const s = {
+			...initialPickerState(),
+			noteEditing: true,
+			noteDraft: "ab",
+			noteCursor: 2,
+		};
+		const { state } = step(s, { kind: "note_edit", data: "\x17" });
+		expect(state.noteDraft).toBe("");
+		expect(state.noteCursor).toBe(0);
+	});
+
+	test("note_edit \\x17 is a no-op at start of draft", () => {
+		const s = {
+			...initialPickerState(),
+			noteEditing: true,
+			noteDraft: "abc",
+			noteCursor: 0,
+		};
+		const { state } = step(s, { kind: "note_edit", data: "\x17" });
+		expect(state.noteDraft).toBe("abc");
+		expect(state.noteCursor).toBe(0);
+	});
+
+	test("note_edit \\x15 deletes to (and including) preceding newline", () => {
+		const s = {
+			...initialPickerState(),
+			noteEditing: true,
+			noteDraft: "ab\ncd",
+			noteCursor: 5,
+		};
+		const { state } = step(s, { kind: "note_edit", data: "\x15" });
+		expect(state.noteDraft).toBe("ab");
+		expect(state.noteCursor).toBe(2);
+	});
+
+	test("note_edit \\x15 at cursor 0 is a no-op", () => {
+		const s = {
+			...initialPickerState(),
+			noteEditing: true,
+			noteDraft: "abc",
+			noteCursor: 0,
+		};
+		const { state } = step(s, { kind: "note_edit", data: "\x15" });
+		expect(state.noteDraft).toBe("abc");
+		expect(state.noteCursor).toBe(0);
+	});
+
+	test("note_edit \\x15 clears a single-line draft", () => {
+		const s = {
+			...initialPickerState(),
+			noteEditing: true,
+			noteDraft: "hello",
+			noteCursor: 5,
+		};
+		const { state } = step(s, { kind: "note_edit", data: "\x15" });
+		expect(state.noteDraft).toBe("");
+		expect(state.noteCursor).toBe(0);
+	});
 });
 
 describe("reducePicker: options + cancel", () => {

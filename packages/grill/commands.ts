@@ -10,7 +10,11 @@ import { Markdown, matchesKey, truncateToWidth } from "@earendil-works/pi-tui";
 import { buildDossier } from "./dossier.js";
 import { initialCheckpoint, statusMarkdown } from "./prompts.js";
 import type { GrillHelpers } from "./runtime.js";
-import { readSubagentsDefault } from "./settings.js";
+import {
+	asIsolationSetting,
+	readIsolationDefault,
+	readSubagentsDefault,
+} from "./settings.js";
 import {
 	asIntent,
 	asResearchMode,
@@ -42,6 +46,9 @@ export function registerCommands(
 		// Subagent integration defaults from settings, overridable per session.
 		if (typeof partial.subagents !== "boolean") {
 			partial.subagents = readSubagentsDefault(ctx);
+		}
+		if (typeof partial.isolationSetting !== "string") {
+			partial.isolationSetting = readIsolationDefault(ctx) ?? "auto";
 		}
 		runtime.state = {
 			...cloneState(DEFAULT_STATE),
@@ -263,6 +270,7 @@ export function registerCommands(
 - /grill output <one or more outputs> (preference only; approval still required)
 - /grill research off|ask|auto
 - /grill subagents on|off — toggle the first-class subagent integration (auto grounding scouts, end-of-process reviewer, write delegation)
+- /grill isolation [worktrees|gitbutler|slices|auto] — show or set the isolation backend for this session (session-only override; default from grill.json)
 
 Grill Me uses one thorough default Socratic style. Grounding is first-class: a compact repo dossier is captured automatically at session start; per-question spot-checks use cymbal tools and read-only scouts.
 
@@ -378,6 +386,46 @@ The mandatory output-selection phase still gates all output production: grill_en
 				updateUi(ctx);
 				ctx.ui.notify(
 					`Grill subagent integration: ${value ? "on" : "off"}.`,
+					"info",
+				);
+				return;
+			}
+
+			if (command === "isolation") {
+				const override = rest.trim();
+				if (!override) {
+					const effective =
+						runtime.state.sessionIsolationOverride ??
+						runtime.state.isolationSetting ??
+						"auto";
+					const source = runtime.state.sessionIsolationOverride
+						? "session override"
+						: runtime.state.isolationSetting
+							? "grill.json"
+							: "default auto";
+					const lastBatch = runtime.state.resolvedIsolation
+						? ` Last batch: ${runtime.state.resolvedIsolation.backend} — ${runtime.state.resolvedIsolation.reason}.`
+						: "";
+					ctx.ui.notify(
+						`Isolation backend: ${effective} (source: ${source}).${lastBatch}`,
+						"info",
+					);
+					return;
+				}
+				const value = asIsolationSetting(override);
+				if (value === undefined) {
+					ctx.ui.notify(
+						"Usage: /grill isolation [worktrees|gitbutler|slices|auto]",
+						"warning",
+					);
+					return;
+				}
+				runtime.state.sessionIsolationOverride = value;
+				runtime.state.lastChangeSummary = `Isolation override set to ${value}`;
+				persist();
+				updateUi(ctx);
+				ctx.ui.notify(
+					`Isolation override (session): ${value}. Takes effect at the next delegated batch.`,
 					"info",
 				);
 				return;

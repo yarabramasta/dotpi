@@ -340,6 +340,9 @@ export async function showPicker(
 							const sentinelPrefix = `${cPointer}${String(options.length + 1).padStart(numberWidth, " ")}. `;
 							if (state.editing) {
 								// Inline draft editor: cursor-marked, wrapped, accent-styled.
+								// Wrap to the left column, not full width — side-by-side
+								// clamps left rows to leftWidth, so full-width wrapping cuts.
+								const editorWidth = sideBySide ? leftWidth : width;
 								for (const row of renderInlineInputRow({
 									buffer: state.draft,
 									cursorOffset: state.cursor,
@@ -347,7 +350,7 @@ export async function showPicker(
 									continuationPrefix: " ".repeat(visibleWidth(sentinelPrefix)),
 									contentWidth: Math.max(
 										1,
-										width - visibleWidth(sentinelPrefix),
+										editorWidth - visibleWidth(sentinelPrefix),
 									),
 									selectedText: (text) => theme.fg("accent", theme.bold(text)),
 								})) {
@@ -364,27 +367,37 @@ export async function showPicker(
 
 							const focusedOption = options[state.selected];
 
+							const notePrefix = `${theme.fg("success", `${t.noteHeader}: `)}`;
+							// "Note: " = 6 visible columns; wrap to the left column width so
+							// side-by-side clamping never cuts the wrapped rows.
+							const noteContentWidth = Math.max(
+								1,
+								(sideBySide ? leftWidth : width) - 6,
+							);
+
 							// Committed note line, or the inline note editor in its place.
 							if (state.noteEditing) {
-								const notePrefix = `${theme.fg("success", `${t.noteHeader}: `)}`;
 								for (const row of renderInlineInputRow({
 									buffer: state.noteDraft,
 									cursorOffset: state.noteCursor,
 									rowPrefix: notePrefix,
 									continuationPrefix: " ".repeat(6),
-									contentWidth: Math.max(1, width - 6),
+									contentWidth: noteContentWidth,
 									selectedText: (text) => theme.fg("success", text),
 								})) {
 									leftLines.push(truncateToWidth(row, width, ""));
 								}
 							} else if (state.note) {
-								leftLines.push(
-									truncateToWidth(
-										theme.fg("success", `${t.noteHeader}: ${state.note}`),
-										width,
-										"",
-									),
-								);
+								for (const row of renderInlineInputRow({
+									buffer: state.note,
+									cursorOffset: undefined,
+									rowPrefix: notePrefix,
+									continuationPrefix: " ".repeat(6),
+									contentWidth: noteContentWidth,
+									selectedText: (text) => theme.fg("success", text),
+								})) {
+									leftLines.push(truncateToWidth(row, width, ""));
+								}
 							}
 
 							// Middle content + focused range (middle-relative rows).
