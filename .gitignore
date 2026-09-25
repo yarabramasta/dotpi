@@ -368,3 +368,6 @@ vite.config.ts.timestamp-*
 
 # External git repo references
 forks/
+
+# MacOS
+.DS_Store

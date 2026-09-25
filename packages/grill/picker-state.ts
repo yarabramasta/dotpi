@@ -379,6 +379,12 @@ function isConfirm(kb: PickerKeybindings, data: string): boolean {
 	);
 }
 
+// Bracketed paste markers: pi-tui re-wraps pasted content as
+// \x1b[200~text\x1b[201~ before dispatching it to components
+// (terminal.ts, "existing editor handling").
+const BRACKETED_PASTE_START = "\x1b[200~";
+const BRACKETED_PASTE_END = "\x1b[201~";
+
 const EXTERNAL_ID = "app.editor.external";
 const CLEAR_ID = "tui.editor.deleteToLineStart";
 const BACKSPACE_ID = "tui.editor.deleteCharBackward";
@@ -409,6 +415,20 @@ export function routePickerKey(
 		return kb.matches(data, "tui.select.cancel")
 			? { kind: "cancel" }
 			: { kind: "ignore" };
+	}
+
+	// Bracketed paste: strip the markers and route the cleaned text to the
+	// active editor. Browse mode has no buffer, so paste is ignored there.
+	if (data.startsWith(BRACKETED_PASTE_START)) {
+		const text = data.endsWith(BRACKETED_PASTE_END)
+			? data.slice(
+					BRACKETED_PASTE_START.length,
+					data.length - BRACKETED_PASTE_END.length,
+				)
+			: data.slice(BRACKETED_PASTE_START.length);
+		if (state.noteEditing) return { kind: "note_edit", data: text };
+		if (state.editing) return { kind: "input_edit", data: text };
+		return { kind: "ignore" };
 	}
 
 	if (state.noteEditing) {

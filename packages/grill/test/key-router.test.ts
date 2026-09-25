@@ -244,3 +244,39 @@ describe("routePickerKey: collapse key intercept", () => {
 		});
 	});
 });
+
+describe("routePickerKey: bracketed paste", () => {
+	const noting = { ...initialPickerState(), noteEditing: true };
+	const editing = { ...initialPickerState(), selected: 2, editing: true };
+	const paste = (text: string) => `\x1b[200~${text}\x1b[201~`;
+
+	test("paste in note mode → cleaned note_edit", () => {
+		expect(route(paste("hello"), noting)).toEqual({
+			kind: "note_edit",
+			data: "hello",
+		});
+	});
+
+	test("paste in custom editing → cleaned input_edit", () => {
+		expect(route(paste("hello"), editing)).toEqual({
+			kind: "input_edit",
+			data: "hello",
+		});
+	});
+
+	test("paste in browse mode → ignore", () => {
+		expect(route(paste("hello"))).toEqual({ kind: "ignore" });
+	});
+
+	test("start marker without end marker still cleans", () => {
+		expect(route("\x1b[200~world", noting)).toEqual({
+			kind: "note_edit",
+			data: "world",
+		});
+	});
+
+	test("paste while collapsed is swallowed", () => {
+		const collapsed = { ...initialPickerState(), collapsed: true };
+		expect(route(paste("hello"), collapsed)).toEqual({ kind: "ignore" });
+	});
+});

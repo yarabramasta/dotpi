@@ -187,7 +187,7 @@ Extensions currently include:
 
 The `jina` extension registers the usual promoted tools plus a set of unpromoted convention-name aliases — `web_search`, `fetch_content`, `get_search_content`, and `source_check` — backed by the same Jina endpoints (search, reader, and a naive textual claim check). These aliases are callable by built-in pi-subagents such as `researcher` and `evidence-auditor` whose definitions strict-allowlist those convention names, without needing per-agent overrides. They are intentionally hidden from the default system-prompt tool prose; this setup assumes `pi-web-access` is not installed. If `pi-web-access` were ever added, Pi's silent first-registration-wins behavior means load order would decide which provider each name resolves to. The aliases deliberately do not implement deep search, LLM-backed source verification, or collision handling.
 
-The `grill` extension adds a Socratic planning mode to Pi:
+The `grill` extension adds a Socratic planning mode to Pi. `/grill <topic>` interviews you through a picker overlay — the Question tab with the answer choices, plus read-only Checkpoint, Grounding, and Review tabs — while maintaining a shared-understanding checkpoint (show or edit it anytime with `/grill checkpoint` or `/checkpoint`). Sessions stay read-only until you explicitly approve output production in the output-selection phase. Grounding is automatic: a compact repo dossier (Cymbal + git) is captured at session start (`🔥 grill · warming up…` on the status line while it runs).
 
 ```text
 /grill <topic>
@@ -195,14 +195,15 @@ The `grill` extension adds a Socratic planning mode to Pi:
 /grill status
 /grill checkpoint [edit|chat]
 /grill intent auto|plan|learn|research|content|decide
-/grill output <outputs>
+/grill output <outputs>       # preference only, not approval
 /grill research off|ask|auto
 /grill subagents on|off
+/grill isolation [worktrees|gitbutler|slices|auto]
 ```
 
-Grill Me maintains a shared-understanding checkpoint, presents structured answer choices, and can use Cymbal or installed read-only scouts for grounding. It keeps interview mode read-only until you explicitly select and approve output production. The answer picker overlay has a Question tab (the choices) plus read-only Checkpoint, Grounding, and Review tabs — switch with Tab/←→ and scroll overflowed tab content with ↑/↓; the edge arrows (`↑` `↕` `↓`) mark remaining overflow. While the startup repo dossier is captured (Cymbal structure + git), the status line shows `🔥 grill · warming up…` so the quiet startup gap is visible instead of looking dead. When the subagent integration is on (default, `/grill subagents on|off`), an end-of-process reviewer pass runs after approved outputs are produced: `grill_run_reviewer` spawns one read-only reviewer through the pi-subagents RPC to verify the session stayed in sync — checkpoint decisions vs produced outputs vs edited files — and returns PASS or a gap list. Gaps are fixed and the pass reruns once; the two-round cap is hard. If no eligible reviewer exists or the run fails, the pass is skipped and the output phase finishes without it.
+With the subagent integration on (default; `/grill subagents` overrides per session), approved file writes can be delegated to a writer subagent per output batch under an isolation backend — git worktrees, GitButler, or plain slices, auto-resolved from repo state (`/grill isolation` overrides per session). After outputs, one read-only reviewer pass verifies the checkpoint against produced outputs and edited files (PASS or gap list; gaps are fixed and the pass reruns once). Settings defaults (`subagents`, `collapseKey`, `isolation`) live in `~/.pi/agent/grill.json`; a project `.pi/grill.json` wins.
 
-In the output phase, Grill Me can delegate approved file writes to a write-capable subagent. After you approve outputs, if write-capable subagents are discovered (via `grill_set_writers`), a picker asks whether to delegate file writes to a writer subagent or have the parent write directly. Delegation is per output batch — there is no persistent toggle. When delegating, the parent is blocked from `edit`/`write` and spawns the writer with `subagent({ agent, output, task })`, scoped to the approved output paths; the parent keeps CLI mutations (e.g. `gh issue create`, `git`) for non-file outputs. The reviewer pass runs after the writer (or after direct parent writes). If no write-capable subagent exists or the writer fails, the parent falls back to writing directly. `/checkpoint` is an alias for the current Grill Me checkpoint. Install it independently with `--extension grill`.
+Install it independently with `--extension grill`.
 
 The W&B extension lives at `packages/wandb/`, with `index.ts` and a `package.json` manifest. It adds a session-derived `cache_salt` only to W&B provider requests.
 
