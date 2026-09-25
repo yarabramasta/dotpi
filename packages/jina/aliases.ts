@@ -208,19 +208,32 @@ export async function withStatus(
 	}
 }
 
-export function normalizeQueries(queries: string[]): string[] {
+export function normalizeQueries(queries: string[]): {
+	queries: string[];
+	dropped: number;
+} {
 	const seen = new Set<string>();
 	const out: string[] = [];
+	let dropped = 0;
 	for (const raw of queries) {
 		const q = raw.trim();
-		if (!q) continue;
+		if (!q) {
+			dropped++;
+			continue;
+		}
 		const key = q.toLowerCase();
-		if (seen.has(key)) continue;
+		if (seen.has(key)) {
+			dropped++;
+			continue;
+		}
 		seen.add(key);
+		if (out.length >= 4) {
+			dropped++;
+			continue;
+		}
 		out.push(q);
-		if (out.length >= 4) break;
 	}
-	return out;
+	return { queries: out, dropped };
 }
 
 export function sliceBounded(
@@ -359,7 +372,31 @@ function splitSentences(text: string): string[] {
 		.filter(Boolean);
 }
 
-const NEGATION_RE = /\b(?:not|no|denies|refuted?|refutes)\b/i;
+function tokenPattern(token: string): RegExp {
+	const safe = token.slice(0, 40).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	return new RegExp(`\\b${safe}\\b`, "i");
+}
+
+const NEGATION_CUES = new Set([
+	"not",
+	"no",
+	"denies",
+	"refute",
+	"refuted",
+	"refutes",
+]);
+
+function hasNegationBeforeToken(sentence: string, token: string): boolean {
+	const words = sentence.toLowerCase().match(/\b[a-z]+\b/g) ?? [];
+	for (let i = 0; i < words.length; i++) {
+		if (tokenPattern(token).test(words[i])) {
+			for (let j = Math.max(0, i - 3); j < i; j++) {
+				if (NEGATION_CUES.has(words[j])) return true;
+			}
+		}
+	}
+	return false;
+}
 
 export function assessSupport(
 	claim: string,
@@ -391,34 +428,31 @@ export function assessSupport(
 	}
 
 	const sentences = splitSentences(trimmed);
-	const matches: { token: string; index: number; sentence: string }[] = [];
+	const counts = new Map<number, number>();
+	const matchedTokens = new Set<string>();
+	const hitSentences = new Set<number>();
+	const negatedSentences = new Set<number>();
+
 	for (let i = 0; i < sentences.length; i++) {
 		for (const token of tokens) {
-			const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-			const re = new RegExp(`\\b${escaped}\\b`, "i");
-			if (re.test(sentences[i])) {
-				matches.push({ token, index: i, sentence: sentences[i] });
+			if (tokenPattern(token).test(sentences[i])) {
+				hitSentences.add(i);
+				matchedTokens.add(token);
+				counts.set(i, (counts.get(i) ?? 0) + 1);
+				if (hasNegationBeforeToken(sentences[i], token)) {
+					negatedSentences.add(i);
+				}
 			}
 		}
 	}
 
-	if (matches.length === 0) {
+	if (hitSentences.size === 0) {
 		return {
 			assessment: "unclear",
 			excerpt: "",
 			citations: [],
 			heuristic: true,
 		};
-	}
-
-	const matchedTokens = new Set(matches.map((m) => m.token));
-	const ratio = matchedTokens.size / tokens.length;
-
-	const counts = new Map<number, number>();
-	const bestPerSentence = new Map<number, string>();
-	for (const m of matches) {
-		counts.set(m.index, (counts.get(m.index) ?? 0) + 1);
-		bestPerSentence.set(m.index, m.sentence);
 	}
 
 	let bestIndex = -1;
@@ -430,23 +464,30 @@ export function assessSupport(
 		}
 	}
 	const bestSentence = bestIndex >= 0 ? sentences[bestIndex] : "";
+	const ratio = matchedTokens.size / tokens.length;
 
-	for (const m of matches) {
-		if (NEGATION_RE.test(m.sentence)) {
+	for (const index of hitSentences) {
+		if (negatedSentences.has(index)) {
+			const citationSentences = [...hitSentences]
+				.filter((i) => negatedSentences.has(i))
+				.map((i) => sentences[i]);
 			return {
 				assessment: "contradicted",
-				excerpt: m.sentence,
-				citations: [],
+				excerpt: sentences[index],
+				citations: citationSentences,
 				heuristic: true,
 			};
 		}
 	}
 
-	if (ratio > 0.35) {
+	if (ratio > 0.5) {
+		const citationSentences = [...hitSentences]
+			.filter((i) => !negatedSentences.has(i))
+			.map((i) => sentences[i]);
 		return {
 			assessment: "supported",
 			excerpt: bestSentence,
-			citations: [],
+			citations: citationSentences,
 			heuristic: true,
 		};
 	}
@@ -454,7 +495,7 @@ export function assessSupport(
 	return {
 		assessment: "unclear",
 		excerpt: bestSentence,
-		citations: [],
+		citations: bestSentence ? [bestSentence] : [],
 		heuristic: true,
 	};
 }
@@ -466,7 +507,8 @@ export const webSearchTool = {
 	parameters: Type.Object({
 		queries: Type.Array(Type.String(), {
 			minItems: 1,
-			description: "One or more focused web search queries.",
+			description:
+				"One or more focused web search queries. Max 4 queries; extra queries are dropped (the result reports how many).",
 		}),
 		site: Type.Optional(
 			Type.String({
@@ -503,7 +545,7 @@ export const webSearchTool = {
 			return result("Jina search requires JINA_API_KEY.", true);
 		}
 
-		const queries = normalizeQueries(params.queries);
+		const { queries, dropped } = normalizeQueries(params.queries);
 		if (queries.length === 0) {
 			return result("queries must contain at least one non-empty query.", true);
 		}
@@ -536,7 +578,9 @@ export const webSearchTool = {
 					return truncateWeb(parts.join("\n\n"));
 				},
 			);
-			return result(text);
+			const note =
+				dropped > 0 ? `\nnote: dropped ${dropped} extra queries (max 4)` : "";
+			return result(`${text}${note}`);
 		} catch (error) {
 			return result(
 				error instanceof Error ? error.message : String(error),

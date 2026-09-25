@@ -38,19 +38,34 @@ function fakeCtx(): MinimalCtx {
 
 describe("normalizeQueries", () => {
 	test("trims whitespace and drops empties", () => {
-		expect(normalizeQueries(["  a  ", "", "b  "])).toEqual(["a", "b"]);
+		expect(normalizeQueries(["  a  ", "", "b  "])).toEqual({
+			queries: ["a", "b"],
+			dropped: 1,
+		});
 	});
 
 	test("dedupes case-insensitively while preserving first casing", () => {
-		expect(normalizeQueries(["Foo", "foo", "FOO", "bar"])).toEqual([
-			"Foo",
-			"bar",
-		]);
+		expect(normalizeQueries(["Foo", "foo", "FOO", "bar"])).toEqual({
+			queries: ["Foo", "bar"],
+			dropped: 2,
+		});
 	});
 
-	test("caps at four queries", () => {
+	test("caps at four queries and reports dropped", () => {
 		const input = ["1", "2", "3", "4", "5"];
-		expect(normalizeQueries(input)).toEqual(["1", "2", "3", "4"]);
+		expect(normalizeQueries(input)).toEqual({
+			queries: ["1", "2", "3", "4"],
+			dropped: 1,
+		});
+	});
+
+	test("counts all dropped sources including cap, empties, and duplicates", () => {
+		expect(
+			normalizeQueries(["", "a", "  a  ", "b", "c", "d", "e", "f"]),
+		).toEqual({
+			queries: ["a", "b", "c", "d"],
+			dropped: 4,
+		});
 	});
 });
 
@@ -109,6 +124,41 @@ describe("assessSupport", () => {
 		expect(r.assessment).toBe("contradicted");
 		expect(r.heuristic).toBe(true);
 		expect(r.excerpt.toLowerCase()).toContain("denies");
+		expect(r.citations.length).toBeGreaterThan(0);
+		for (const cite of r.citations) {
+			expect(r.assessment).toBe("contradicted"); // sanity
+			expect(cite.toLowerCase()).toContain("denies");
+		}
+	});
+
+	test("populates citations with supporting sentences on supported path", () => {
+		const content =
+			"Benchmarks confirm Rust is fast. Many teams chose Rust because it is fast.";
+		const r = assessSupport("Rust is fast", content);
+		expect(r.assessment).toBe("supported");
+		expect(r.citations.length).toBeGreaterThan(0);
+		for (const cite of r.citations) {
+			expect(content).toContain(cite);
+		}
+	});
+
+	test("returns empty citations on missing-evidence", () => {
+		const r = assessSupport("Rust is fast", "");
+		expect(r.assessment).toBe("missing-evidence");
+		expect(r.citations).toEqual([]);
+	});
+
+	test("unclear path includes the single most relevant sentence when any tokens match", () => {
+		const content = "We discussed rust briefly, not politics.";
+		const r = assessSupport("Rust is fast", content);
+		expect(r.assessment).toBe("unclear");
+		expect(r.citations).toEqual([content]);
+	});
+
+	test("does not throw for claim tokens containing regex metacharacters", () => {
+		expect(() =>
+			assessSupport("a.*b(c)[", "Nothing matches that."),
+		).not.toThrow();
 	});
 });
 
@@ -160,6 +210,7 @@ describe("web_search execute", () => {
 		expect(lastBody(1)).toEqual({ q: "q2" });
 		expect(textOf(res)).toContain("## q1");
 		expect(textOf(res)).toContain("## q2");
+		expect(textOf(res)).toContain("note: dropped 1 extra queries (max 4)");
 	});
 
 	test("passes site and maxResults through, ignores workflow", async () => {
