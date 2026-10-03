@@ -6,6 +6,7 @@ import {
 	type IsolationSetting,
 	isolationBranchName,
 	isolationPickerText,
+	parseConventionalScope,
 	type ResolvedIsolation,
 	resolveIsolation,
 } from "../backends/backend.js";
@@ -53,21 +54,6 @@ function gitWorkingTreeIsClean(repoRoot: string): boolean {
 	}
 }
 
-function parseConventionalScope(plan: string): { type: string; scope: string } {
-	const lines = plan.split(/\r?\n/);
-	const firstContent = lines.find((line) => {
-		const trimmed = line.trim();
-		return trimmed && !trimmed.startsWith("#");
-	});
-	const match = firstContent?.match(
-		/^(feat|fix|chore|docs|style|refactor|test|build|ci|perf)(\([^)\s]+\))?!?:/,
-	);
-	return {
-		type: match?.[1] ?? "feat",
-		scope: match?.[2] ? match[2].slice(1, -1) : "grill",
-	};
-}
-
 function isolationNoteText(
 	resolved: ResolvedIsolation,
 	_setting: IsolationSetting,
@@ -81,11 +67,15 @@ function isolationNoteText(
 	return parts.join(" ");
 }
 
-function gitbutlerBranchNames(sliceCount: number, plan: string): string[] {
-	const { type, scope } = parseConventionalScope(plan);
+function branchNames(
+	sliceCount: number,
+	plan: string,
+	topic: string,
+): string[] {
+	const { type, slug } = parseConventionalScope(plan, topic);
 	const names: string[] = [];
 	for (let i = 0; i < sliceCount; i++) {
-		names.push(isolationBranchName(type, scope, names));
+		names.push(isolationBranchName(type, slug, names));
 	}
 	return names;
 }
@@ -94,35 +84,51 @@ function slicesDelegationText(): string {
 	return `Slice the approved paths into disjoint file sets and spawn one writer subagent per slice with subagent({ agent: <writer>, output: <approved path from that slice>, task: <that slice's spec> }); each writer must only edit the paths in its assigned slice (enforced by the task spec; runtime gates spawns to the whole approved plan). If a writer fails, finish its slice yourself and notify the user.`;
 }
 
-function worktreesDelegationText(slices: { paths: string[] }[]): string {
+export function worktreesDelegationText(
+	slices: { paths: string[] }[],
+	plan: string,
+	topic: string,
+): string {
+	const { type, slug } = parseConventionalScope(plan, topic);
+	const template = `${type}(${slug}): <subject>`;
+	const branches = branchNames(slices.length, plan, topic);
 	const lines = slices
 		.map(
 			(_, i) =>
-				`Slice ${i + 1}: subagent({ agent: <writer>, output: <approved path from slice ${i + 1}>, task: <slice ${i + 1} spec>, worktree: true, baseRef: "HEAD", async: false })`,
+				`Slice ${i + 1}: subagent({ agent: <writer>, output: <approved path from slice ${i + 1}>, task: <slice ${i + 1} spec that states verbatim: work in the managed worktree on branch \`${branches[i]}\` (create it there if missing via \`git checkout -b ${branches[i]}\`; NEVER invent or rename a branch), commit via bash with the message \`${template}\` (fill only <subject>), and END the report with \`BRANCH: ${branches[i]}\`>, worktree: true, baseRef: "HEAD", async: false })`,
 		)
 		.join("\n");
-	return `Delegation uses managed git worktrees. Slice the approved paths into disjoint file sets and spawn one writer subagent per slice:\n${lines}\nEach writer must do its slice work in its managed worktree, commit there via bash (git add/commit), and END its report with a line \`BRANCH: <branch-name>\` (the worktree's checked-out branch). Each writer runs blocking (async: false); when a spawn returns, immediately merge its reported branch into the source checkout (git merge <branch-name>) before spawning the next writer. Any merge failure pauses and notifies the user: either run git merge --abort to bail, or resolve the conflicts and commit to continue. After merges, surface the \`worktree.cleanup\` plan invocation (lane.recordMerge attestation when available) — plan only, grill never auto-deletes worktrees.`;
+	return `Delegation uses managed git worktrees. Slice the approved paths into disjoint file sets and spawn one writer subagent per slice:\n${lines}\nEach writer uses ONLY its assigned branch name (NEVER invent or rename one); when a spawn returns, immediately merge its reported branch into the source checkout (git merge <branch-name>) before spawning the next writer; any reported BRANCH line that does not match the assigned name is a mistake — stop and fix the writer's branch before merging. Any merge failure pauses and notifies the user: either run git merge --abort to bail, or resolve the conflicts and commit to continue. After merges, surface the \`worktree.cleanup\` plan invocation (lane.recordMerge attestation when available) — plan only, grill never auto-deletes worktrees.`;
 }
 
-function gitbutlerDelegationText(
+export function gitbutlerDelegationText(
 	slices: { paths: string[] }[],
 	plan: string,
+	topic: string,
 ): string {
-	const branches = gitbutlerBranchNames(slices.length, plan);
-	const branchList = branches.map((b, i) => `Slice ${i + 1}: ${b}`).join("\n");
-	return `Delegation uses GitButler virtual branches. Slice the approved paths into disjoint file sets. Parent pre-creates one branch per slice via \`but branch new <name>\`:\n${branchList}\nSpawn one writer subagent per slice with subagent({ agent: <writer>, output: <approved path from that slice>, task: <that slice's spec> }). Each writer must: after editing, run \`but diff\` to collect its slice's change IDs, then commit with \`but commit -b <branch> <ids> -m "<conventional message>"\` (always \`-m\` or \`--no-message\`; never a bare \`but commit\`; never \`but push\`). Parent never runs \`but commit\`. Conflicts/overlaps must be surfaced before committing.`;
+	const { type, slug } = parseConventionalScope(plan, topic);
+	const template = `${type}(${slug}): <subject>`;
+	const branches = branchNames(slices.length, plan, topic);
+	const lines = slices
+		.map(
+			(_, i) =>
+				`Slice ${i + 1}: subagent({ agent: <writer>, output: <approved path from slice ${i + 1}>, task: <slice ${i + 1} spec that states verbatim: branch \`${branches[i]}\` (NEVER invent a branch name), after editing run \`but diff\` to collect your slice's change IDs, then \`but commit -b ${branches[i]} <ids> -m "${template}"\` (fill only <subject>; always \`-m\` or \`--no-message\`; never a bare \`but commit\`; never \`but push\`)> })`,
+		)
+		.join("\n");
+	return `Delegation uses GitButler virtual branches. Slice the approved paths into disjoint file sets. Parent pre-creates one branch per slice via \`but branch new\` using ONLY these exact pre-computed names (NEVER invent a branch name):\n${lines}\nIf a writer reports committing to any other branch, stop and surface the mismatch to the user before continuing. Parent never runs \`but commit\`. Conflicts/overlaps must be surfaced before committing.`;
 }
 
 function delegationInstructionText(
 	resolved: ResolvedIsolation,
 	slices: { paths: string[] }[],
 	plan: string,
+	topic: string,
 ): string {
 	switch (resolved.backend) {
 		case "worktrees":
-			return worktreesDelegationText(slices);
+			return worktreesDelegationText(slices, plan, topic);
 		case "gitbutler":
-			return gitbutlerDelegationText(slices, plan);
+			return gitbutlerDelegationText(slices, plan, topic);
 		default:
 			return slicesDelegationText();
 	}
@@ -446,7 +452,7 @@ export function registerPhaseTools(
 		promptGuidelines: [
 			"Use grill_enter_output_phase only after grill_enter_output_selection_phase has run and the user explicitly approves a concrete output plan or preview during an active Grill Me session.",
 			"During output phase, do not refuse approved mutating output work merely because it mutates runtime.state, such as creating GitHub issues. If a tool, CLI, platform, or pi permission/authentication gate blocks the mutation, stop and ask the user for the needed permission, confirmation, credentials, or plan change; do not bypass it or broaden scope.",
-			"When subagent integration is on and delegation is unset, this tool enforces writer discovery: the model must call subagent({ action: 'list', capabilities: true }), pass write-capable executable agents to grill_set_writers, then re-call grill_enter_output_phase. Once writers are available, the tool asks (via picker) whether to delegate. When delegating, approved paths are sliced into disjoint file sets and one writer subagent is spawned per slice with subagent({ agent, output, task }); the parent is blocked from edit/write and keeps CLI mutations (gh/git) only. Once discovery runs with zero rows, delegation is skipped this session — parent writes directly; grill_set_writers with eligible rows re-enables it.",
+			"When subagent integration is on, this tool enforces writer discovery for EVERY delegate value (delegate:false does not bypass it): call subagent({ action: 'list', capabilities: true }), pass write-capable executable agents to grill_set_writers, then re-call grill_enter_output_phase. Once writers are available, the delegate-or-direct picker decides — do not pass delegate:false to skip it. When delegating, approved paths are sliced into disjoint file sets and one writer subagent is spawned per slice with subagent({ agent, output, task }); the parent is blocked from edit/write and keeps CLI mutations (gh/git) only. Once discovery runs with zero eligible writers, parent writes directly; grill_set_writers with eligible rows re-enables it.",
 			GITHUB_REPO_PERMISSION_GUIDANCE,
 		],
 		parameters: Type.Object({
@@ -511,26 +517,11 @@ export function registerPhaseTools(
 			const subagentsOff = runtime.state.subagents === false;
 			let delegate = subagentsOff ? false : params.delegate;
 
-			if (delegate === true && runtime.state.availableWriters.length === 0) {
-				return {
-					content: [
-						{
-							type: "text",
-							text: 'Delegation requested but no write-capable subagents are discovered. Call subagent({ action: "list", capabilities: true }) and pass rows to grill_set_writers, or call grill_enter_output_phase with delegate:false to have the parent write directly.',
-						},
-					],
-					details: {
-						phase: currentPhase(runtime.state),
-						outputPhase: false,
-						outputPlan: params.outputPlan,
-						delegate: false,
-						availableWriters: runtime.state.availableWriters,
-					},
-				};
-			}
-
+			// Subagents on + undiscovered → discovery gate for ANY delegate value.
+			// A bare delegate:false used to bypass both discovery and the offer
+			// picker, which is why writer delegation was rarely offered.
 			if (
-				delegate === undefined &&
+				!subagentsOff &&
 				runtime.state.availableWriters.length === 0 &&
 				runtime.state.writersUnavailable !== true
 			) {
@@ -543,7 +534,7 @@ export function registerPhaseTools(
 					content: [
 						{
 							type: "text",
-							text: 'Writer delegation requires discovery first: call subagent({ action: "list", capabilities: true }), filter write-capable executable agents (mutation tools include edit/write, or name ends with "writer"), pass the rows to grill_set_writers, then call grill_enter_output_phase again.',
+							text: 'Writer delegation requires discovery first: call subagent({ action: "list", capabilities: true }), filter write-capable executable agents (mutation tools include edit/write, or name ends with "writer"), pass the rows to grill_set_writers, then call grill_enter_output_phase again. delegate:false does NOT bypass discovery — after discovery the user still gets the delegate-or-direct picker.',
 						},
 					],
 					details: {
@@ -584,7 +575,7 @@ export function registerPhaseTools(
 				reason: resolved.reason,
 			};
 
-			if (delegate === undefined && runtime.state.availableWriters.length > 0) {
+			if (!subagentsOff && runtime.state.availableWriters.length > 0) {
 				if (ctx?.hasUI) {
 					const paths = parsePlanPaths(params.outputPlan);
 					const slices =
@@ -611,7 +602,9 @@ export function registerPhaseTools(
 					);
 					delegate = result.status === "answered" && result.value === "yes";
 				} else {
-					delegate = false;
+					// No UI to offer with: when eligible writers exist, delegation is
+					// the default — this is the only "offer" moment there is.
+					delegate = true;
 				}
 			} else if (delegate === undefined) {
 				delegate = false;
@@ -648,7 +641,7 @@ export function registerPhaseTools(
 					? `No write-capable subagents available — parent writes directly (grill_set_writers with eligible rows re-enables delegation). ${isolationNote ? `${isolationNote}\n\n` : ""}${GITHUB_REPO_PERMISSION_GUIDANCE}`
 					: `Parent writes the approved outputs directly. ${isolationNote ? `${isolationNote}\n\n` : ""}${GITHUB_REPO_PERMISSION_GUIDANCE}`;
 			const delegationText = runtime.state.delegate
-				? `${delegationInstructionText(resolved, slices, params.outputPlan)}\n\n${GITHUB_REPO_PERMISSION_GUIDANCE}`
+				? `${delegationInstructionText(resolved, slices, params.outputPlan, runtime.state.topic)}\n\n${GITHUB_REPO_PERMISSION_GUIDANCE}`
 				: directText;
 			runtime.state.lastChangeSummary = runtime.state.delegate
 				? `Entered approved output phase (delegating file writes to ${runtime.state.chosenWriter ?? "?"})`

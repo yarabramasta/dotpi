@@ -111,3 +111,34 @@ export function isolationBranchName(
 	}
 	return candidate;
 }
+
+const CONVENTIONAL_RE =
+	/^(feat|fix|chore|docs|style|refactor|test|build|ci|perf)(\([^)\s]+\))?!?:/;
+
+function intentType(text: string): string {
+	const t = text.toLowerCase();
+	if (/\b(fix|bug|crash|error|regression)\b/.test(t)) return "fix";
+	if (/\b(docs?|documentation)\b/.test(t)) return "docs";
+	if (/\b(test|qa|spec)\b/.test(t)) return "test";
+	if (/\b(refactor|cleanup|rename)\b/.test(t)) return "refactor";
+	if (/\b(chore|bump|upgrade)\b/.test(t)) return "chore";
+	return "feat";
+}
+
+/** Branch type/slug for isolation naming: the plan's first conventional-commit
+ *  line wins; otherwise fall back to the session topic's work intent + slug
+ *  (never the dead `grill/feat-grill` default). */
+export function parseConventionalScope(
+	plan: string,
+	topic = "",
+): { type: string; slug: string } {
+	const matched = plan
+		.split(/\r?\n/)
+		.find((line) => CONVENTIONAL_RE.test(line.trim()));
+	const match = matched?.match(CONVENTIONAL_RE);
+	const type = match?.[1] ?? intentType(topic);
+	const slug = match?.[2]
+		? sanitizeToken(match[2].slice(1, -1))
+		: sanitizeToken(topic) || "grill";
+	return { type, slug };
+}

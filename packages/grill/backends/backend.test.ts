@@ -3,6 +3,7 @@ import {
 	isolationBadge,
 	isolationBranchName,
 	isolationPickerText,
+	parseConventionalScope,
 	resolveIsolation,
 } from "./backend.js";
 
@@ -224,5 +225,48 @@ describe("isolationBranchName", () => {
 		expect(
 			isolationBranchName("feat", "ui", ["grill/feat-ui", "grill/feat-ui-2"]),
 		).toBe("grill/feat-ui-3");
+	});
+});
+
+describe("parseConventionalScope", () => {
+	test("plan's conventional-commit line wins, paren scope as slug", () => {
+		expect(parseConventionalScope("fix(grill): handle paste", "")).toEqual({
+			type: "fix",
+			slug: "grill",
+		});
+	});
+
+	test("plan line without paren scope falls back to topic slug", () => {
+		expect(
+			parseConventionalScope("fix: handle paste", "Worktrees & Branch Naming"),
+		).toEqual({
+			type: "fix",
+			slug: "worktrees-branch-naming",
+		});
+	});
+
+	test("no plan line: type from topic intent, slug from topic", () => {
+		expect(
+			parseConventionalScope(
+				"Fix branch naming for gitbutler",
+				"Fix gitbutler branch naming bug",
+			),
+		).toEqual({ type: "fix", slug: "fix-gitbutler-branch-naming-bug" });
+	});
+
+	test("prose-first plan: later conventional line wins", () => {
+		expect(
+			parseConventionalScope(
+				"Some prose intro paragraph.\nfix(grill): harden naming",
+				"",
+			),
+		).toEqual({ type: "fix", slug: "grill" });
+	});
+
+	test("empty plan and topic: grill guard", () => {
+		expect(parseConventionalScope("", "")).toEqual({
+			type: "feat",
+			slug: "grill",
+		});
 	});
 });
