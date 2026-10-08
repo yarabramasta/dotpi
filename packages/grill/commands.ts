@@ -8,11 +8,18 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Markdown, matchesKey, truncateToWidth } from "@earendil-works/pi-tui";
 import { buildDossier } from "./dossier.js";
+import { NODE_TYPES, type NodeType, openKb } from "./kb/db.js";
+import { renderDigest } from "./kb/digest.js";
+import { fixDoctor, runDoctor } from "./kb/doctor.js";
+import { initKb } from "./kb/init.js";
+import type { NodeRow } from "./kb/nodes.js";
+import { queryNodes } from "./kb/nodes.js";
 import { initialCheckpoint, statusMarkdown } from "./prompts.js";
 import type { GrillHelpers } from "./runtime.js";
 import {
 	asIsolationSetting,
 	readIsolationDefault,
+	readKbDefault,
 	readSubagentsDefault,
 } from "./settings.js";
 import {
@@ -243,6 +250,117 @@ export function registerCommands(
 		}
 	}
 
+	async function handleKb(args: string, ctx: ExtensionContext): Promise<void> {
+		const trimmed = args.trim();
+		const command = firstWord(trimmed);
+		const rest = trimmed.slice(command.length).trim();
+		if (!command || command === "help") {
+			pi.sendMessage({
+				customType: "grill-kb-help",
+				content: `# kb — knowledge base
+
+- /kb init — scan the repo (docs/adr + workspaces) and seed canon-ref nodes
+- /kb doctor [--fix] — check db↔md consistency; --fix recreates missing bodies
+- /kb query <type=<t>> <status=<s>> <q=<text>> — list matching nodes
+- /kb digest — print the compact digest
+
+Settings: { "kb": true|false } in ~/.pi/agent/grill.json or .pi/grill.json — or toggle for this session with /grill kb on|off (currently ${typeof runtime.state.kbOverride === "boolean" ? (runtime.state.kbOverride ? "on" : "off") : readKbDefault(ctx) ? "on" : "off"}). Data lives in .pi/knowledge/ (kb.db + nodes/), git-ignored by default via its own .gitignore.`,
+				display: true,
+			});
+			return;
+		}
+		const kbEnabled =
+			typeof runtime.state.kbOverride === "boolean"
+				? runtime.state.kbOverride
+				: readKbDefault(ctx);
+		if (!kbEnabled) {
+			ctx.ui.notify(
+				'kb is disabled ({ "kb": false } in grill.json or /grill kb off).',
+				"warning",
+			);
+			return;
+		}
+		try {
+			const kb = await openKb(ctx.cwd);
+			if (command === "init") {
+				const result = initKb(kb);
+				ctx.ui.notify(
+					`kb init: scanned ${result.scannedAdrs} ADR(s), created ${result.created.length} node(s), monorepo=${result.isMonorepo} (workspaces: ${result.workspacePkgs}).`,
+					"info",
+				);
+				return;
+			}
+			if (command === "doctor") {
+				const issues = runDoctor(kb);
+				if (rest.includes("--fix")) {
+					const fixed = fixDoctor(kb, issues);
+					ctx.ui.notify(
+						`kb doctor: ${issues.length} issue(s), fixed ${fixed}.`,
+						issues.length ? "warning" : "info",
+					);
+				} else {
+					const text = issues.length
+						? issues
+								.map(
+									(i: { kind: string; id?: string; detail: string }) =>
+										`- ${i.kind}${i.id ? ` (${i.id})` : ""}: ${i.detail}`,
+								)
+								.join("\n")
+						: "clean";
+					pi.sendMessage({
+						customType: "grill-kb-doctor",
+						content: `# kb doctor\n\n${text}\n\nRun /kb doctor --fix to recreate missing bodies.`,
+						display: true,
+					});
+				}
+				return;
+			}
+			if (command === "query") {
+				const opts: { type?: NodeType; status?: string; q?: string } = {};
+				for (const part of rest.split(/\s+/).filter(Boolean)) {
+					const [key, ...valueParts] = part.split("=");
+					const value = valueParts.join("=");
+					if (
+						key === "type" &&
+						(NODE_TYPES as readonly string[]).includes(value)
+					)
+						opts.type = value as NodeType;
+					else if (key === "status") opts.status = value;
+					else if (key === "q") opts.q = value;
+				}
+				const rows = queryNodes(kb, opts as Parameters<typeof queryNodes>[1]);
+				const text = rows.length
+					? rows
+							.map(
+								(r: NodeRow) =>
+									`- **${r.id}** (${r.type}, ${r.status}) ${r.title} — nodes/${r.id}.md${r.promoted_to ? ` → ${r.promoted_to}` : ""}`,
+							)
+							.join("\n")
+					: "no matching nodes";
+				pi.sendMessage({
+					customType: "grill-kb-query",
+					content: `# kb query\n\n${text}`,
+					display: true,
+				});
+				return;
+			}
+			if (command === "digest") {
+				pi.sendMessage({
+					customType: "grill-kb-digest",
+					content: renderDigest(kb),
+					display: true,
+				});
+				return;
+			}
+			ctx.ui.notify(`Unknown kb command: ${command}. Try /kb help.`, "warning");
+		} catch (error) {
+			ctx.ui.notify(
+				`kb error: ${error instanceof Error ? error.message : String(error)}`,
+				"error",
+			);
+		}
+	}
+
 	pi.registerCommand("checkpoint", {
 		description: "Show the current Grill Me checkpoint in an overlay",
 		handler: async (args, ctx) => {
@@ -269,8 +387,10 @@ export function registerCommands(
 - /grill intent auto|plan|learn|research|content|decide
 - /grill output <one or more outputs> (preference only; approval still required)
 - /grill research off|ask|auto
+- /grill kb on|off|init|doctor|query|digest — knowledge base (toggle for this session; /kb is an alias)
 - /grill subagents on|off — toggle the first-class subagent integration (auto grounding scouts, end-of-process reviewer, write delegation)
 - /grill isolation [worktrees|gitbutler|slices|auto] — show or set the isolation backend for this session (session-only override; default from grill.json)
+- /kb init|doctor|query|digest — repo knowledge base (see /kb help)
 
 Grill Me uses one thorough default Socratic style. Grounding is first-class: a compact repo dossier is captured automatically at session start; per-question spot-checks use cymbal tools and read-only scouts.
 
@@ -367,6 +487,24 @@ The mandatory output-selection phase still gates all output production: grill_en
 				return;
 			}
 
+			if (command === "kb") {
+				const sub = firstWord(rest);
+				if (sub === "on" || sub === "off") {
+					const value = sub === "on";
+					runtime.state.kbOverride = value;
+					runtime.state.lastChangeSummary = `kb ${value ? "enabled" : "disabled"} (session)`;
+					persist();
+					updateUi(ctx);
+					ctx.ui.notify(
+						`kb ${value ? "enabled" : "disabled"} for this session (settings default unchanged).`,
+						"info",
+					);
+					return;
+				}
+				await handleKb(rest, ctx);
+				return;
+			}
+
 			if (command === "subagents") {
 				const value = asSubagentsValue(rest);
 				if (!runtime.state.active && value === undefined) {
@@ -460,5 +598,10 @@ The mandatory output-selection phase still gates all output production: grill_en
 
 			await startSession(topic, ctx, partial);
 		},
+	});
+
+	pi.registerCommand("kb", {
+		description: "Knowledge base: init, doctor, query, digest",
+		handler: (args, ctx) => handleKb(args, ctx),
 	});
 }

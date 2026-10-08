@@ -51,7 +51,11 @@ describe("grill extension wiring", () => {
 		grillMeExtension(pi as never);
 
 		expect(stub.tools.map((t) => t.name)).toEqual(TOOL_NAMES);
-		expect(stub.commands.map((c) => c.name)).toEqual(["checkpoint", "grill"]);
+		expect(stub.commands.map((c) => c.name)).toEqual([
+			"checkpoint",
+			"grill",
+			"kb",
+		]);
 		expect(stub.events).toEqual({
 			tool_call: 1,
 			before_agent_start: 1,

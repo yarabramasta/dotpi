@@ -8,6 +8,7 @@ declare module "./state.js" {
 		isolationSetting?: "worktrees" | "gitbutler" | "slices" | "auto";
 		sessionIsolationOverride?: "worktrees" | "gitbutler" | "slices" | "auto";
 		resolvedIsolation?: { backend: string; reason: string };
+		kbOverride?: boolean;
 	}
 }
 
@@ -15,6 +16,7 @@ interface GrillSettings {
 	subagents?: boolean;
 	collapseKey?: string;
 	isolation?: string;
+	kb?: boolean;
 }
 
 export const ISOLATION_SETTINGS = [
@@ -80,6 +82,18 @@ export function readIsolationDefault(
 /** Default collapse key: ctrl+] is free in mainstream terminals/multiplexers.
  * "off" disables collapse mode. */
 export const DEFAULT_COLLAPSE_KEY = "ctrl+]";
+
+/** Resolve the kb (knowledge base) default: project > global > on.
+ * The kb only writes when a session actually uses it, so "on" is safe. */
+export function readKbDefault(ctx: ExtensionContext): boolean {
+	const project = ctx.isProjectTrusted()
+		? readSettings(join(ctx.cwd, CONFIG_DIR_NAME, "grill.json"))
+		: undefined;
+	if (typeof project?.kb === "boolean") return project.kb;
+	const globalSettings = readSettings(join(getAgentDir(), "grill.json"));
+	if (typeof globalSettings?.kb === "boolean") return globalSettings.kb;
+	return true;
+}
 
 /** Resolve the collapse key: project > global > default. */
 export function readCollapseKey(ctx: ExtensionContext): string {

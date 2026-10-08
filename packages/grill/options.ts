@@ -63,6 +63,12 @@ export const OUTPUT_DESTINATION_OPTIONS = [
 			"Concise summary of the checkpoint, decisions, assumptions, and next actions.",
 	},
 	{
+		label: "Knowledge base",
+		value: "kb",
+		description:
+			"Reserve outputs as typed nodes in the repo-scoped .pi/knowledge/ knowledge base (SQLite kb.db + md node bodies); node-write + auto session hook lands in the Next rollout slice (see docs/kb-decision-memo.md).",
+	},
+	{
 		label: "Tutorial / content outline",
 		value: "content-outline",
 		description:
