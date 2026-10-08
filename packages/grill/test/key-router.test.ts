@@ -15,11 +15,11 @@ const env: PickerEnv = {
 };
 
 /** Stub keybinding surface: map keybinding id → key. */
-function makeKb(map: Record<string, string>): PickerKeybindings {
+function makeKeybindings(map: Record<string, string>): PickerKeybindings {
 	return { matches: (data, id) => map[id] === data };
 }
 
-const DEFAULTS = makeKb({
+const DEFAULTS = makeKeybindings({
 	"tui.select.up": "\x1b[A",
 	"tui.select.down": "\x1b[B",
 	"tui.select.confirm": "\r",
@@ -36,10 +36,10 @@ const DEFAULTS = makeKb({
 function route(
 	data: string,
 	state: PickerState = initialPickerState(),
-	kb: PickerKeybindings = DEFAULTS,
+	keybindings: PickerKeybindings = DEFAULTS,
 	collapseKey?: string,
 ) {
-	return routePickerKey(data, state, env, kb, collapseKey);
+	return routePickerKey(data, state, env, keybindings, collapseKey);
 }
 
 describe("routePickerKey: browse", () => {
@@ -82,7 +82,7 @@ describe("routePickerKey: editing (custom draft)", () => {
 	const editing = { ...initialPickerState(), selected: 2, editing: true };
 
 	test("newline inserts before confirm (rpiv collision rule)", () => {
-		const collide = makeKb({
+		const collide = makeKeybindings({
 			"tui.select.confirm": "\r",
 			"tui.input.submit": "\r",
 			"tui.input.newLine": "\r",
@@ -127,8 +127,10 @@ describe("routePickerKey: editing (custom draft)", () => {
 	});
 
 	test("deleteWordBackward keybinding → word delete", () => {
-		const kb = makeKb({ "tui.editor.deleteWordBackward": "\x17" });
-		expect(route("\x17", editing, kb)).toEqual({
+		const keybindings = makeKeybindings({
+			"tui.editor.deleteWordBackward": "\x17",
+		});
+		expect(route("\x17", editing, keybindings)).toEqual({
 			kind: "input_edit",
 			data: "\x17",
 		});
@@ -184,8 +186,10 @@ describe("routePickerKey: note mode", () => {
 	});
 
 	test("deleteWordBackward keybinding → word delete", () => {
-		const kb = makeKb({ "tui.editor.deleteWordBackward": "\x17" });
-		expect(route("\x17", noting, kb)).toEqual({
+		const keybindings = makeKeybindings({
+			"tui.editor.deleteWordBackward": "\x17",
+		});
+		expect(route("\x17", noting, keybindings)).toEqual({
 			kind: "note_edit",
 			data: "\x17",
 		});

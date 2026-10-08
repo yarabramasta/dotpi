@@ -7,13 +7,28 @@ import {
 	getMarkdownTheme,
 } from "@earendil-works/pi-coding-agent";
 import { Markdown, matchesKey, truncateToWidth } from "@earendil-works/pi-tui";
+import {
+	addEdge,
+	createAtom,
+	demote,
+	getAtom,
+	promote,
+	queryAtoms,
+	updateAtom,
+} from "./atom/atoms.js";
+import { renderDigest } from "./atom/digest.js";
+import { runDoctor } from "./atom/doctor.js";
+import { initAtom } from "./atom/init.js";
+import {
+	EDGE_KINDS,
+	type EdgeKind,
+	NODE_STATUSES,
+	NODE_TYPES,
+	type NodeStatus,
+	type NodeType,
+	openAtomStore,
+} from "./atom/store.js";
 import { buildDossier } from "./dossier.js";
-import { NODE_TYPES, type NodeType, openKb } from "./kb/db.js";
-import { renderDigest } from "./kb/digest.js";
-import { fixDoctor, runDoctor } from "./kb/doctor.js";
-import { initKb } from "./kb/init.js";
-import type { NodeRow } from "./kb/nodes.js";
-import { queryNodes } from "./kb/nodes.js";
 import { initialCheckpoint, statusMarkdown } from "./prompts.js";
 import type { GrillHelpers } from "./runtime.js";
 import {
@@ -37,6 +52,16 @@ import {
 	runtime,
 } from "./state.js";
 import { shouldRewriteTitle, titleFromTopic } from "./title.js";
+
+/** Parse key=value assignments with optional quoting: `body="multi word" scope=auth` → {body, scope}. */
+export function parseAssignments(rest: string): Record<string, string> {
+	const out: Record<string, string> = {};
+	const re = /(\w+)=("([^"]*)"|'([^']*)'|(\S+))/g;
+	for (const m of rest.matchAll(re)) {
+		out[m[1]] = m[3] ?? m[4] ?? m[5] ?? "";
+	}
+	return out;
+}
 
 export function registerCommands(
 	pi: ExtensionAPI,
@@ -262,14 +287,20 @@ export function registerCommands(
 				customType: "grill-atom-help",
 				content: `# grill atom — knowledge base
 
-- /atom init — scan the repo (docs/adr + workspaces + docs/reference/graph) and seed canon-ref nodes + edges
-- /atom doctor [--fix] [--strict] — check db↔md consistency; --fix recreates missing bodies; --strict also flags promoted decisions with NULL provenance
-- /atom query <type=<t>> <status=<s>> <q=<text>> — list matching atoms
+- /atom init — scaffold .pi/knowledge/ (atoms.db + .gitignore + .gitattributes), report workspace shape, print the optional textconv setup line
+- /atom doctor [--strict] — check schema version, empty bodies, orphan edges; --strict also flags promoted decisions with no sources
+- /atom show <id> — full atom: meta + body
+- /atom query <type=<t>> <status=<s>|status!=<s>> <q=<text>> <scope=<s>> <after=YYYY-MM-DD> <limit=<n>> <sort=created|id> — list matching atoms (FTS5 keyword search)
+- /atom create type=<t> title=<t> [body=<md>|--edit] [scope=<s>] [sources=<comma-separated>] — create an atom
+- /atom update <id> [body=<md>|--edit] [status=<s>] [scope=<s>] [sources=<comma-separated>] — update in place (promoted atoms regenerate their export; empty sources= clears provenance)
+- /atom promote <id> [docs/path.md] — write the md export into the repo tree
+- /atom demote <id> [<id>…] — reverse promotions: status → accepted, exports deleted
+- /atom link <from> <to> <kind> — typed edge (supersedes, depends-on, …)
 - /atom digest [--task <text>] — print the compact digest, optionally task-lensed
 
-Agents can also call the native tools: atom_query, atom_digest, atom_link, atom_backfill.
+Agents can also call the native tools: atom_query, atom_create, atom_update, atom_promote, atom_digest, atom_link, atom_backfill.
 
-Settings: { "atom": true|false } in ~/.pi/agent/grill.json or .pi/grill.json — or toggle for this session with /grill atom on|off (currently ${typeof runtime.state.atomOverride === "boolean" ? (runtime.state.atomOverride ? "on" : "off") : readAtomDefault(ctx) ? "on" : "off"}). Data lives in .pi/knowledge/ (kb.db + nodes/), git-ignored by default via its own .gitignore. /kb is a deprecated alias of /atom.`,
+Settings: { "atom": true|false } in ~/.pi/agent/grill.json or .pi/grill.json — or toggle for this session with /grill atom on|off (currently ${typeof runtime.state.atomOverride === "boolean" ? (runtime.state.atomOverride ? "on" : "off") : readAtomDefault(ctx) ? "on" : "off"}). Data lives in .pi/knowledge/atoms.db (single SQLite store, bodies in-db).`,
 				display: true,
 			});
 			return;
@@ -286,60 +317,264 @@ Settings: { "atom": true|false } in ~/.pi/agent/grill.json or .pi/grill.json —
 			return;
 		}
 		try {
-			const kb = await openKb(ctx.cwd);
+			const store = await openAtomStore(ctx.cwd);
 			if (command === "init") {
-				const result = initKb(kb);
+				const result = initAtom(store);
 				ctx.ui.notify(
-					`atom init: scanned ${result.scannedAdrs} ADR(s), created ${result.created.length} node(s), monorepo=${result.isMonorepo} (kind: ${result.workspaceKind ?? "single"}, packages: ${result.workspacePkgs}), graph: +${result.graphNodes} atom(s)/+${result.graphEdges} edge(s) (${result.adrLinked} ADRs linked).`,
+					`atom init: scaffolded .pi/knowledge/ (atoms.db, .gitignore, .gitattributes). monorepo=${result.isMonorepo} (kind: ${result.workspaceKind ?? "single"}, packages: ${result.workspacePkgs}). Pointer: ${result.agentsPointer}. Diffable blobs (optional): ${result.textconvHint}`,
 					"info",
 				);
 				return;
 			}
 			if (command === "doctor") {
-				const issues = runDoctor(kb, { strict: rest.includes("--strict") });
-				if (rest.includes("--fix")) {
-					const fixed = fixDoctor(kb, issues);
-					ctx.ui.notify(
-						`atom doctor: ${issues.length} issue(s), fixed ${fixed}.`,
-						issues.length ? "warning" : "info",
-					);
-				} else {
-					const text = issues.length
-						? issues
-								.map(
-									(i: { kind: string; id?: string; detail: string }) =>
-										`- ${i.kind}${i.id ? ` (${i.id})` : ""}: ${i.detail}`,
-								)
-								.join("\n")
-						: "clean";
-					pi.sendMessage({
-						customType: "grill-atom-doctor",
-						content: `# atom doctor\n\n${text}\n\nRun /atom doctor --fix to recreate missing bodies.`,
-						display: true,
-					});
+				const issues = runDoctor(store, { strict: rest.includes("--strict") });
+				const text = issues.length
+					? issues
+							.map(
+								(i: { kind: string; id?: string; detail: string }) =>
+									`- ${i.kind}${i.id ? ` (${i.id})` : ""}: ${i.detail}`,
+							)
+							.join("\n")
+					: "clean";
+				pi.sendMessage({
+					customType: "grill-atom-doctor",
+					content: `# atom doctor\n\n${text}`,
+					display: true,
+				});
+				return;
+			}
+			if (command === "show") {
+				const id = firstWord(rest);
+				if (!id) {
+					ctx.ui.notify("Usage: /atom show <id>", "warning");
+					return;
 				}
+				const atom = getAtom(store, id);
+				if (!atom) {
+					ctx.ui.notify(`Atom not found: ${id}.`, "warning");
+					return;
+				}
+				const sources = atom.sources
+					? JSON.parse(atom.sources) && JSON.parse(atom.sources).join(", ")
+					: "—";
+				pi.sendMessage({
+					customType: "grill-atom-show",
+					content: `# ${atom.id}\n\n- type: ${atom.type}\n- status: ${atom.status}\n- scope: ${atom.scope ?? "—"}\n- promoted_to: ${atom.promoted_to ?? "—"}\n- sources: ${sources}\n- created: ${new Date(atom.created_at).toISOString()}\n\n${atom.body}`,
+					display: true,
+				});
+				return;
+			}
+			if (command === "create") {
+				const wantsEditor = rest.includes("--edit");
+				const parsed = parseAssignments(rest.replaceAll("--edit", ""));
+				const type = parsed.type as NodeType | undefined;
+				if (!type || !(NODE_TYPES as readonly string[]).includes(type)) {
+					ctx.ui.notify(
+						`Usage: /atom create type=${NODE_TYPES.join("|")} title=<t> [body=<md>|--edit] [scope=<s>] [sources=<comma-separated>]`,
+						"warning",
+					);
+					return;
+				}
+				if (!parsed.title) {
+					ctx.ui.notify("create requires title=<t>", "warning");
+					return;
+				}
+				let body = parsed.body ?? "";
+				if (wantsEditor || !parsed.body) {
+					const edited = await ctx.ui.editor("Atom body", body);
+					if (edited === undefined) {
+						ctx.ui.notify("Cancelled atom create.", "info");
+						return;
+					}
+					body = edited;
+				}
+				const atom = createAtom(store, {
+					type,
+					title: parsed.title,
+					body,
+					scope: parsed.scope,
+					sources: parsed.sources
+						? parsed.sources
+								.split(",")
+								.map((s) => s.trim())
+								.filter(Boolean)
+						: undefined,
+				});
+				ctx.ui.notify(
+					`Created ${atom.id} (${atom.type}) — ${atom.title}.`,
+					"info",
+				);
+				return;
+			}
+			if (command === "update") {
+				const id = firstWord(rest);
+				if (!id) {
+					ctx.ui.notify(
+						"Usage: /atom update <id> [body=<md>|--edit] [status=<s>] [scope=<s>]",
+						"warning",
+					);
+					return;
+				}
+				const current = getAtom(store, id);
+				if (!current) {
+					ctx.ui.notify(`Atom not found: ${id}.`, "warning");
+					return;
+				}
+				const wantsEditor = rest.includes("--edit");
+				const parsed = parseAssignments(
+					rest.slice(id.length).replaceAll("--edit", ""),
+				);
+				const status = parsed.status as NodeStatus | undefined;
+				if (status && !(NODE_STATUSES as readonly string[]).includes(status)) {
+					ctx.ui.notify(
+						`Unknown status: ${status}. Valid: ${NODE_STATUSES.join(", ")}.`,
+						"warning",
+					);
+					return;
+				}
+				let body = parsed.body;
+				if (wantsEditor) {
+					const edited = await ctx.ui.editor("Atom body", current.body);
+					if (edited === undefined) {
+						ctx.ui.notify("Cancelled atom update.", "info");
+						return;
+					}
+					body = edited;
+				}
+				const updated = updateAtom(store, id, {
+					body,
+					status,
+					scope: parsed.scope,
+					sources: parsed.sources
+						? parsed.sources
+								.split(",")
+								.map((s) => s.trim())
+								.filter(Boolean)
+						: undefined,
+				});
+				const touched = [
+					body !== undefined ? "body" : "",
+					status !== undefined ? "status" : "",
+					parsed.scope !== undefined ? "scope" : "",
+					parsed.sources !== undefined ? "sources" : "",
+				].filter(Boolean);
+				const regenerated =
+					updated.status === "promoted" && updated.promoted_to
+						? ` Export regenerated: ${updated.promoted_to}.`
+						: "";
+				ctx.ui.notify(
+					`Updated ${updated.id}${touched.length ? `: ${touched.join(", ")}` : ""}.${regenerated}`,
+					"info",
+				);
+				return;
+			}
+			if (command === "promote") {
+				const id = firstWord(rest);
+				if (!id) {
+					ctx.ui.notify("Usage: /atom promote <id> [docs/path.md]", "warning");
+					return;
+				}
+				const docsPath =
+					rest.slice(id.length).trim().split(/\s+/)[0] || undefined;
+				const updated = promote(store, id, docsPath);
+				ctx.ui.notify(
+					`Promoted ${updated.id} → ${updated.promoted_to}.`,
+					"info",
+				);
+				return;
+			}
+			if (command === "demote") {
+				const ids = rest.split(/\s+/).filter(Boolean);
+				if (!ids.length) {
+					ctx.ui.notify("Usage: /atom demote <id> [<id>…]", "warning");
+					return;
+				}
+				const demoted: string[] = [];
+				const removed: string[] = [];
+				const skipped: string[] = [];
+				const failed: string[] = [];
+				for (const id of ids) {
+					try {
+						const result = demote(store, id);
+						if (result.atom.status !== "promoted" && !result.removedExport) {
+							skipped.push(id);
+							continue;
+						}
+						demoted.push(result.atom.id);
+						if (result.removedExport) removed.push(result.removedExport);
+					} catch {
+						failed.push(id);
+					}
+				}
+				const parts: string[] = [];
+				if (demoted.length) {
+					parts.push(
+						`demoted ${demoted.length} → accepted${removed.length ? ` (${removed.length} export(s) deleted)` : ""}`,
+					);
+				}
+				if (skipped.length) parts.push(`not promoted: ${skipped.join(", ")}`);
+				if (failed.length) parts.push(`not found: ${failed.join(", ")}`);
+				ctx.ui.notify(
+					parts.length
+						? `atom demote: ${parts.join("; ")}.`
+						: "Nothing to demote.",
+					"info",
+				);
+				return;
+			}
+			if (command === "link") {
+				const [from, to, kind] = rest.split(/\s+/).filter(Boolean);
+				if (!from || !to || !kind) {
+					ctx.ui.notify(
+						"Usage: /atom link <from> <to> <kind> (e.g. supersedes, depends-on)",
+						"warning",
+					);
+					return;
+				}
+				if (!(EDGE_KINDS as readonly string[]).includes(kind)) {
+					ctx.ui.notify(
+						`Unknown edge kind: ${kind}. Valid: ${EDGE_KINDS.join(", ")}.`,
+						"warning",
+					);
+					return;
+				}
+				addEdge(store, from, to, kind as EdgeKind);
+				ctx.ui.notify(`Linked ${from} -[${kind}]-> ${to}.`, "info");
 				return;
 			}
 			if (command === "query") {
-				const opts: { type?: NodeType; status?: string; q?: string } = {};
-				for (const part of rest.split(/\s+/).filter(Boolean)) {
-					const [key, ...valueParts] = part.split("=");
-					const value = valueParts.join("=");
-					if (
-						key === "type" &&
-						(NODE_TYPES as readonly string[]).includes(value)
-					)
-						opts.type = value as NodeType;
-					else if (key === "status") opts.status = value;
-					else if (key === "q") opts.q = value;
+				const parsed = parseAssignments(rest);
+				const statusNot = /status!=(\w+)/.exec(rest)?.[1];
+				const opts: Parameters<typeof queryAtoms>[1] = {};
+				if (
+					parsed.type &&
+					(NODE_TYPES as readonly string[]).includes(parsed.type)
+				)
+					opts.type = parsed.type as NodeType;
+				if (
+					parsed.status &&
+					(NODE_STATUSES as readonly string[]).includes(parsed.status)
+				)
+					opts.status = parsed.status as NodeStatus;
+				if (
+					statusNot &&
+					(NODE_STATUSES as readonly string[]).includes(statusNot)
+				)
+					opts.statusNot = statusNot as NodeStatus;
+				if (parsed.q) opts.q = parsed.q;
+				if (parsed.scope) opts.scope = parsed.scope;
+				if (parsed.after) opts.after = parsed.after;
+				if (parsed.limit) opts.limit = Number.parseInt(parsed.limit, 10);
+				if (parsed.sort === "created" || parsed.sort === "id") {
+					opts.sort = parsed.sort;
 				}
-				const rows = queryNodes(kb, opts as Parameters<typeof queryNodes>[1]);
+				const rows = queryAtoms(store, opts);
 				const text = rows.length
 					? rows
-							.map(
-								(r: NodeRow) =>
-									`- **${r.id}** (${r.type}, ${r.status}) ${r.title} — nodes/${r.id}.md${r.promoted_to ? ` → ${r.promoted_to}` : ""}`,
-							)
+							.map((r) => {
+								const snippet = r.body.split("\n")[0].trim().slice(0, 80);
+								return `- **${r.id}** (${r.type}, ${r.status}) ${r.title}${r.promoted_to ? ` → ${r.promoted_to}` : ""}${snippet ? `\n  ${snippet}${r.body.length > snippet.length ? "…" : ""}` : ""}`;
+							})
 							.join("\n")
 					: "no matching atoms";
 				pi.sendMessage({
@@ -353,7 +588,7 @@ Settings: { "atom": true|false } in ~/.pi/agent/grill.json or .pi/grill.json —
 				const task = rest.startsWith("--task") ? rest.slice(6).trim() : "";
 				pi.sendMessage({
 					customType: "grill-atom-digest",
-					content: renderDigest(kb, task ? { task } : undefined),
+					content: renderDigest(store, task ? { task } : undefined),
 					display: true,
 				});
 				return;
@@ -396,10 +631,10 @@ Settings: { "atom": true|false } in ~/.pi/agent/grill.json or .pi/grill.json —
 - /grill intent auto|plan|learn|research|content|decide
 - /grill output <one or more outputs> (preference only; approval still required)
 - /grill research off|ask|auto
-- /grill atom on|off|init|doctor|query|digest — grill atom knowledge base (toggle for this session; /grill kb is a deprecated alias)
+- /grill atom on|off|init|doctor|query|digest — grill atom knowledge base (toggle for this session)
 - /grill subagents on|off — toggle the first-class subagent integration (auto grounding scouts, end-of-process reviewer, write delegation)
 - /grill isolation [worktrees|gitbutler|slices|auto] — show or set the isolation backend for this session (session-only override; default from grill.json)
-- /atom init|doctor|query|digest — grill atom knowledge base (see /atom help; /kb is a deprecated alias)
+- /atom init|doctor|query|digest — grill atom knowledge base (see /atom help)
 
 Grill Me uses one thorough default Socratic style. Grounding is first-class: a compact repo dossier is captured automatically at session start; per-question spot-checks use cymbal tools and read-only scouts.
 
@@ -496,7 +731,7 @@ The mandatory output-selection phase still gates all output production: grill_en
 				return;
 			}
 
-			if (command === "atom" || command === "kb") {
+			if (command === "atom") {
 				const sub = firstWord(rest);
 				if (sub === "on" || sub === "off") {
 					const value = sub === "on";
@@ -611,12 +846,6 @@ The mandatory output-selection phase still gates all output production: grill_en
 
 	pi.registerCommand("atom", {
 		description: "Grill atom: init, doctor, query, digest",
-		handler: (args, ctx) => handleAtom(args, ctx),
-	});
-
-	// Deprecated alias of /atom — removed in the next release.
-	pi.registerCommand("kb", {
-		description: "Deprecated alias of /atom (grill atom)",
 		handler: (args, ctx) => handleAtom(args, ctx),
 	});
 }

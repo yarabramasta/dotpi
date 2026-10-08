@@ -1,5 +1,5 @@
-import type { Kb } from "./db.js";
-import { listNodes } from "./nodes.js";
+import { listAtoms } from "./atoms.js";
+import type { AtomStore } from "./store.js";
 
 function formatDate(ts: number): string {
 	return new Date(ts).toISOString().slice(0, 10);
@@ -15,15 +15,18 @@ export interface DigestOptions {
 	task?: string;
 }
 
-export function renderDigest(kb: Kb, options: DigestOptions = {}): string {
-	const allNodes = listNodes(kb);
+export function renderDigest(
+	store: AtomStore,
+	options: DigestOptions = {},
+): string {
+	const allNodes = listAtoms(store);
 	if (options.task) {
-		return renderTaskLens(kb, allNodes, options.task);
+		return renderTaskLens(store, allNodes, options.task);
 	}
 	return renderSummary(allNodes);
 }
 
-function renderSummary(nodes: ReturnType<typeof listNodes>): string {
+function renderSummary(nodes: ReturnType<typeof listAtoms>): string {
 	const lines: string[] = ["# atom digest"];
 
 	const typeCounts: Record<
@@ -101,8 +104,8 @@ function renderSummary(nodes: ReturnType<typeof listNodes>): string {
 }
 
 function renderTaskLens(
-	kb: Kb,
-	allNodes: ReturnType<typeof listNodes>,
+	store: AtomStore,
+	allNodes: ReturnType<typeof listAtoms>,
 	task: string,
 ): string {
 	const words = task
@@ -131,7 +134,7 @@ function renderTaskLens(
 	}
 	const ids = new Set(matched.map((n) => n.id));
 	const edges = (
-		kb.db.prepare("SELECT from_id, to_id, kind FROM edges").all() as Array<{
+		store.db.prepare("SELECT from_id, to_id, kind FROM edges").all() as Array<{
 			from_id: string;
 			to_id: string;
 			kind: string;

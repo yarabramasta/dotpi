@@ -17,8 +17,6 @@ interface GrillSettings {
 	collapseKey?: string;
 	isolation?: string;
 	atom?: boolean;
-	/** @deprecated renamed to "atom"; still read for compatibility */
-	kb?: boolean;
 }
 
 export const ISOLATION_SETTINGS = [
@@ -86,17 +84,14 @@ export function readIsolationDefault(
 export const DEFAULT_COLLAPSE_KEY = "ctrl+]";
 
 /** Resolve the grill atom (knowledge base) default: project > global > on.
- * Accepts both "atom" and the deprecated "kb" settings key. The atom only
- * writes when a session actually uses it, so "on" is safe. */
+ * The atom only writes when a session actually uses it, so "on" is safe. */
 export function readAtomDefault(ctx: ExtensionContext): boolean {
 	const project = ctx.isProjectTrusted()
 		? readSettings(join(ctx.cwd, CONFIG_DIR_NAME, "grill.json"))
 		: undefined;
 	if (typeof project?.atom === "boolean") return project.atom;
-	if (typeof project?.kb === "boolean") return project.kb;
 	const globalSettings = readSettings(join(getAgentDir(), "grill.json"));
 	if (typeof globalSettings?.atom === "boolean") return globalSettings.atom;
-	if (typeof globalSettings?.kb === "boolean") return globalSettings.kb;
 	return true;
 }
 

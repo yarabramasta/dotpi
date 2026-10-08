@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { parseAssignments } from "../commands.ts";
 import grillMeExtension from "../index.ts";
 import { buildSystemPrompt } from "../prompts.ts";
 import { cloneState, DEFAULT_STATE, type GrillState } from "../state.ts";
@@ -15,6 +16,10 @@ const TOOL_NAMES = [
 	"grill_enter_output_phase",
 	"grill_finish_output_phase",
 	"atom_query",
+	"atom_create",
+	"atom_update",
+	"atom_promote",
+	"atom_demote",
 	"atom_digest",
 	"atom_link",
 	"atom_backfill",
@@ -59,13 +64,25 @@ describe("grill extension wiring", () => {
 			"checkpoint",
 			"grill",
 			"atom",
-			"kb",
 		]);
 		expect(stub.events).toEqual({
 			tool_call: 1,
 			before_agent_start: 1,
 			session_start: 1,
 		});
+	});
+});
+
+describe("parseAssignments", () => {
+	test("parses bare, quoted, and multi-word values", () => {
+		expect(
+			parseAssignments('type=decision title="multi word title" scope=auth'),
+		).toEqual({
+			type: "decision",
+			title: "multi word title",
+			scope: "auth",
+		});
+		expect(parseAssignments("q=auth tokens")).toEqual({ q: "auth" });
 	});
 });
 

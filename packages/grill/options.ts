@@ -23,17 +23,17 @@ export interface OutputDestination {
 }
 
 /**
- * The grill atom knowledge base (.pi/knowledge/ — folder-colocated with the
- * repo: SQLite kb.db + md node bodies in one folder) is the underlying backend
- * for atom-marked outputs. It is NOT a selectable destination: atom-marked
- * outputs land as typed atoms (revisions edit existing node bodies in place),
- * and promotion to repo-tree files is an explicit step (e.g. ADR →
- * docs/adr/NNN-slug.md). GitHub issues is the other native non-file
+ * The grill atom knowledge base (.pi/knowledge/ — single SQLite store
+ * atoms.db in the repo, bodies in-db) is the underlying backend for
+ * atom-marked outputs. It is NOT a selectable destination: atom-marked
+ * outputs land as typed atoms (revisions edit existing bodies in place),
+ * and promotion to repo-tree files is an explicit step (e.g. decision →
+ * docs/decisions/slug.md). GitHub issues is the other native non-file
  * destination (created via API). file-marked destinations write repo-tree
  * files directly. Never spawn stray md files for knowledge-shaped outputs.
  */
-export const KB_BACKEND_GUIDANCE =
-	"The grill atom knowledge base (.pi/knowledge/ — folder-colocated: SQLite kb.db + md node bodies in the repo) is the underlying backend for atom-marked outputs, not a selectable option: those outputs land as typed atoms, revisions edit node bodies in place, and promotion to repo-tree files is an explicit step (e.g. ADR → docs/adr/NNN-slug.md). GitHub issues is the other native non-file destination (API-created). File-marked destinations write repo-tree files directly. Never spawn stray md files for knowledge-shaped outputs.";
+export const ATOM_BACKEND_GUIDANCE =
+	"The grill atom knowledge base (.pi/knowledge/ — single SQLite store: .pi/knowledge/atoms.db, bodies in-db) is the underlying backend for atom-marked outputs, not a selectable option: those outputs land as typed atoms, revisions edit bodies in place, and promotion to repo-tree files is an explicit step (e.g. decision → docs/decisions/slug.md). GitHub issues is the other native non-file destination (API-created). File-marked destinations write repo-tree files directly. Never spawn stray md files for knowledge-shaped outputs.";
 
 export const OUTPUT_DESTINATION_OPTIONS: OutputDestination[] = [
 	{

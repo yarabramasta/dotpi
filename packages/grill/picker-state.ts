@@ -372,10 +372,10 @@ export type { KeybindingsManager };
 // Confirm has two semantic sources (rpiv rule): `tui.select.confirm` is the
 // select-list default; `tui.input.submit` is the user's "send" key. With pi
 // defaults both resolve to enter, so matching either is equivalent.
-function isConfirm(kb: PickerKeybindings, data: string): boolean {
+function isConfirm(keybindings: PickerKeybindings, data: string): boolean {
 	return (
-		kb.matches(data, "tui.select.confirm") ||
-		kb.matches(data, "tui.input.submit")
+		keybindings.matches(data, "tui.select.confirm") ||
+		keybindings.matches(data, "tui.input.submit")
 	);
 }
 
@@ -397,7 +397,7 @@ export function routePickerKey(
 	data: string,
 	state: PickerState,
 	env: PickerEnv,
-	kb: PickerKeybindings,
+	keybindings: PickerKeybindings,
 	collapseKey?: string,
 ): PickerAction {
 	// Collapse toggle is intercepted at the top so it works from every mode
@@ -412,7 +412,7 @@ export function routePickerKey(
 
 	// Collapsed: swallow everything except cancel (step 6 semantics).
 	if (state.collapsed) {
-		return kb.matches(data, "tui.select.cancel")
+		return keybindings.matches(data, "tui.select.cancel")
 			? { kind: "cancel" }
 			: { kind: "ignore" };
 	}
@@ -432,54 +432,59 @@ export function routePickerKey(
 	}
 
 	if (state.noteEditing) {
-		if (kb.matches(data, "tui.input.newLine")) {
+		if (keybindings.matches(data, "tui.input.newLine")) {
 			return { kind: "note_edit", data: "\n" };
 		}
-		if (isConfirm(kb, data)) return { kind: "note_close" };
-		if (kb.matches(data, CLEAR_ID)) return { kind: "note_edit", data: "\x15" };
-		if (kb.matches(data, EXTERNAL_ID))
+		if (isConfirm(keybindings, data)) return { kind: "note_close" };
+		if (keybindings.matches(data, CLEAR_ID))
+			return { kind: "note_edit", data: "\x15" };
+		if (keybindings.matches(data, EXTERNAL_ID))
 			return { kind: "external", target: "note" };
-		if (kb.matches(data, BACKSPACE_ID))
+		if (keybindings.matches(data, BACKSPACE_ID))
 			return { kind: "note_edit", data: "\x7f" };
 		if (
-			kb.matches(data, DELETE_WORD_BACKWARD_ID) ||
+			keybindings.matches(data, DELETE_WORD_BACKWARD_ID) ||
 			data === "\x17" ||
 			data === "\x1b\x7f"
 		)
 			return { kind: "note_edit", data: "\x17" };
-		if (kb.matches(data, "tui.editor.cursorLeft"))
+		if (keybindings.matches(data, "tui.editor.cursorLeft"))
 			return { kind: "cursor_left" };
-		if (kb.matches(data, "tui.editor.cursorRight"))
+		if (keybindings.matches(data, "tui.editor.cursorRight"))
 			return { kind: "cursor_right" };
-		if (kb.matches(data, "tui.select.cancel")) return { kind: "cancel" };
+		if (keybindings.matches(data, "tui.select.cancel"))
+			return { kind: "cancel" };
 		return { kind: "note_edit", data };
 	}
 
 	if (state.editing) {
 		// Newline wins over confirm (rpiv rule): insert even on a shared key.
-		if (kb.matches(data, "tui.input.newLine")) {
+		if (keybindings.matches(data, "tui.input.newLine")) {
 			return { kind: "input_edit", data: "\n" };
 		}
-		if (isConfirm(kb, data)) return { kind: "confirm" };
-		if (kb.matches(data, CLEAR_ID)) return { kind: "input_edit", data: "\x15" };
-		if (kb.matches(data, EXTERNAL_ID))
+		if (isConfirm(keybindings, data)) return { kind: "confirm" };
+		if (keybindings.matches(data, CLEAR_ID))
+			return { kind: "input_edit", data: "\x15" };
+		if (keybindings.matches(data, EXTERNAL_ID))
 			return { kind: "external", target: "custom" };
-		if (kb.matches(data, BACKSPACE_ID))
+		if (keybindings.matches(data, BACKSPACE_ID))
 			return { kind: "input_edit", data: "\x7f" };
 		if (
-			kb.matches(data, DELETE_WORD_BACKWARD_ID) ||
+			keybindings.matches(data, DELETE_WORD_BACKWARD_ID) ||
 			data === "\x17" ||
 			data === "\x1b\x7f"
 		)
 			return { kind: "input_edit", data: "\x17" };
-		if (kb.matches(data, "tui.editor.cursorLeft"))
+		if (keybindings.matches(data, "tui.editor.cursorLeft"))
 			return { kind: "cursor_left" };
-		if (kb.matches(data, "tui.editor.cursorRight"))
+		if (keybindings.matches(data, "tui.editor.cursorRight"))
 			return { kind: "cursor_right" };
-		if (kb.matches(data, "tui.select.cancel")) return { kind: "cancel" };
+		if (keybindings.matches(data, "tui.select.cancel"))
+			return { kind: "cancel" };
 		// Nav exits the editor; the draft is preserved for when they return.
-		if (kb.matches(data, "tui.select.up")) return { kind: "nav_up" };
-		if (kb.matches(data, "tui.select.down")) return { kind: "nav_down" };
+		if (keybindings.matches(data, "tui.select.up")) return { kind: "nav_up" };
+		if (keybindings.matches(data, "tui.select.down"))
+			return { kind: "nav_down" };
 		return { kind: "input_edit", data };
 	}
 
@@ -493,21 +498,24 @@ export function routePickerKey(
 	// Aux tabs (Checkpoint/Grounding/Review) are read-only: tab cycling and
 	// cancel work there; up/down scroll the overflowed content.
 	if (state.tab !== 0) {
-		if (kb.matches(data, "tui.select.cancel")) return { kind: "cancel" };
-		if (kb.matches(data, "tui.select.up")) return { kind: "scroll_up" };
-		if (kb.matches(data, "tui.select.down")) return { kind: "scroll_down" };
+		if (keybindings.matches(data, "tui.select.cancel"))
+			return { kind: "cancel" };
+		if (keybindings.matches(data, "tui.select.up"))
+			return { kind: "scroll_up" };
+		if (keybindings.matches(data, "tui.select.down"))
+			return { kind: "scroll_down" };
 		return { kind: "ignore" };
 	}
-	if (isConfirm(kb, data)) {
+	if (isConfirm(keybindings, data)) {
 		return state.selected === env.options.length
 			? { kind: "edit_custom" }
 			: { kind: "confirm" };
 	}
-	if (kb.matches(data, "tui.select.up")) return { kind: "nav_up" };
-	if (kb.matches(data, "tui.select.down")) return { kind: "nav_down" };
+	if (keybindings.matches(data, "tui.select.up")) return { kind: "nav_up" };
+	if (keybindings.matches(data, "tui.select.down")) return { kind: "nav_down" };
 	if (data === "n") return { kind: "note_open" };
 	if (data === "x") return { kind: "expand_toggle" };
-	if (kb.matches(data, "tui.select.cancel")) return { kind: "cancel" };
+	if (keybindings.matches(data, "tui.select.cancel")) return { kind: "cancel" };
 	return { kind: "ignore" };
 }
 

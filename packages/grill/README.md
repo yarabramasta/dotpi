@@ -1,97 +1,213 @@
 # pi-grill
 
-Socratic planning mode for Pi. `/grill <topic>` interviews you through a picker
-overlay — the Question tab with the answer choices, plus read-only Checkpoint,
-Grounding, and Review tabs — while maintaining a shared-understanding
-checkpoint (show or edit it anytime with `/grill checkpoint` or
-`/checkpoint`). Sessions stay read-only until you explicitly approve output
-production in the output-selection phase. Grounding is automatic: a compact
-repo dossier (Cymbal + git) is captured at session start (`🔥 grill · warming
-up…` on the status line while it runs).
+Socratic planning mode + a repo knowledge base for Pi. Two halves, one store:
+
+- **Grill Me sessions** — `/grill <topic>` interviews you through a picker
+  overlay, maintains a shared-understanding checkpoint, and lands outputs as
+  tracked atoms or GitHub issues.
+- **Grill atom** — a persistent, repo-scoped knowledge base
+  (`.pi/knowledge/atoms.db`) that survives sessions: decisions, research,
+  plans, requirements, concepts. Agents pick it up with or without a grill
+  session.
+
+Everything below is organized by what you actually run.
+
+---
+
+## Planning sessions
+
+### "I want to plan something with structure"
 
 ```text
 /grill <topic>
-/grill stop
-/grill status
-/grill checkpoint [edit|chat]
+```
+
+What happens: a repo dossier (Cymbal + git) is captured automatically for
+grounding (`🔥 grill · warming up…` on the status line), then the session
+asks focused Socratic questions through a picker (↑/↓ + Enter on suggested
+answers, type your own anytime). Your answers accumulate in a **checkpoint**
+— the shared understanding both you and the agent work from. Sessions stay
+read-only until the mandatory **output-selection phase**: you explicitly
+approve what gets produced (GitHub issues, plan atoms, docs — you pick).
+After outputs, one read-only reviewer pass verifies checkpoint vs produced
+outputs vs edited files (PASS or gap list; gaps get fixed, pass reruns once).
+
+State auto-persists every change; switching model mid-session is safe.
+
+### "Where am I? Show me / steer / stop"
+
+```text
+/grill status                    # session status
+/grill checkpoint [edit|chat]    # show / edit / print the checkpoint (also /checkpoint)
 /grill intent auto|plan|learn|research|content|decide
-/grill output <outputs>       # preference only, not approval
+/grill output <outputs>          # preference only, not approval
 /grill research off|ask|auto
-/grill atom on|off|init|doctor|query|digest
-/grill subagents on|off
+/grill subagents on|off          # grounding scouts + reviewer + write delegation
 /grill isolation [worktrees|gitbutler|slices|auto]
+/grill stop
 ```
 
-With the subagent integration on (default; `/grill subagents` overrides per
-session), approved file writes can be delegated to a writer subagent per output
-batch under an isolation backend — git worktrees, GitButler, or plain slices,
-auto-resolved from repo state (`/grill isolation` overrides per session). After
-outputs, one read-only reviewer pass verifies the checkpoint against produced
-outputs and edited files (PASS or gap list; gaps are fixed and the pass reruns
-once). Settings defaults (`subagents`, `collapseKey`, `isolation`, `atom`) live
-in `~/.pi/agent/grill.json`; a project `.pi/grill.json` wins.
+Session toggles override settings defaults for this session only.
 
-## Grill atom
+### "What did my sessions produce?"
 
-The grill extension also ships **grill atom** — a persistent, repo-scoped
-atomic knowledge graph (renamed from "grill kb") so decisions, research,
-plans, and summaries survive the session instead of being lost to the
-conversation (the documented grill-with-docs gap: "where did all my other
-decisions go?"). Philosophy: Socratic interviewing stays the primitive; the
-atom is its stateful layer, and a graduation model keeps repos code-shaped —
-cheap working memory in `.pi/knowledge/` (git-ignored by default), explicit
-promotion moves accepted substance to durable homes (short Y-statement ADRs,
-GitHub issues, repo docs). Canon stays one page and immutable;
-superseded-not-edited.
+Approved outputs land as typed atoms with edges (design doc, ADR, PRD,
+implementation plan, research brief, summary, tutorial outline, test plan,
+changelog — you choose in the output-selection phase), GitHub issues, or
+repo-tree files. Every session auto-appends a `sess-*` atom citing what it
+produced. They're all queryable via the atom store below.
+
+---
+
+## Repo knowledge base
+
+### "Give my repo a memory"
 
 ```text
-.pi/knowledge/
-  .gitignore        # "*" — self-contained ignore; delete this file to commit the kb
-  kb.db             # SQLite — single source of truth (nodes, edges, statuses, pointers)
-  nodes/<id>.md     # body only, filename = id, zero frontmatter (grep-able)
+/atom init
 ```
 
-`kb.db` holds ALL metadata (id `dec-0031`/`res-0007`/`req-0004`/`spk-0002`,
-type `decision|research|plan|spec|task|session|validation|content|release|
-requirement|concept|spike`, status `draft|accepted|promoted|superseded`, scope
-for monorepo packages, `promoted_to`, `github_issue`/`github_project` refs,
-`sources`); bodies live beside it as plain md — no frontmatter, so there is no
-second source of truth. STRICT tables + foreign keys reject dangling edges and
-duplicate ids at write time; grill is the single writer, `doctor` catches human
-hand-edits. Graph absorb imports `docs/reference/graph/*.yaml` (types
-`fr|nfr`→requirement, `flow-stage|layer|entity`→concept, `spike`→spike; edges
-`superseded-by`/`supersedes`→supersedes,
-`revised-by`/`refined-by`/`reworks`→refined-by, `gates`/`flows-into`→depends-on,
-`sources`/`proves`→cited, `part-of`→part-of) idempotently at `init`.
+Scaffolds `.pi/knowledge/` (`atoms.db` + `.gitignore` + `.gitattributes`),
+reports workspace shape (monorepo detection), prints the optional textconv
+setup line for readable db diffs, and **writes a pointer block into
+`AGENTS.md`** so any agent — grill session or not — knows the KB exists.
+Idempotent: it updates its own block by marker, skips repos whose AGENTS.md
+already mentions `atoms.db`, and creates the file if missing
+(`Pointer: created|written|updated|skipped` in the init output).
+
+New decisions don't need a session — record them directly (next case).
+
+### "I'm an agent and need the knowledge — no grill session running"
+
+The KB is never gated behind a session. In pi, the tools are always there:
+
+- `atom_query` — filters: `id=` (returns the **full atom**, body included),
+  `type=`, `status=`, `status_not=`, `q=` (FTS5 keyword search over title +
+  body), `scope=`, `after=YYYY-MM-DD`, `limit=`, `sort=created|id`
+- `atom_digest` — compact counts by type/status, recent sessions, active
+  decisions; optional task lens (`task=`)
+
+Without pi at all (other tools, other agents): the `AGENTS.md` pointer tells
+you the store exists, and plain sqlite3 works:
+
+```sh
+sqlite3 .pi/knowledge/atoms.db \
+  "SELECT id,title FROM atoms_fts WHERE atoms_fts MATCH 'kw*'"
+```
+
+### "Record a decision / research / plan right now"
 
 ```text
-/atom init              # scan docs/adr (cap 50) + workspaces + docs/reference/graph; seed canon nodes, graph atoms, edges
-/atom doctor [--fix] [--strict]  # db↔md consistency; --strict flags promoted decisions with NULL provenance
-/atom query type=decision status=draft q=auth
-/atom digest [--task <text>]     # ~1KB digest; --task lens filters to matching atoms + their edges
-/grill atom on|off      # session toggle (settings: { "atom": true|false }, default on; deprecated "kb" key still read)
+/atom create type=decision title=<t> [body=<md>|--edit] [scope=<s>] [sources=<comma-separated>]
 ```
 
-AI sessions call the native tools directly — no MCP server:
+or the `atom_create` tool. Types: `decision` `research` `plan` `spec` `task`
+`session` `validation` `content` `release` `requirement` `concept` `spike`
+(ids like `dec-0005`). `--edit` opens the editor for the body; `sources` are
+your provenance URLs/refs.
+
+### "Change something"
 
 ```text
-atom_query(type?, status?, q?, scope?)   # find atoms + their canon paths
-atom_digest(task?)                          # compact digest; task lens filters to matching atoms + edges
-atom_link(from, to, kind)                # typed edge (supersedes, depends-on, …)
-atom_backfill(id, issue?, project?, scope?)  # fill provenance columns
+/atom update <id> [body=<md>|--edit] [status=<s>] [scope=<s>] [sources=<comma-separated>]
 ```
 
-`/kb` and `/grill kb <sub>` are deprecated aliases of `/atom` and
-`/grill atom <sub>` (removed in the next release). Bootstrap by repo shape:
-fresh scaffolds skip `init` (first grill session seeds the atom); docs-only and
-existing-grill repos run `/atom init` first so prior ADRs become citable canon
-refs; monorepos keep ONE atom base at the git root with per-node `scope`; huge
-codebases stay bounded (ADR cap 50, capped digest, one AGENTS.md pointer line).
-The knowledge base is the underlying backend for atom-marked output
-destinations (design doc, ADR, PRD, implementation plan, research brief,
-summary, tutorial outline, test plan, changelog): those outputs land as typed
-atoms with edges, revisions edit node bodies in place, and every session
-auto-appends a `sess-*` node citing what it produced. Promotion to repo-tree
-files (e.g. `docs/adr/NNN-slug.md`) runs through the output-selection phase —
-never implicit. GitHub is composed refs-only: the atom never mirrors
-issue/board state.
+Bodies revise in place (revisions are normal). `sources=[]` (empty) clears
+provenance. If the atom is **promoted**, every change regenerates its md
+export automatically — the repo file never drifts.
+
+To replace a decision, don't overwrite history: create a new atom and
+`/atom link <new> <old> supersedes` — the flip marks the old one superseded.
+
+### "Make this visible in the repo" / "Actually, hide it again"
+
+```text
+/atom promote <id> [docs/path.md]   # md export into the repo tree
+/atom demote <id> [<id>…]           # reverse: status → accepted, export deleted
+```
+
+Promotion is explicit and rare: decisions export to
+`docs/decisions/<slug>.md`, everything else to `docs/atoms/<slug>.md`
+(collision-safe `-2` suffixes; `docs_path` overrides). Demotion is bulk-ready
+but takes explicit ids only — no filter sweeps, so a fat finger can't gut the
+store. Demoted atoms stay fully searchable in the db.
+
+### "Connect things"
+
+```text
+/atom link <from> <to> <kind>
+```
+
+Edge kinds: `supersedes` `refined-by` `depends-on` `produced-by` `cited`
+`promoted-to` `part-of`.
+
+### "Is everything healthy?"
+
+```text
+/atom doctor [--strict]
+```
+
+Checks schema version, empty bodies, orphan edges. `--strict` additionally
+flags promoted decisions with no `sources` — record provenance at creation
+(or `atom update <id> sources=…`) so citations stay traceable.
+
+### "What's in the store?"
+
+```text
+/atom show <id>                  # full atom: meta + body
+/atom query <type=…> <status=…|status!=…> <q=…> <scope=…> <after=…> <limit=…> <sort=…>
+/atom digest [--task <text>]     # ~1KB digest; --task filters to matching atoms + their edges
+```
+
+### "I have an old repo with kb.db + nodes/"
+
+One-shot converter, run from a dotpi checkout against the target repo:
+
+```sh
+npx tsx packages/grill/atom/migrate.ts <repo>    # or bun
+```
+
+Builds `atoms.db`, repoints stale promotion targets, writes exports for
+promoted atoms, deletes `nodes/` + `kb.db`, upgrades the scaffold files. Old
+KBs are never auto-read.
+
+---
+
+## Agent tools (registered in every pi session)
+
+| Tool | Job |
+| --- | --- |
+| `atom_query` | find atoms (`id=` = full fetch); all filters above |
+| `atom_create` | record an atom without a session |
+| `atom_update` | revise body/status/scope/sources; promoted exports regenerate |
+| `atom_promote` / `atom_demote` | opt-in repo-tree export / its rollback |
+| `atom_digest` | orientation: counts, recent sessions, task lens |
+| `atom_link` | typed edges between atoms |
+| `atom_backfill` | set an atom's `scope` after creation |
+
+The store is the underlying backend for atom-marked grill outputs: approved
+outputs land as typed atoms with edges, never as stray md files.
+
+---
+
+## Under the hood (only what a case needs)
+
+- Single SQLite store: `.pi/knowledge/atoms.db` — STRICT tables, bodies
+  in-db, FTS5 virtual table kept in sync by triggers (zero per-query file
+  reads), `schema_version = "2"` guard.
+- `.gitignore` = `*` + `!atoms.db` (+ WAL/journal ignores); `.gitattributes`
+  = `atoms.db diff=sqlite3` — readable diffs via optional textconv; merges
+  stay binary, the single-writer/agent-owned model is the mitigation.
+- Statuses: `draft` `accepted` `promoted` `superseded`. Scopes label
+  monorepo packages.
+
+## Settings
+
+`~/.pi/agent/grill.json` or project `.pi/grill.json` (wins; trust-gated):
+
+```json
+{ "subagents": true, "collapseKey": "ctrl+]", "isolation": "auto", "atom": true }
+```
+
+`/grill atom off` disables the KB for the session; `/grill subagents on|off`
+and `/grill isolation <backend>` override per session.
