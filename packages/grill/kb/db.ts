@@ -12,6 +12,9 @@ export const NODE_TYPES = [
 	"validation",
 	"content",
 	"release",
+	"requirement",
+	"concept",
+	"spike",
 ] as const;
 export type NodeType = (typeof NODE_TYPES)[number];
 
@@ -30,6 +33,7 @@ export const EDGE_KINDS = [
 	"produced-by",
 	"cited",
 	"promoted-to",
+	"part-of",
 ] as const;
 export type EdgeKind = (typeof EDGE_KINDS)[number];
 
@@ -43,6 +47,9 @@ export const ID_PREFIX: Record<NodeType, string> = {
 	validation: "val",
 	content: "cont",
 	release: "rel",
+	requirement: "req",
+	concept: "con",
+	spike: "spk",
 };
 
 export interface KbPaths {

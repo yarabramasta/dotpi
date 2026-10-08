@@ -6,7 +6,13 @@ import { getNode, listNodes } from "./nodes.js";
 export type DoctorIssueKind =
 	| "missing-body"
 	| "orphan-body"
-	| "broken-promoted-path";
+	| "broken-promoted-path"
+	| "null-provenance";
+
+export interface DoctorOptions {
+	/** strict: also flag promoted decisions with no provenance (github links + sources all NULL) */
+	strict?: boolean;
+}
 
 export interface DoctorIssue {
 	kind: DoctorIssueKind;
@@ -14,7 +20,7 @@ export interface DoctorIssue {
 	detail: string;
 }
 
-export function runDoctor(kb: Kb): DoctorIssue[] {
+export function runDoctor(kb: Kb, options: DoctorOptions = {}): DoctorIssue[] {
 	const issues: DoctorIssue[] = [];
 
 	const nodes = listNodes(kb);
@@ -61,6 +67,24 @@ export function runDoctor(kb: Kb): DoctorIssue[] {
 		}
 	}
 
+	if (options.strict) {
+		for (const node of nodes) {
+			if (
+				node.type === "decision" &&
+				node.status === "promoted" &&
+				node.github_issue === null &&
+				node.github_project === null &&
+				node.sources === null
+			) {
+				issues.push({
+					kind: "null-provenance",
+					id: node.id,
+					detail: `promoted decision ${node.id} has no provenance (github_issue/github_project/sources all NULL) — backfill via atom_backfill`,
+				});
+			}
+		}
+	}
+
 	return issues;
 }
 
@@ -72,7 +96,7 @@ export function fixDoctor(kb: Kb, issues: DoctorIssue[]): number {
 		}
 		writeFileSync(
 			`${kb.paths.nodesDir}/${issue.id}.md`,
-			"<!-- recovered by kb doctor -->\n",
+			"<!-- recovered by atom doctor -->\n",
 		);
 		fixed++;
 	}

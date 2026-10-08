@@ -2,6 +2,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { registerCommands } from "./commands.js";
 import { registerEvents } from "./events.js";
 import { createRuntime } from "./runtime.js";
+import { registerAtomTools } from "./tools/atom-tools.js";
 import { registerGroundingTools } from "./tools/grounding-tools.js";
 import { registerPhaseTools } from "./tools/phase-tools.js";
 import { registerReviewerTools } from "./tools/reviewer-tools.js";
@@ -14,5 +15,6 @@ export default function grillMeExtension(pi: ExtensionAPI): void {
 	registerGroundingTools(pi, helpers);
 	registerReviewerTools(pi, helpers);
 	registerPhaseTools(pi, helpers);
+	registerAtomTools(pi);
 	registerEvents(pi, helpers);
 }

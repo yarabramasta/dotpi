@@ -18,8 +18,8 @@ import { initialCheckpoint, statusMarkdown } from "./prompts.js";
 import type { GrillHelpers } from "./runtime.js";
 import {
 	asIsolationSetting,
+	readAtomDefault,
 	readIsolationDefault,
-	readKbDefault,
 	readSubagentsDefault,
 } from "./settings.js";
 import {
@@ -250,32 +250,37 @@ export function registerCommands(
 		}
 	}
 
-	async function handleKb(args: string, ctx: ExtensionContext): Promise<void> {
+	async function handleAtom(
+		args: string,
+		ctx: ExtensionContext,
+	): Promise<void> {
 		const trimmed = args.trim();
 		const command = firstWord(trimmed);
 		const rest = trimmed.slice(command.length).trim();
 		if (!command || command === "help") {
 			pi.sendMessage({
-				customType: "grill-kb-help",
-				content: `# kb — knowledge base
+				customType: "grill-atom-help",
+				content: `# grill atom — knowledge base
 
-- /kb init — scan the repo (docs/adr + workspaces) and seed canon-ref nodes
-- /kb doctor [--fix] — check db↔md consistency; --fix recreates missing bodies
-- /kb query <type=<t>> <status=<s>> <q=<text>> — list matching nodes
-- /kb digest — print the compact digest
+- /atom init — scan the repo (docs/adr + workspaces + docs/reference/graph) and seed canon-ref nodes + edges
+- /atom doctor [--fix] [--strict] — check db↔md consistency; --fix recreates missing bodies; --strict also flags promoted decisions with NULL provenance
+- /atom query <type=<t>> <status=<s>> <q=<text>> — list matching atoms
+- /atom digest [--task <text>] — print the compact digest, optionally task-lensed
 
-Settings: { "kb": true|false } in ~/.pi/agent/grill.json or .pi/grill.json — or toggle for this session with /grill kb on|off (currently ${typeof runtime.state.kbOverride === "boolean" ? (runtime.state.kbOverride ? "on" : "off") : readKbDefault(ctx) ? "on" : "off"}). Data lives in .pi/knowledge/ (kb.db + nodes/), git-ignored by default via its own .gitignore.`,
+Agents can also call the native tools: atom_query, atom_digest, atom_link, atom_backfill.
+
+Settings: { "atom": true|false } in ~/.pi/agent/grill.json or .pi/grill.json — or toggle for this session with /grill atom on|off (currently ${typeof runtime.state.atomOverride === "boolean" ? (runtime.state.atomOverride ? "on" : "off") : readAtomDefault(ctx) ? "on" : "off"}). Data lives in .pi/knowledge/ (kb.db + nodes/), git-ignored by default via its own .gitignore. /kb is a deprecated alias of /atom.`,
 				display: true,
 			});
 			return;
 		}
-		const kbEnabled =
-			typeof runtime.state.kbOverride === "boolean"
-				? runtime.state.kbOverride
-				: readKbDefault(ctx);
-		if (!kbEnabled) {
+		const atomEnabled =
+			typeof runtime.state.atomOverride === "boolean"
+				? runtime.state.atomOverride
+				: readAtomDefault(ctx);
+		if (!atomEnabled) {
 			ctx.ui.notify(
-				'kb is disabled ({ "kb": false } in grill.json or /grill kb off).',
+				'atom is disabled ({ "atom": false } in grill.json or /grill atom off).',
 				"warning",
 			);
 			return;
@@ -285,17 +290,17 @@ Settings: { "kb": true|false } in ~/.pi/agent/grill.json or .pi/grill.json — o
 			if (command === "init") {
 				const result = initKb(kb);
 				ctx.ui.notify(
-					`kb init: scanned ${result.scannedAdrs} ADR(s), created ${result.created.length} node(s), monorepo=${result.isMonorepo} (workspaces: ${result.workspacePkgs}).`,
+					`atom init: scanned ${result.scannedAdrs} ADR(s), created ${result.created.length} node(s), monorepo=${result.isMonorepo} (kind: ${result.workspaceKind ?? "single"}, packages: ${result.workspacePkgs}), graph: +${result.graphNodes} atom(s)/+${result.graphEdges} edge(s) (${result.adrLinked} ADRs linked).`,
 					"info",
 				);
 				return;
 			}
 			if (command === "doctor") {
-				const issues = runDoctor(kb);
+				const issues = runDoctor(kb, { strict: rest.includes("--strict") });
 				if (rest.includes("--fix")) {
 					const fixed = fixDoctor(kb, issues);
 					ctx.ui.notify(
-						`kb doctor: ${issues.length} issue(s), fixed ${fixed}.`,
+						`atom doctor: ${issues.length} issue(s), fixed ${fixed}.`,
 						issues.length ? "warning" : "info",
 					);
 				} else {
@@ -308,8 +313,8 @@ Settings: { "kb": true|false } in ~/.pi/agent/grill.json or .pi/grill.json — o
 								.join("\n")
 						: "clean";
 					pi.sendMessage({
-						customType: "grill-kb-doctor",
-						content: `# kb doctor\n\n${text}\n\nRun /kb doctor --fix to recreate missing bodies.`,
+						customType: "grill-atom-doctor",
+						content: `# atom doctor\n\n${text}\n\nRun /atom doctor --fix to recreate missing bodies.`,
 						display: true,
 					});
 				}
@@ -336,26 +341,30 @@ Settings: { "kb": true|false } in ~/.pi/agent/grill.json or .pi/grill.json — o
 									`- **${r.id}** (${r.type}, ${r.status}) ${r.title} — nodes/${r.id}.md${r.promoted_to ? ` → ${r.promoted_to}` : ""}`,
 							)
 							.join("\n")
-					: "no matching nodes";
+					: "no matching atoms";
 				pi.sendMessage({
-					customType: "grill-kb-query",
-					content: `# kb query\n\n${text}`,
+					customType: "grill-atom-query",
+					content: `# atom query\n\n${text}`,
 					display: true,
 				});
 				return;
 			}
 			if (command === "digest") {
+				const task = rest.startsWith("--task") ? rest.slice(6).trim() : "";
 				pi.sendMessage({
-					customType: "grill-kb-digest",
-					content: renderDigest(kb),
+					customType: "grill-atom-digest",
+					content: renderDigest(kb, task ? { task } : undefined),
 					display: true,
 				});
 				return;
 			}
-			ctx.ui.notify(`Unknown kb command: ${command}. Try /kb help.`, "warning");
+			ctx.ui.notify(
+				`Unknown atom command: ${command}. Try /atom help.`,
+				"warning",
+			);
 		} catch (error) {
 			ctx.ui.notify(
-				`kb error: ${error instanceof Error ? error.message : String(error)}`,
+				`atom error: ${error instanceof Error ? error.message : String(error)}`,
 				"error",
 			);
 		}
@@ -387,10 +396,10 @@ Settings: { "kb": true|false } in ~/.pi/agent/grill.json or .pi/grill.json — o
 - /grill intent auto|plan|learn|research|content|decide
 - /grill output <one or more outputs> (preference only; approval still required)
 - /grill research off|ask|auto
-- /grill kb on|off|init|doctor|query|digest — knowledge base (toggle for this session; /kb is an alias)
+- /grill atom on|off|init|doctor|query|digest — grill atom knowledge base (toggle for this session; /grill kb is a deprecated alias)
 - /grill subagents on|off — toggle the first-class subagent integration (auto grounding scouts, end-of-process reviewer, write delegation)
 - /grill isolation [worktrees|gitbutler|slices|auto] — show or set the isolation backend for this session (session-only override; default from grill.json)
-- /kb init|doctor|query|digest — repo knowledge base (see /kb help)
+- /atom init|doctor|query|digest — grill atom knowledge base (see /atom help; /kb is a deprecated alias)
 
 Grill Me uses one thorough default Socratic style. Grounding is first-class: a compact repo dossier is captured automatically at session start; per-question spot-checks use cymbal tools and read-only scouts.
 
@@ -487,21 +496,21 @@ The mandatory output-selection phase still gates all output production: grill_en
 				return;
 			}
 
-			if (command === "kb") {
+			if (command === "atom" || command === "kb") {
 				const sub = firstWord(rest);
 				if (sub === "on" || sub === "off") {
 					const value = sub === "on";
-					runtime.state.kbOverride = value;
-					runtime.state.lastChangeSummary = `kb ${value ? "enabled" : "disabled"} (session)`;
+					runtime.state.atomOverride = value;
+					runtime.state.lastChangeSummary = `atom ${value ? "enabled" : "disabled"} (session)`;
 					persist();
 					updateUi(ctx);
 					ctx.ui.notify(
-						`kb ${value ? "enabled" : "disabled"} for this session (settings default unchanged).`,
+						`atom ${value ? "enabled" : "disabled"} for this session (settings default unchanged).`,
 						"info",
 					);
 					return;
 				}
-				await handleKb(rest, ctx);
+				await handleAtom(rest, ctx);
 				return;
 			}
 
@@ -600,8 +609,14 @@ The mandatory output-selection phase still gates all output production: grill_en
 		},
 	});
 
+	pi.registerCommand("atom", {
+		description: "Grill atom: init, doctor, query, digest",
+		handler: (args, ctx) => handleAtom(args, ctx),
+	});
+
+	// Deprecated alias of /atom — removed in the next release.
 	pi.registerCommand("kb", {
-		description: "Knowledge base: init, doctor, query, digest",
-		handler: (args, ctx) => handleKb(args, ctx),
+		description: "Deprecated alias of /atom (grill atom)",
+		handler: (args, ctx) => handleAtom(args, ctx),
 	});
 }

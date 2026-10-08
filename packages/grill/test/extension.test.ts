@@ -14,6 +14,10 @@ const TOOL_NAMES = [
 	"grill_finish_output_selection_phase",
 	"grill_enter_output_phase",
 	"grill_finish_output_phase",
+	"atom_query",
+	"atom_digest",
+	"atom_link",
+	"atom_backfill",
 ];
 
 interface StubPi {
@@ -54,6 +58,7 @@ describe("grill extension wiring", () => {
 		expect(stub.commands.map((c) => c.name)).toEqual([
 			"checkpoint",
 			"grill",
+			"atom",
 			"kb",
 		]);
 		expect(stub.events).toEqual({

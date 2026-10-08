@@ -169,12 +169,13 @@ export function addEdge(
 	from: string,
 	to: string,
 	kind: EdgeKind,
-): void {
-	kb.db
+): number {
+	const result = kb.db
 		.prepare(
-			"INSERT INTO edges (from_id, to_id, kind, created_at) VALUES (?, ?, ?, ?)",
+			"INSERT OR IGNORE INTO edges (from_id, to_id, kind, created_at) VALUES (?, ?, ?, ?)",
 		)
 		.run(from, to, kind, Date.now());
+	return Number(result.changes);
 }
 
 export function supersede(kb: Kb, oldId: string, newId: string): void {

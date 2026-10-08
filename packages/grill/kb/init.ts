@@ -1,25 +1,19 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import type { Kb } from "./db.js";
+import { absorbGraph } from "./graph.js";
 import { createNode, listNodes, promote } from "./nodes.js";
+import { detectWorkspace, type WorkspaceKind } from "./workspace.js";
 
 export interface InitResult {
 	scannedAdrs: number;
 	workspacePkgs: number;
 	created: string[];
 	isMonorepo: boolean;
-}
-
-function parsePackageJson(raw: string): {
-	workspaces?: string[] | { packages: string[] };
-} {
-	try {
-		return JSON.parse(raw) as {
-			workspaces?: string[] | { packages: string[] };
-		};
-	} catch {
-		return {};
-	}
+	workspaceKind: WorkspaceKind;
+	adrLinked: number;
+	graphNodes: number;
+	graphEdges: number;
 }
 
 function scanAdrs(kb: Kb): string[] {
@@ -47,20 +41,11 @@ function readHeading(filePath: string): string | undefined {
 }
 
 export function initKb(kb: Kb): InitResult {
-	const pkgPath = join(kb.cwd, "package.json");
-	let isMonorepo = false;
-	let workspacePkgs = 0;
-	try {
-		const pkg = parsePackageJson(readFileSync(pkgPath, "utf8"));
-		if (pkg.workspaces !== undefined) {
-			isMonorepo = true;
-			workspacePkgs = Array.isArray(pkg.workspaces)
-				? pkg.workspaces.length
-				: (pkg.workspaces.packages?.length ?? 0);
-		}
-	} catch {
-		// ignore missing/unparseable package.json
-	}
+	const {
+		isMonorepo,
+		workspacePkgs,
+		kind: workspaceKind,
+	} = detectWorkspace(kb.cwd);
 
 	const adrs = scanAdrs(kb);
 	const scannedAdrs = adrs.length;
@@ -96,5 +81,16 @@ export function initKb(kb: Kb): InitResult {
 		// ignore meta write failures
 	}
 
-	return { scannedAdrs, workspacePkgs, created, isMonorepo };
+	const graph = absorbGraph(kb);
+
+	return {
+		scannedAdrs,
+		workspacePkgs,
+		created,
+		isMonorepo,
+		workspaceKind,
+		adrLinked: graph.adrLinked,
+		graphNodes: graph.graphNodes,
+		graphEdges: graph.graphEdges,
+	};
 }

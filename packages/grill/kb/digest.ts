@@ -10,9 +10,21 @@ function truncateTitle(title: string): string {
 	return `${title.slice(0, 60)}…`;
 }
 
-export function renderDigest(kb: Kb): string {
-	const nodes = listNodes(kb);
-	const lines: string[] = ["# kb digest"];
+export interface DigestOptions {
+	/** task lens: restrict the digest to atoms whose title/body match the task keywords */
+	task?: string;
+}
+
+export function renderDigest(kb: Kb, options: DigestOptions = {}): string {
+	const allNodes = listNodes(kb);
+	if (options.task) {
+		return renderTaskLens(kb, allNodes, options.task);
+	}
+	return renderSummary(allNodes);
+}
+
+function renderSummary(nodes: ReturnType<typeof listNodes>): string {
+	const lines: string[] = ["# atom digest"];
 
 	const typeCounts: Record<
 		string,
@@ -85,5 +97,51 @@ export function renderDigest(kb: Kb): string {
 
 	// Skip empty sections: if there are no nodes at all, only the heading remains.
 	if (lines.length === 1) return lines[0];
+	return lines.join("\n");
+}
+
+function renderTaskLens(
+	kb: Kb,
+	allNodes: ReturnType<typeof listNodes>,
+	task: string,
+): string {
+	const words = task
+		.toLowerCase()
+		.split(/\s+/)
+		.filter((w) => w.length > 2);
+	const matched = allNodes
+		.filter((node) => {
+			if (!words.length) return true;
+			const haystack = `${node.title}\n${node.scope ?? ""}`.toLowerCase();
+			return words.some((w) => haystack.includes(w));
+		})
+		.slice(0, 20);
+
+	const lines: string[] = [`# atom digest — task lens: ${task}`];
+	if (!matched.length) {
+		lines.push(
+			"- no atoms match this task; run without --task for the full digest",
+		);
+		return lines.join("\n");
+	}
+	for (const node of matched) {
+		lines.push(
+			`- ${node.id} (${node.type}, ${node.status}) ${truncateTitle(node.title)}`,
+		);
+	}
+	const ids = new Set(matched.map((n) => n.id));
+	const edges = (
+		kb.db.prepare("SELECT from_id, to_id, kind FROM edges").all() as Array<{
+			from_id: string;
+			to_id: string;
+			kind: string;
+		}>
+	).filter((e) => ids.has(e.from_id) || ids.has(e.to_id));
+	if (edges.length) {
+		lines.push("- edges:");
+		for (const e of edges.slice(0, 20)) {
+			lines.push(`  ${e.from_id} -[${e.kind}]-> ${e.to_id}`);
+		}
+	}
 	return lines.join("\n");
 }

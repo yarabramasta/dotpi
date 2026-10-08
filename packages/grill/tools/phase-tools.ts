@@ -17,6 +17,7 @@ import {
 import {
 	DELEGATE_OPTIONS,
 	GITHUB_REPO_PERMISSION_GUIDANCE,
+	KB_BACKEND_GUIDANCE,
 	OUTPUT_DESTINATION_OPTIONS,
 	outputDestinationOptionNames,
 	outputDestinationOptionsMarkdown,
@@ -147,7 +148,8 @@ export function registerPhaseTools(
 		promptGuidelines: [
 			"Use grill_enter_output_selection_phase after the final checkpoint update when the Grill Me interview is ready to end.",
 			"Do not stop a Grill Me interview, claim the work is complete, or enter output production until grill_enter_output_selection_phase has been called and the user has selected what happens next.",
-			`In the output-selection chat response, explicitly list these output destination options before asking for a choice: ${outputDestinationOptionNames()}.`,
+			`In the output-selection chat response, explicitly list these output destination options before asking for a choice: ${outputDestinationOptionNames()}. Each declares its storage backend (atom | file | native).`,
+			KB_BACKEND_GUIDANCE,
 		],
 		parameters: Type.Object({
 			readinessRationale: Type.String({
