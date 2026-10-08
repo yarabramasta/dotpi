@@ -355,7 +355,7 @@ Settings: { "atom": true|false } in ~/.pi/agent/grill.json or .pi/grill.json —
 					return;
 				}
 				const sources = atom.sources
-					? JSON.parse(atom.sources) && JSON.parse(atom.sources).join(", ")
+					? JSON.parse(atom.sources)?.join(", ")
 					: "—";
 				pi.sendMessage({
 					customType: "grill-atom-show",

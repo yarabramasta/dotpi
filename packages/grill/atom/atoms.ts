@@ -238,14 +238,14 @@ export function queryAtoms(store: AtomStore, opts: QueryOptions): AtomRow[] {
 	}
 
 	// conditions are fixed fragments + '?' placeholders only; values go through params
-	const where = conditions.length ? "WHERE " + conditions.join(" AND ") : "";
+	const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
 	const orderBy =
 		opts.sort === "id" ? "ORDER BY id ASC" : "ORDER BY created_at DESC, id ASC";
 	const limit =
 		opts.limit !== undefined
-			? " LIMIT " + Math.max(0, Math.floor(opts.limit))
+			? ` LIMIT ${Math.max(0, Math.floor(opts.limit))}`
 			: "";
-	const sql = "SELECT * FROM atoms " + where + " " + orderBy + limit;
+	const sql = `SELECT * FROM atoms ${where} ${orderBy}${limit}`;
 	const rows = store.db.prepare(sql).all(...params) as unknown[];
 	return rows.map(mapAtom);
 }
