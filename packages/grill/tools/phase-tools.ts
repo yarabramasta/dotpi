@@ -4,11 +4,11 @@ import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import {
 	type IsolationSetting,
-	isolationBranchName,
 	isolationPickerText,
-	parseConventionalScope,
 	type ResolvedIsolation,
 	resolveIsolation,
+	type SliceBranch,
+	sliceBranches,
 } from "../backends/backend.js";
 import {
 	detectGitbutlerMode,
@@ -68,17 +68,10 @@ function isolationNoteText(
 	return parts.join(" ");
 }
 
-function branchNames(
-	sliceCount: number,
-	plan: string,
-	topic: string,
-): string[] {
-	const { type, slug } = parseConventionalScope(plan, topic);
-	const names: string[] = [];
-	for (let i = 0; i < sliceCount; i++) {
-		names.push(isolationBranchName(type, slug, names));
-	}
-	return names;
+function commitTemplate(n: SliceBranch): string {
+	return n.scope && n.scope !== n.type
+		? `${n.type}(${n.scope}): <subject>`
+		: `${n.type}: <subject>`;
 }
 
 function slicesDelegationText(): string {
@@ -90,13 +83,11 @@ export function worktreesDelegationText(
 	plan: string,
 	topic: string,
 ): string {
-	const { type, slug } = parseConventionalScope(plan, topic);
-	const template = `${type}(${slug}): <subject>`;
-	const branches = branchNames(slices.length, plan, topic);
-	const lines = slices
+	const parts = sliceBranches(slices, plan, topic);
+	const lines = parts
 		.map(
-			(_, i) =>
-				`Slice ${i + 1}: subagent({ agent: <writer>, output: <approved path from slice ${i + 1}>, task: <slice ${i + 1} spec that states verbatim: work in the managed worktree on branch \`${branches[i]}\` (create it there if missing via \`git checkout -b ${branches[i]}\`; NEVER invent or rename a branch), commit via bash with the message \`${template}\` (fill only <subject>), and END the report with \`BRANCH: ${branches[i]}\`>, worktree: true, baseRef: "HEAD", async: false })`,
+			(n, i) =>
+				`Slice ${i + 1}: subagent({ agent: <writer>, output: <approved path from slice ${i + 1}>, task: <slice ${i + 1} spec that states verbatim: work in the managed worktree on branch \`${n.branch}\` (create it there if missing via \`git checkout -b ${n.branch}\`; NEVER invent or rename a branch), commit via bash with the message \`${commitTemplate(n)}\` (fill only <subject>), and END the report with \`BRANCH: ${n.branch}\`>, worktree: true, baseRef: "HEAD", async: false })`,
 		)
 		.join("\n");
 	return `Delegation uses managed git worktrees. Slice the approved paths into disjoint file sets and spawn one writer subagent per slice:\n${lines}\nEach writer uses ONLY its assigned branch name (NEVER invent or rename one); when a spawn returns, immediately merge its reported branch into the source checkout (git merge <branch-name>) before spawning the next writer; any reported BRANCH line that does not match the assigned name is a mistake — stop and fix the writer's branch before merging. Any merge failure pauses and notifies the user: either run git merge --abort to bail, or resolve the conflicts and commit to continue. After merges, surface the \`worktree.cleanup\` plan invocation (lane.recordMerge attestation when available) — plan only, grill never auto-deletes worktrees.`;
@@ -107,13 +98,11 @@ export function gitbutlerDelegationText(
 	plan: string,
 	topic: string,
 ): string {
-	const { type, slug } = parseConventionalScope(plan, topic);
-	const template = `${type}(${slug}): <subject>`;
-	const branches = branchNames(slices.length, plan, topic);
-	const lines = slices
+	const parts = sliceBranches(slices, plan, topic);
+	const lines = parts
 		.map(
-			(_, i) =>
-				`Slice ${i + 1}: subagent({ agent: <writer>, output: <approved path from slice ${i + 1}>, task: <slice ${i + 1} spec that states verbatim: branch \`${branches[i]}\` (NEVER invent a branch name), after editing run \`but diff\` to collect your slice's change IDs, then \`but commit -b ${branches[i]} <ids> -m "${template}"\` (fill only <subject>; always \`-m\` or \`--no-message\`; never a bare \`but commit\`; never \`but push\`)> })`,
+			(n, i) =>
+				`Slice ${i + 1}: subagent({ agent: <writer>, output: <approved path from slice ${i + 1}>, task: <slice ${i + 1} spec that states verbatim: branch \`${n.branch}\` (NEVER invent a branch name), after editing run \`but diff\` to collect your slice's change IDs, then \`but commit -b ${n.branch} <ids> -m "${commitTemplate(n)}"\` (fill only <subject>; always \`-m\` or \`--no-message\`; never a bare \`but commit\`; never \`but push\`)> })`,
 		)
 		.join("\n");
 	return `Delegation uses GitButler virtual branches. Slice the approved paths into disjoint file sets. Parent pre-creates one branch per slice via \`but branch new\` using ONLY these exact pre-computed names (NEVER invent a branch name):\n${lines}\nIf a writer reports committing to any other branch, stop and surface the mismatch to the user before continuing. Parent never runs \`but commit\`. Conflicts/overlaps must be surfaced before committing.`;
