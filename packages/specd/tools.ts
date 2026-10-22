@@ -25,6 +25,7 @@ import { checkConsistency, formatFindings } from "./pipeline/consistency.js";
 import {
 	assertCanExport,
 	assertSpecCreationAllowed,
+	checklistState,
 } from "./pipeline/gates.js";
 import {
 	EVENT_TYPES,
@@ -76,6 +77,25 @@ function renderCapsule(payload: Record<string, unknown> | undefined): string {
 		section("Next Step", payload.nextStep ? [payload.nextStep] : undefined) +
 		(extras ? `\n### Extras\n${extras}` : "")
 	);
+}
+
+/** Render a checklist with [x]/[ ] markers based on reviewer-owned
+ * `checklist.item.checked` events. Returns empty when the item is not
+ * a checklist or the items list is missing — caller omits the section. */
+function renderChecklist(
+	state: ReturnType<typeof checklistState> | undefined,
+): string {
+	if (!state || state.items.length === 0) return "";
+	const lines = state.items.map((text, i) => {
+		const mark = state.checkedIndexes.includes(i) ? "[x]" : "[ ]";
+		return `- ${mark} ${text}`;
+	});
+	const remaining = state.items.length - state.checkedIndexes.length;
+	const summary =
+		remaining === 0
+			? `\n*(${state.items.length}/${state.items.length} checked — all clear.)*`
+			: `\n*(${state.checkedIndexes.length}/${state.items.length} checked — ${remaining} remaining.)*`;
+	return `\n\n## Checklist\n${lines.join("\n")}${summary}`;
 }
 
 function text(content: string, details?: Record<string, unknown>) {
@@ -307,11 +327,15 @@ export function registerSpecdTools(pi: ExtensionAPI): void {
 						parseJsonLoose<Record<string, unknown>>(capsule.payload),
 					)
 				: "";
+			const checklistSection =
+				item.kind === "checklist"
+					? renderChecklist(checklistState(store, params.item))
+					: "";
 			const historySection = events
 				.map((e) => `- ${e.at} ${e.actor}: ${e.type}`)
 				.join("\n");
 			return text(
-				`# ${item.id}\n\n- kind: ${item.kind}\n- status: ${item.status}\n- path scope: ${item.path_scope ?? "—"}\n\n${item.body}${capsuleSection}\n\n## History\n\n${historySection}`,
+				`# ${item.id}\n\n- kind: ${item.kind}\n- status: ${item.status}\n- path scope: ${item.path_scope ?? "—"}\n\n${item.body}${capsuleSection}${checklistSection}\n\n## History\n\n${historySection}`,
 			);
 		},
 	});
