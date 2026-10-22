@@ -9,6 +9,7 @@ import { createGithubAdapter } from "./backends/github.js";
 import { createNullSink } from "./backends/null.js";
 import { syncExportedTasks } from "./backends/sync.js";
 import { renderDashboard } from "./dashboard.js";
+import { checkConsistency, formatFindings } from "./pipeline/consistency.js";
 import {
 	assertCanExport,
 	assertSpecCreationAllowed,
@@ -270,6 +271,27 @@ export function registerSpecdTools(pi: ExtensionAPI): void {
 		async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
 			const store = await openSpecd(ctx);
 			return text(await dashboardContent(store));
+		},
+	});
+
+	pi.registerTool({
+		name: "specd_consistency",
+		label: "Specd consistency check",
+		description:
+			"Read-only cross-artifact consistency check over specs, plans, tasks and checklists: coverage gaps, gate blockers, parallel path-scope overlaps. Mechanical findings only — run it before export or /spec run, then do the semantic pass (contradictions, duplication, ambiguity). Fixes go to the SOURCE artifact, never downstream.",
+		promptSnippet: "Check spec/plan/task consistency",
+		parameters: Type.Object({
+			item: Type.Optional(
+				Type.String({
+					description:
+						"Scope the check to an item's part-of subgraph (e.g. a cycle or spec id). Omit for the whole store.",
+				}),
+			),
+		}),
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const store = await openSpecd(ctx);
+			const findings = checkConsistency(store, params.item);
+			return text(formatFindings(findings), { findings });
 		},
 	});
 

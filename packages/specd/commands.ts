@@ -15,6 +15,7 @@ Spec-driven development for this repo. Knowledge lives in .spec/store.db (SQLite
 - /spec run <task-id> — run a task through the execution seam (one worker, one worktree, one PR)
 - /spec pause — write the resume capsule for in-progress work
 - /spec review <checklist-id> — reviewer pass over a requirements checklist
+- /spec analyze [cycle-or-spec-id] — cross-artifact consistency review
 - /spec doctor — store integrity audit
 - /spec help — this text
 
@@ -65,6 +66,15 @@ const REVIEW_PROMPT = (id: string) => `Review the requirements checklist ${id}:
 2. Present each unchecked item to me (ask-user-question) and ask whether it passes as a requirements-quality criterion — is the requirement testable, unambiguous, complete?
 3. For each item I approve: specd_append_event(item=${id}, type=checklist.item.checked, payload={index: <n>}). Checked items are reviewer decisions about requirements quality — they are NOT implementation work, and implementation is blocked while any remain unchecked.
 4. When every item is checked, confirm the checklist is complete and offer the next step.`;
+
+const ANALYZE_PROMPT = (
+	scope: string,
+) => `Run a cross-artifact consistency review${scope ? ` scoped to ${scope}` : " (whole store)"}:
+
+1. specd_consistency(${scope ? `item=${scope}` : ""}) — the mechanical findings: coverage gaps, gate blockers, parallel path-scope overlaps. Report them verbatim first.
+2. Semantic pass — read the spec, plan, and task bodies in scope and check for: contradictions between artifacts, duplicated requirements, ambiguous or untestable requirements, tasks whose path scope contradicts the plan, decisions made in the plan but absent from the spec.
+3. Present everything grouped by severity (critical / warning / note) and propose a fix for each finding.
+4. Fix at the SOURCE artifact only — a spec problem is fixed in the spec, never patched in a task; downstream artifacts get regenerated after a source fix. Ask me before rewriting anything.`;
 
 function firstWord(args: string): string {
 	return args.trim().split(/\s+/)[0] ?? "";
@@ -126,6 +136,10 @@ export function registerCommands(pi: ExtensionAPI): void {
 					return;
 				}
 				pi.sendUserMessage(REVIEW_PROMPT(id));
+				return;
+			}
+			if (sub === "analyze") {
+				pi.sendUserMessage(ANALYZE_PROMPT(rest));
 				return;
 			}
 			try {
