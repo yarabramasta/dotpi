@@ -1,4 +1,5 @@
 import { readSchemaVersion, SCHEMA_VERSION } from "./schema.js";
+import { mdDriftFindings } from "./storage.js";
 import { type SpecdStore, verifyProjections } from "./store.js";
 
 export interface DoctorFinding {
@@ -68,6 +69,13 @@ export function runDoctor(store: SpecdStore): DoctorFinding[] {
 		findings.push({
 			kind: "search-index",
 			detail: `search index has ${ftsRows.n} entries for ${itemRows.n} items; rebuild needed.`,
+		});
+	}
+
+	for (const drift of mdDriftFindings(store)) {
+		findings.push({
+			kind: "md-drift",
+			detail: `${drift.itemId}: ${drift.detail}`,
 		});
 	}
 

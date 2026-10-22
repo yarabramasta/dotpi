@@ -70,9 +70,14 @@ export interface SinkAdapter {
 	setTags?(externalRef: string, tags: string[]): Promise<void>;
 	/** Update the sink-side status, if the sink supports it. */
 	updateStatus?(externalRef: string, state: string): Promise<void>;
-	/** Read-only: the changes the sink needs to converge to the plan. */
+	/** Read-only: the changes the sink needs to converge to the plan.
+	 * A not-onboarded (empty) workspace is treated as an empty kanban:
+	 * the preview reports the structure that would be created. */
 	previewPlan?(plan: ProjectPlan): Promise<string[]>;
 	/** Apply the plan; returns what actually changed. Idempotent: a
-	 * converged plan yields []. */
+	 * converged plan yields []. A not-onboarded (empty) workspace is
+	 * treated as an empty kanban — the adapter creates missing structure
+	 * (fields, options, labels) itself instead of requiring pre-setup
+	 * in a web UI. */
 	ensurePlan?(plan: ProjectPlan): Promise<string[]>;
 }

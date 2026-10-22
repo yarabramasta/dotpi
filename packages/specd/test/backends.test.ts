@@ -170,6 +170,9 @@ describe("github project plan (preview + idempotent apply)", () => {
 			color: string;
 			description: string;
 		}>;
+		/** false simulates a not-onboarded (empty) workspace with no Status
+		 * field at all — the empty-kanban bootstrap path. */
+		hasStatusField?: boolean;
 		graphqlCalls: string[];
 	}): GhRunner {
 		return async (args) => {
@@ -185,7 +188,23 @@ describe("github project plan (preview + idempotent apply)", () => {
 				state.labelList.push(name);
 				return { stdout: "", stderr: "" };
 			}
-			if (joined.startsWith("api graphql") && joined.includes("Status")) {
+			if (joined.startsWith("project view")) {
+				return { stdout: '{"id":"PROJECT_ID_1"}', stderr: "" };
+			}
+			// Discriminator: STATUS_FIELD_QUERY starts with "query($login:" —
+			// mutations (update/create field) must NOT match this branch.
+			if (
+				joined.startsWith("api graphql") &&
+				joined.includes("query($login:")
+			) {
+				if (state.hasStatusField === false) {
+					return {
+						stdout: JSON.stringify({
+							data: { organization: { projectV2: { field: null } } },
+						}),
+						stderr: "",
+					};
+				}
 				return {
 					stdout: JSON.stringify({
 						data: {
@@ -202,6 +221,33 @@ describe("github project plan (preview + idempotent apply)", () => {
 					}),
 					stderr: "",
 				};
+			}
+			if (
+				joined.startsWith("api graphql") &&
+				joined.includes("createProjectV2Field")
+			) {
+				state.graphqlCalls.push(args.join(" "));
+				const queryArg = args.find((a) => a.startsWith("query="));
+				const optionsBlock = queryArg?.match(
+					/singleSelectOptions: \[([\s\S]*)\]/,
+				);
+				if (optionsBlock) {
+					for (const m of optionsBlock[1].matchAll(/name: "([^"]+)"/g)) {
+						const name = m[1];
+						if (!state.options.some((o) => o.name === name)) {
+							state.options.push({
+								id: `OPT_${name}`,
+								name,
+								color: "GRAY",
+								description: "",
+							});
+						}
+					}
+				}
+				// The workspace now HAS the field — like real GitHub after the
+				// mutation, so the next apply converges.
+				state.hasStatusField = true;
+				return { stdout: "{}", stderr: "" };
 			}
 			if (joined.startsWith("api graphql")) {
 				state.graphqlCalls.push(args.join(" "));
@@ -291,6 +337,33 @@ describe("github project plan (preview + idempotent apply)", () => {
 		const second = await requireEnsure(sink)(PLAN);
 		expect(second).toEqual([]);
 		expect(state.graphqlCalls).toHaveLength(1);
+	});
+
+	it("bootstraps an empty workspace — creates the Status field with the plan lanes (empty-kanban rule)", async () => {
+		const state = {
+			labelList: [],
+			options: [],
+			hasStatusField: false,
+			graphqlCalls: [] as string[],
+		};
+		const sink = createGithubAdapter("/repo", undefined, planRunner(state));
+
+		// Preview reports the creation instead of punting to a web UI.
+		expect(await requirePreview(sink)(PLAN)).toContain(
+			"create Status field with lanes: MVP, V1, maintenance",
+		);
+
+		// Apply creates the field (no throw), then re-apply converges.
+		const first = await requireEnsure(sink)(PLAN);
+		expect(first).toContain(
+			"created Status field with lanes: MVP, V1, maintenance",
+		);
+		const createCall = state.graphqlCalls.find((c) =>
+			c.includes("createProjectV2Field"),
+		);
+		expect(createCall).toContain("MVP");
+		expect(createCall).toContain("maintenance");
+		expect(await requireEnsure(sink)(PLAN)).toEqual([]);
 	});
 
 	it("preserves existing option color/description on idempotent re-apply", async () => {

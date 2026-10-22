@@ -94,7 +94,7 @@ afterEach(() => {
 	fixture = undefined;
 });
 
-describe("v2 → v3 in-place migration", () => {
+describe("legacy v2 → current in-place migration", () => {
 	it("chain terminates at the current schema version", () => {
 		expect(MIGRATIONS.length).toBeGreaterThan(0);
 		expect(MIGRATIONS[MIGRATIONS.length - 1]?.to).toBe(SCHEMA_VERSION);
@@ -110,7 +110,7 @@ describe("v2 → v3 in-place migration", () => {
 		const version = store.db
 			.prepare("SELECT value FROM meta WHERE key = 'schema_version'")
 			.get() as { value: string };
-		expect(version.value).toBe("3");
+		expect(version.value).toBe(SCHEMA_VERSION);
 
 		const rows = store.db
 			.prepare("SELECT id, status, phase, parallel FROM items ORDER BY id")

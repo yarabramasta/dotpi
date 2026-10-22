@@ -2,7 +2,18 @@ import type {
 	ExtensionAPI,
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
+import {
+	ONBOARDING,
+	readinessMatrix,
+	SINK_IDS,
+} from "./backends/onboarding.js";
 import { runDoctor } from "./store/doctor.js";
+import {
+	readStorageConfig,
+	STORAGE_MODES,
+	type StorageMode,
+	saveStorageConfig,
+} from "./store/storage.js";
 import { openStore } from "./store/store.js";
 import { dashboardContent } from "./tools.js";
 
@@ -17,7 +28,9 @@ Spec-driven development for this repo. Knowledge lives in .spec/store.db (SQLite
 - /spec review <checklist-id> — reviewer pass over a requirements checklist
 - /spec analyze [cycle-or-spec-id] — cross-artifact consistency review
 - /spec plan — manage the project plan (preview then apply)
-- /spec doctor — store integrity audit
+- /spec storage [mode [path]] — show or set the storage mode (db-only | md-inrepo | md-external <path>); specd_promote writes md mirrors per mode
+- /spec connect <sink> — guided onboarding for a sink (github, linear, jira, notion, trello, clickup)
+- /spec doctor — store integrity audit + sink readiness matrix
 - /spec help — this text
 
 The pipeline is agent-sequenced and code-gated: I (the agent) drive the stages, and the specd tools refuse anything the store state doesn't allow — like exporting tasks from an unapproved spec.`;
@@ -69,6 +82,31 @@ const PLAN_PROMPT = `Manage the project plan (workspace, lanes, labels, naming) 
 5. Record the decision: specd_append_event(item=<cycle or first item id>, type=decision.made, payload={decision: "project plan applied", sink, lanes, labels, naming}).`;
 
 const PAUSE_PROMPT = `Pause the active work: write the resume capsule. For each in-progress item, run specd_append_event(item=<item id>, type=work.paused, payload={decisions: […], openQuestions: […], evidence: […], nextStep: "…"}) — summarize from our conversation. Then confirm what was parked so I can pick it up later (or hand it off).`;
+
+/** Onboarding flow for one sink, rendered from the registry so the guided
+ * prompt is the single source of the steps (design §4.6). */
+function connectPrompt(id: string): string {
+	const ob = ONBOARDING[id];
+	if (!ob) {
+		return `Unknown sink "${id}". Known sinks: ${SINK_IDS.join(", ")}.`;
+	}
+	const envNames = Object.keys(ob.envVars);
+	const env = envNames.length
+		? `\n**Env var(s) you own (never paste their values here):** ${envNames.join(", ")} — or the equivalent ~/.pi/agent/auth.json section (no pi restart needed).`
+		: "";
+	const ported = ob.ported
+		? ""
+		: `\n\nNote: this sink's adapter port is not built yet (M2c). Onboarding still works — the doctor matrix will confirm the credential is present, and full verification lands with the port.\n\n**Parity (what the port will map):** ${ob.parity}`;
+	return `Connect the ${ob.name} sink to specd:
+
+**Credential:** ${ob.credentialUrl}
+**Scopes:** ${ob.scopes}${env}
+
+Steps:
+${ob.steps.map((s, i) => `${i + 1}. ${s}`).join("\n")}${ported}
+
+Rules: credentials live only in my shell environment — never write them into the repo, the store, or this conversation.`;
+}
 
 const REVIEW_PROMPT = (id: string) => `Review the requirements checklist ${id}:
 
@@ -156,6 +194,22 @@ export function registerCommands(pi: ExtensionAPI): void {
 				pi.sendUserMessage(PLAN_PROMPT);
 				return;
 			}
+			if (sub === "connect") {
+				const id = rest;
+				if (!id) {
+					ctx.ui.notify(
+						`Usage: /spec connect <sink> — known sinks: ${SINK_IDS.join(", ")}.`,
+						"warning",
+					);
+					return;
+				}
+				pi.sendMessage({
+					customType: "specd-connect",
+					content: connectPrompt(id),
+					display: true,
+				});
+				return;
+			}
 			if (sub === "import") {
 				const mode = firstWord(rest);
 				const source = rest.slice(mode.length).trim();
@@ -189,11 +243,42 @@ export function registerCommands(pi: ExtensionAPI): void {
 					const text = findings.length
 						? findings.map((f) => `- ${f.kind}: ${f.detail}`).join("\n")
 						: "clean — the store matches its event history.";
+					const matrix = await readinessMatrix(store);
 					pi.sendMessage({
 						customType: "specd-doctor",
-						content: `# specd doctor\n\n${text}`,
+						content: `# specd doctor\n\n${text}\n\n${matrix}`,
 						display: true,
 					});
+					return;
+				}
+				if (sub === "storage") {
+					const mode = firstWord(rest);
+					if (!mode) {
+						const config = readStorageConfig(store);
+						pi.sendMessage({
+							customType: "specd-storage",
+							content: `Storage mode: **${config.mode}**${config.mdPath ? ` (${config.mdPath})` : ""}\n\n- db-only — md promotion off (default)\n- md-inrepo — md mirrors under docs/specd/ in this repo\n- md-external <path> — md mirrors in a directory outside the repo\n\nPromotion surface: the specd_promote tool (write/remove an item's md mirror).`,
+							display: true,
+						});
+						return;
+					}
+					if (!STORAGE_MODES.includes(mode as StorageMode)) {
+						ctx.ui.notify(
+							`Unknown storage mode: ${mode}. Valid: ${STORAGE_MODES.join(", ")}.`,
+							"warning",
+						);
+						return;
+					}
+					const mdPath = rest.slice(mode.length).trim() || undefined;
+					if (mode === "md-external" && !mdPath) {
+						ctx.ui.notify("Usage: /spec storage md-external <path>", "warning");
+						return;
+					}
+					saveStorageConfig(store, { mode: mode as StorageMode, mdPath });
+					ctx.ui.notify(
+						`Storage mode set to ${mode}${mdPath ? ` (${mdPath})` : ""}.`,
+						"info",
+					);
 					return;
 				}
 				if (sub === "" || sub === "status" || sub === "dashboard") {

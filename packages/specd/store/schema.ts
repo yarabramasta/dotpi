@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 
-export const SCHEMA_VERSION = "3";
+export const SCHEMA_VERSION = "4";
 
 /** Vendor-neutral item kinds. Contract test bans sink names here. */
 export const ITEM_KINDS = [
@@ -98,6 +98,11 @@ CREATE VIRTUAL TABLE IF NOT EXISTS item_fts USING fts5(
 	id UNINDEXED,
 	title,
 	body
+);
+CREATE TABLE IF NOT EXISTS promotions (
+	item_id TEXT PRIMARY KEY REFERENCES items(id),
+	path TEXT NOT NULL,
+	promoted_at TEXT NOT NULL
 );
 `;
 

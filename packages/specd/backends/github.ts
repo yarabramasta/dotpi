@@ -120,6 +120,32 @@ function updateOptionsMutation(
 }`;
 }
 
+/** Empty-kanban bootstrap: create the Status field with the plan's lanes
+ * as options on a workspace that has none. Same option-literal rules as
+ * updateOptionsMutation (color is a GraphQL enum, description a string). */
+function createStatusFieldMutation(projectId: string, lanes: string[]): string {
+	const options = lanes
+		.map((name) => {
+			const parts = Object.entries({
+				name,
+				color: DEFAULT_OPTION.color,
+				description: DEFAULT_OPTION.description,
+			})
+				.map(
+					([k, v]) =>
+						`${k}: ${OPTION_ENUM_FIELDS.has(k) ? String(v) : JSON.stringify(v)}`,
+				)
+				.join(", ");
+			return `{ ${parts} }`;
+		})
+		.join(", ");
+	return `mutation {
+	createProjectV2Field(input: { projectId: ${JSON.stringify(projectId)}, dataType: SINGLE_SELECT, name: "Status", singleSelectOptions: [${options}] }) {
+		projectV2Field { ... on ProjectV2SingleSelectField { id name options { name } } }
+	}
+}`;
+}
+
 /** Default color/description for a brand-new option; existing options keep
  * the values GraphQL returned for them. */
 const DEFAULT_OPTION = { color: "GRAY", description: "" } as const;
@@ -293,8 +319,10 @@ export function createGithubAdapter(
 			}
 			const status = await statusField(gh, owner, number);
 			if (!status?.id) {
+				// Empty-kanban rule: a workspace without the structure is
+				// bootstrapped, not refused.
 				changes.push(
-					"no Status field found on the project — create it once in the board UI, then re-preview",
+					`create Status field with lanes: ${plan.lanes.join(", ")}`,
 				);
 				return changes;
 			}
@@ -329,9 +357,19 @@ export function createGithubAdapter(
 			// Lanes: Status field options, read-modify-write via GraphQL.
 			const status = await statusField(gh, owner, number);
 			if (!status?.id) {
-				throw new Error(
-					"The project has no Status field — create it once in the board UI, then re-run the plan apply.",
+				// Empty-kanban rule: a workspace without the structure is
+				// bootstrapped, not refused — create Status with the lanes.
+				const projectId = await projectIdFor(gh, owner, number);
+				await gh([
+					"api",
+					"graphql",
+					"-f",
+					`query=${createStatusFieldMutation(projectId, plan.lanes)}`,
+				]);
+				changes.push(
+					`created Status field with lanes: ${plan.lanes.join(", ")}`,
 				);
+				return changes;
 			}
 			const existing = (status.options ?? []).map((o) => ({
 				id: o.id,

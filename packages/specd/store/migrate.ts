@@ -17,6 +17,15 @@ export const MIGRATIONS: ReadonlyArray<{
 			"ALTER TABLE items ADD COLUMN parallel INTEGER NOT NULL DEFAULT 0",
 		],
 	},
+	{
+		from: "3",
+		to: "4",
+		steps: [
+			// v4: md promotion records (storage modes). CREATE TABLE IF NOT
+			// EXISTS so fresh v4 stores applying the full DDL are no-ops here.
+			"CREATE TABLE IF NOT EXISTS promotions (\n\t\t\titem_id TEXT PRIMARY KEY REFERENCES items(id),\n\t\t\tpath TEXT NOT NULL,\n\t\t\tpromoted_at TEXT NOT NULL\n\t\t)",
+		],
+	},
 ];
 
 /** Migrate db from fromVersion to toVersion inside one transaction.

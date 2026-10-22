@@ -35,6 +35,7 @@ import {
 	LINK_KINDS,
 	type LinkKind,
 } from "./store/schema.js";
+import { demoteItem, promoteItem } from "./store/storage.js";
 import {
 	addLink,
 	appendEvent,
@@ -139,7 +140,7 @@ function resolveAdapter(store: SpecdStore, sink: string): SinkAdapter {
 		const config = readSinkConfig(store, "sink.github");
 		if (!config?.owner || !config.projectNumber) {
 			throw new Error(
-				"GitHub sink is not configured yet. Tell me the project owner and project number (and optionally a lane) so I can store them — e.g. pass github_owner + github_project_number to specd_export once, and they persist for every later export.",
+				"GitHub sink is not configured yet. Tell me the project owner and project number (and optionally a lane) so I can store them — e.g. pass github_owner + github_project_number to specd_export once, and they persist for every later export. For guided setup run /spec connect github.",
 			);
 		}
 		return createGithubAdapter(store.cwd, {
@@ -371,6 +372,36 @@ export function registerSpecdTools(pi: ExtensionAPI): void {
 			const store = await openSpecd(ctx);
 			const findings = checkConsistency(store, params.item);
 			return text(formatFindings(findings), { findings });
+		},
+	});
+
+	pi.registerTool({
+		name: "specd_promote",
+		label: "Promote specd item to md",
+		description:
+			"Write (or remove) an item's readable md mirror, per the configured storage mode (/spec storage). db-only mode refuses; md-inrepo writes docs/specd/<id>.md; md-external writes into the configured directory. Re-promoting is idempotent. ",
+		promptSnippet: "Promote an item to an md file",
+		parameters: Type.Object({
+			item: Type.String({ description: "Item id (e.g. spec-0001)." }),
+			demote: Type.Optional(
+				Type.Boolean({
+					description:
+						"true removes the md mirror and promotion record instead of writing it. Defaults to false.",
+				}),
+			),
+		}),
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const store = await openSpecd(ctx);
+			if (params.demote) {
+				const removed = demoteItem(store, params.item);
+				return text(
+					removed
+						? `Removed the md mirror for ${params.item}.`
+						: `${params.item} has no promoted md mirror.`,
+				);
+			}
+			const path = promoteItem(store, params.item);
+			return text(`Promoted ${params.item} → ${path}`);
 		},
 	});
 
