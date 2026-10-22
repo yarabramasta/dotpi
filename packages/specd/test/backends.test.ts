@@ -133,3 +133,139 @@ describe("github reference adapter (contract freeze)", () => {
 		);
 	});
 });
+
+describe("github project plan (preview + idempotent apply)", () => {
+	/** A fake runner that simulates a workspace with one existing label
+	 * ("specd") and two existing lanes ("Todo", "MVP") — so a plan with
+	 * extra labels and lanes reports/creates only the missing ones. */
+	function planRunner(state: {
+		labelList: string[];
+		options: Array<{ id: string; name: string }>;
+		graphqlCalls: string[];
+	}): GhRunner {
+		return async (args) => {
+			const joined = args.join(" ");
+			if (joined.startsWith("label list")) {
+				return {
+					stdout: JSON.stringify(state.labelList.map((name) => ({ name }))),
+					stderr: "",
+				};
+			}
+			if (joined.startsWith("label create")) {
+				const name = args[2];
+				state.labelList.push(name);
+				return { stdout: "", stderr: "" };
+			}
+			if (joined.startsWith("project field-list")) {
+				return {
+					stdout: JSON.stringify({
+						fields: [
+							{
+								name: "Status",
+								id: "FIELD_ID_1",
+								options: state.options,
+							},
+						],
+					}),
+					stderr: "",
+				};
+			}
+			if (joined.startsWith("project view")) {
+				return { stdout: '{"id":"PROJECT_ID_1"}', stderr: "" };
+			}
+			if (joined.startsWith("api graphql")) {
+				state.graphqlCalls.push(args.join(" "));
+				const names = state.options.map((o) => o.name);
+				for (const arg of args) {
+					if (arg.startsWith("options=")) {
+						const opts = JSON.parse(arg.slice(8)) as Array<{
+							name: string;
+						}>;
+						for (const o of opts) {
+							if (!names.includes(o.name)) {
+								state.options.push({ id: `OPT_${o.name}`, name: o.name });
+							}
+						}
+					}
+				}
+				return { stdout: "{}", stderr: "" };
+			}
+			return { stdout: "{}", stderr: "" };
+		};
+	}
+
+	const PLAN = {
+		ref: "plan",
+		title: "P",
+		body: "",
+		workspace: { owner: "acme", projectNumber: 7 },
+		lanes: ["MVP", "V1", "maintenance"],
+		labels: ["specd", "priority:high"],
+		naming: "specd/{ref} {title}",
+	};
+
+	function requirePreview(sink: {
+		previewPlan?: (plan: typeof PLAN) => Promise<string[]>;
+	}) {
+		if (!sink.previewPlan) throw new Error("no previewPlan");
+		return sink.previewPlan;
+	}
+	function requireEnsure(sink: {
+		ensurePlan?: (plan: typeof PLAN) => Promise<string[]>;
+	}) {
+		if (!sink.ensurePlan) throw new Error("no ensurePlan");
+		return sink.ensurePlan;
+	}
+
+	it("previews missing labels and lanes without writing", async () => {
+		const state = {
+			labelList: ["specd"],
+			options: [
+				{ id: "OPT_TODO", name: "Todo" },
+				{ id: "OPT_MVP", name: "MVP" },
+			],
+			graphqlCalls: [],
+		};
+		const sink = createGithubAdapter("/repo", undefined, planRunner(state));
+		const changes = await requirePreview(sink)(PLAN);
+		// label specd exists; priority:high is missing.
+		expect(changes).toContain('create label "priority:high"');
+		// MVP exists; V1 and maintenance are missing.
+		expect(changes).toContain('add Status option "V1"');
+		expect(changes).toContain('add Status option "maintenance"');
+		// Preview is read-only — nothing was created.
+		expect(state.labelList).toEqual(["specd"]);
+		expect(state.options).toHaveLength(2);
+		expect(state.graphqlCalls).toHaveLength(0);
+	});
+
+	it("applies missing labels and lanes, then re-apply is idempotent", async () => {
+		const state = {
+			labelList: ["specd"],
+			options: [
+				{ id: "OPT_TODO", name: "Todo" },
+				{ id: "OPT_MVP", name: "MVP" },
+			],
+			graphqlCalls: [],
+		};
+		const sink = createGithubAdapter("/repo", undefined, planRunner(state));
+		const first = await requireEnsure(sink)(PLAN);
+		expect(first).toContain('created label "priority:high"');
+		expect(first).toContain('added Status option "V1"');
+		expect(first).toContain('added Status option "maintenance"');
+		expect(state.labelList).toContain("priority:high");
+		expect(state.options.map((o) => o.name)).toContain("V1");
+		expect(state.graphqlCalls).toHaveLength(1);
+
+		// Re-apply: everything converged — no changes.
+		const second = await requireEnsure(sink)(PLAN);
+		expect(second).toEqual([]);
+		expect(state.graphqlCalls).toHaveLength(1); // no extra graphql call
+	});
+
+	it("null sink plan is always converged", async () => {
+		const sink = createNullSink();
+		expect(await sink.previewPlan?.(PLAN)).toEqual([]);
+		expect(await sink.ensurePlan?.(PLAN)).toEqual([]);
+	});
+});

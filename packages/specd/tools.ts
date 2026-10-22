@@ -3,8 +3,19 @@ import type {
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { readSinkConfig, saveSinkConfig } from "./backends/config.js";
-import type { SinkAdapter, TaskExport } from "./backends/contract.js";
+import {
+	DEFAULT_LANES,
+	DEFAULT_NAMING,
+	readProjectPlan,
+	readSinkConfig,
+	saveProjectPlan,
+	saveSinkConfig,
+} from "./backends/config.js";
+import type {
+	PlanWorkspace,
+	SinkAdapter,
+	TaskExport,
+} from "./backends/contract.js";
 import { createGithubAdapter } from "./backends/github.js";
 import { createNullSink } from "./backends/null.js";
 import { syncExportedTasks } from "./backends/sync.js";
@@ -89,7 +100,7 @@ function resolveAdapter(store: SpecdStore, sink: string): SinkAdapter {
 	throw new Error(`Unknown sink: ${sink}. Valid: null, github.`);
 }
 
-function buildTaskExport(store: SpecdStore, task: ItemRow): TaskExport {
+export function buildTaskExport(store: SpecdStore, task: ItemRow): TaskExport {
 	const specs = linkedItems(store, task.id, "part-of").filter(
 		(i) => i.kind === "spec",
 	);
@@ -100,7 +111,13 @@ function buildTaskExport(store: SpecdStore, task: ItemRow): TaskExport {
 	const body = `## Task\n\n${task.body || task.title}\n\n${specSection}\n\n---\nExported from specd (${task.id}).`;
 	const labels = ["specd"];
 	if (spec) labels.push(`spec:${slugify(spec.title)}`);
-	return { ref: task.id, title: task.title, body, labels };
+	const plan = readProjectPlan(store);
+	if (plan) {
+		for (const l of plan.labels) if (!labels.includes(l)) labels.push(l);
+	}
+	const naming = plan?.naming || DEFAULT_NAMING;
+	const title = naming.replace("{ref}", task.id).replace("{title}", task.title);
+	return { ref: task.id, title, body, labels };
 }
 
 export function registerSpecdTools(pi: ExtensionAPI): void {
@@ -370,6 +387,107 @@ export function registerSpecdTools(pi: ExtensionAPI): void {
 			return text(
 				`Exported ${task.id} via ${adapter.id}${created.url ? ` — ${created.url}` : " (store-native)"}.${laneNote}`,
 				{ externalRef: created.externalRef, url: created.url },
+			);
+		},
+	});
+
+	pi.registerTool({
+		name: "specd_apply_plan",
+		label: "Apply specd project plan",
+		description:
+			"Preview (default) or apply the project plan for a sink: workspace, lanes, label taxonomy, naming convention. Preview is read-only and lists what would change. Apply is idempotent — a converged plan yields no changes. The plan persists in the store and drives export titles, labels, and lane placement.",
+		promptSnippet: "Preview/apply the project plan",
+		parameters: Type.Object({
+			sink: Type.String({
+				description: 'Sink id ("null" or "github").',
+			}),
+			apply: Type.Optional(
+				Type.Boolean({
+					description:
+						"true to apply (write); omit/false to preview only (read-only). Defaults to false.",
+				}),
+			),
+			github_owner: Type.Optional(
+				Type.String({
+					description: "github workspace: owner (user or org).",
+				}),
+			),
+			github_project_number: Type.Optional(
+				Type.Number({
+					description: "github workspace: Projects v2 project number.",
+				}),
+			),
+			lanes: Type.Optional(
+				Type.Array(Type.String(), {
+					description: `Lanes (board status options). Defaults: ${DEFAULT_LANES.join(", ")}.`,
+				}),
+			),
+			labels: Type.Optional(
+				Type.Array(Type.String(), {
+					description:
+						"Label taxonomy ensured on the workspace. Defaults: specd.",
+				}),
+			),
+			naming: Type.Optional(
+				Type.String({
+					description: `Export title convention with {ref} and {title} placeholders. Defaults: "${DEFAULT_NAMING}".`,
+				}),
+			),
+		}),
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const store = await openSpecd(ctx);
+			const sink = params.sink;
+
+			// Build the workspace from params + stored config.
+			const stored = readSinkConfig(store, "sink.github");
+			const workspace: PlanWorkspace =
+				sink === "github"
+					? {
+							owner:
+								params.github_owner ??
+								(typeof stored?.owner === "string" ? stored.owner : undefined),
+							projectNumber:
+								params.github_project_number ??
+								(typeof stored?.projectNumber === "number"
+									? stored.projectNumber
+									: undefined),
+						}
+					: {};
+
+			// Merge with defaults and any stored plan.
+			const prior = readProjectPlan(store);
+			const plan = {
+				workspace,
+				lanes: params.lanes ?? prior?.lanes ?? [...DEFAULT_LANES],
+				labels: params.labels ?? prior?.labels ?? ["specd"],
+				naming: params.naming ?? prior?.naming ?? DEFAULT_NAMING,
+			};
+
+			const adapter = resolveAdapter(store, sink);
+			if (!adapter.previewPlan || !adapter.ensurePlan) {
+				return text(
+					`Sink "${sink}" does not support project plans (no external board). Nothing to apply.`,
+				);
+			}
+
+			if (!params.apply) {
+				const changes = await adapter.previewPlan(plan);
+				saveProjectPlan(store, plan, sink); // persist intent even on preview
+				return text(
+					changes.length === 0
+						? `Plan preview for ${sink}: already converged — no changes needed.`
+						: `Plan preview for ${sink} (${changes.length} change(s)):\n${changes.map((c) => `- ${c}`).join("\n")}\n\nRe-run with apply=true to apply.`,
+					{ changes, plan },
+				);
+			}
+
+			const changes = await adapter.ensurePlan(plan);
+			saveProjectPlan(store, plan, sink);
+			return text(
+				changes.length === 0
+					? `Plan applied for ${sink}: already converged — no changes.`
+					: `Plan applied for ${sink} (${changes.length} change(s)):\n${changes.map((c) => `- ${c}`).join("\n")}`,
+				{ changes, plan },
 			);
 		},
 	});

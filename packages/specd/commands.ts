@@ -16,6 +16,7 @@ Spec-driven development for this repo. Knowledge lives in .spec/store.db (SQLite
 - /spec pause — write the resume capsule for in-progress work
 - /spec review <checklist-id> — reviewer pass over a requirements checklist
 - /spec analyze [cycle-or-spec-id] — cross-artifact consistency review
+- /spec plan — manage the project plan (preview then apply)
 - /spec doctor — store integrity audit
 - /spec help — this text
 
@@ -39,9 +40,10 @@ Follow the fast-path flow. The specd tools enforce the gates — never work arou
 4. SPEC — specd_create_item(kind=spec, title=…, body=<filled template>, cycle=<cycle id>) — the gate checks the explore decision and links the spec to the cycle.
 5. APPROVAL — show me the finished spec and ask for approval. On yes: specd_append_event(item=<spec id>, type=spec.approved). Nothing can be exported before this — the tools will refuse.
 6. PLAN — specd_create_item(kind=plan, title=…, body=<short technical approach>), then link it: specd_add_link(from=<plan id>, to=<spec id>, kind=part-of). Record each technical decision: specd_append_event(item=<plan id>, type=decision.made, payload={decision}). Also: if this repo has no constitution item yet, ask me whether to capture the product purpose and principles as one — specd_create_item(kind=constitution, title=…, body=…) — and link it: specd_add_link(from=<plan id>, to=<constitution id>, kind=part-of).
-7. TASKS — break the spec into 1–3 tasks: specd_create_item(kind=task, title=…, body=<acceptance criteria>, path_scope=<file paths this task owns>) each, linked with specd_add_link(from=<task id>, to=<spec id>, kind=part-of). If the spec has meaningful ambiguity, also generate a requirements checklist: specd_create_item(kind=checklist, title=…, extra={items:[…]}), linked part-of the spec — I review it via /spec review before implementation runs.
-8. EXPORT — ask me whether to export the tasks now. If yes: specd_export(item=<task id>, sink="github" or "null"). First github export needs the project owner and project number — ask me, then pass github_owner + github_project_number once; they persist.
-9. RUN — when I want a task implemented: /spec run <task id>.`;
+7. PROJECT PLAN — if the sink is not null, interview me once for the project plan (ask-user-question): workspace (github: owner + project number), lanes, label taxonomy, naming convention. Then specd_apply_plan(sink=…, github_owner=…, github_project_number=…, lanes=[…], labels=[…], naming=…). This previews what would change. Show me the preview, and on my OK re-run with apply=true — it is idempotent, so re-runs converge. If the sink is null, skip this step.
+8. TASKS — break the spec into 1–3 tasks: specd_create_item(kind=task, title=…, body=<acceptance criteria>, path_scope=<file paths this task owns>) each, linked with specd_add_link(from=<task id>, to=<spec id>, kind=part-of). If the spec has meaningful ambiguity, also generate a requirements checklist: specd_create_item(kind=checklist, title=…, extra={items:[…]}), linked part-of the spec — I review it via /spec review before implementation runs.
+9. EXPORT — ask me whether to export the tasks now. If yes: specd_export(item=<task id>, sink="github" or "null"). First github export needs the project owner and project number — ask me, then pass github_owner + github_project_number once; they persist. The project plan (if applied) drives the export title, labels, and lane placement.
+10. RUN — when I want a task implemented: /spec run <task id>.`;
 
 const RUN_PROMPT = (
 	task: string,
@@ -57,6 +59,14 @@ const RUN_PROMPT = (
    - worker rules: implement only inside the path scope; commit to the branch; push the branch; open the PR with gh pr create (base = default branch); NEVER touch main; NEVER force-push; report the PR URL when done.
 5. On worker completion: specd_append_event(item=${task}, type=pr.created, payload={url, branch}).
 6. Self-check the PR against the task's acceptance criteria. If they pass: specd_append_event(item=${task}, type=work.completed, payload={pr}). If not: tell me exactly what is missing — merging is always my call.`;
+
+const PLAN_PROMPT = `Manage the project plan (workspace, lanes, labels, naming) for the configured sink:
+
+1. Ask me which sink to plan for (null = native, github). If null, there is nothing to plan — the null sink has no external board.
+2. For github: ask me (ask-user-question) for the owner, project number, lanes, label taxonomy, and naming convention. Offer the defaults if I don't override.
+3. specd_apply_plan(sink=…, github_owner=…, github_project_number=…, lanes=[…], labels=[…], naming=…) — this is a PREVIEW (read-only). Show me the listed changes.
+4. On my OK: re-run with apply=true. It is idempotent — re-runs converge, so a converged plan yields no changes.
+5. Record the decision: specd_append_event(item=<cycle or first item id>, type=decision.made, payload={decision: "project plan applied", sink, lanes, labels, naming}).`;
 
 const PAUSE_PROMPT = `Pause the active work: write the resume capsule. For each in-progress item, run specd_append_event(item=<item id>, type=work.paused, payload={decisions: […], openQuestions: […], evidence: […], nextStep: "…"}) — summarize from our conversation. Then confirm what was parked so I can pick it up later (or hand it off).`;
 
@@ -140,6 +150,10 @@ export function registerCommands(pi: ExtensionAPI): void {
 			}
 			if (sub === "analyze") {
 				pi.sendUserMessage(ANALYZE_PROMPT(rest));
+				return;
+			}
+			if (sub === "plan") {
+				pi.sendUserMessage(PLAN_PROMPT);
 				return;
 			}
 			try {

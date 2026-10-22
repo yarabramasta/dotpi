@@ -1,11 +1,80 @@
 import { parseJsonLoose } from "../store/store.js";
 import type {
+	ProjectPlan,
 	SinkAdapter,
 	SinkVerify,
 	TaskCreated,
 	TaskExport,
 } from "./contract.js";
 import { type GhRunner, type GithubSinkConfig, realGhRunner } from "./gh.js";
+
+interface StatusFieldRow {
+	id?: string;
+	name?: string;
+	options?: Array<{
+		id?: string;
+		name?: string;
+		color?: string;
+		description?: string;
+	}>;
+}
+
+type Gh = (args: string[]) => Promise<{ stdout: string; stderr: string }>;
+
+async function statusField(
+	gh: Gh,
+	owner: string,
+	number: string,
+): Promise<StatusFieldRow | undefined> {
+	const fields = parseJsonLoose<{ fields?: StatusFieldRow[] }>(
+		(
+			await gh([
+				"project",
+				"field-list",
+				number,
+				"--owner",
+				owner,
+				"--format",
+				"json",
+			])
+		).stdout,
+	);
+	return fields?.fields?.find((f) => f.name === "Status");
+}
+
+async function projectIdFor(
+	gh: Gh,
+	owner: string,
+	number: string,
+): Promise<string> {
+	const view = parseJsonLoose<{ id?: string }>(
+		(
+			await gh([
+				"project",
+				"view",
+				number,
+				"--owner",
+				owner,
+				"--format",
+				"json",
+			])
+		).stdout,
+	);
+	if (!view?.id) {
+		throw new Error(
+			`Could not resolve project #${number} for owner ${owner}. Check the project config.`,
+		);
+	}
+	return view.id;
+}
+
+/** updateProjectV2Field replaces the whole options list — callers must
+ * pass every existing option (with ids) plus the new ones. */
+const UPDATE_OPTIONS_MUTATION = `mutation($fieldId: ID!, $projectId: ID!, $options: [ProjectV2SingleSelectFieldOptionInput!]!) {
+	updateProjectV2Field(input: { fieldId: $fieldId, projectId: $projectId, singleSelectField: { options: $options } }) {
+		field { ... on ProjectV2SingleSelectField { options { id name } } }
+	}
+}`;
 
 /** The GitHub reference adapter — the implementation that freezes the sink
  * contract (M1). Everything runs through the gh CLI: issues via the REST
@@ -102,26 +171,7 @@ export function createGithubAdapter(
 			}
 			const owner = config.owner;
 			const number = String(config.projectNumber);
-			// Project id (needed by item-edit).
-			const view = parseJsonLoose<{ id?: string }>(
-				(
-					await gh([
-						"project",
-						"view",
-						number,
-						"--owner",
-						owner,
-						"--format",
-						"json",
-					])
-				).stdout,
-			);
-			const projectId = view?.id ?? "";
-			if (!projectId) {
-				throw new Error(
-					`Could not resolve project #${number} for owner ${owner}. Check the project config.`,
-				);
-			}
+			const projectId = await projectIdFor(gh, owner, number);
 			// Attach the issue to the project.
 			const issueView = parseJsonLoose<{ url?: string }>(
 				(await gh(["issue", "view", externalRef, "--json", "url"])).stdout,
@@ -151,34 +201,12 @@ export function createGithubAdapter(
 					`Could not attach ${externalRef} to project #${number}.`,
 				);
 			}
-			// Map the lane name to the Status field's option id.
-			const fields = parseJsonLoose<{
-				fields?: Array<{
-					name?: string;
-					id?: string;
-					options?: Array<{ id?: string; name?: string }>;
-				}>;
-			}>(
-				(
-					await gh([
-						"project",
-						"field-list",
-						number,
-						"--owner",
-						owner,
-						"--format",
-						"json",
-					])
-				).stdout,
-			);
-			const statusField = (fields?.fields ?? []).find(
-				(f) => f.name === "Status",
-			);
-			const option = statusField?.options?.find((o) => o.name === lane);
-			if (!statusField?.id || !option?.id) {
+			const status = await statusField(gh, owner, number);
+			const option = status?.options?.find((o) => o.name === lane);
+			if (!status?.id || !option?.id) {
 				throw new Error(
 					`Lane "${lane}" not found on the project's Status field. Available options: ${(
-						statusField?.options ?? []
+						status?.options ?? []
 					)
 						.map((o) => o.name)
 						.join(", ")}.`,
@@ -192,10 +220,98 @@ export function createGithubAdapter(
 				"--project-id",
 				projectId,
 				"--field-id",
-				statusField.id,
+				status.id,
 				"--single-select-option-id",
 				option.id,
 			]);
+		},
+
+		async previewPlan(plan: ProjectPlan): Promise<string[]> {
+			const owner = String(plan.workspace.owner ?? "");
+			const number = String(plan.workspace.projectNumber ?? "");
+			if (!owner || !number) {
+				throw new Error(
+					"The project plan needs a workspace (owner + project number) to preview against.",
+				);
+			}
+			const changes: string[] = [];
+			const listed = parseJsonLoose<Array<{ name?: string }>>(
+				(await gh(["label", "list", "--json", "name", "--limit", "500"]))
+					.stdout,
+			);
+			const have = new Set((listed ?? []).map((l) => l.name));
+			for (const label of plan.labels) {
+				if (!have.has(label)) changes.push(`create label "${label}"`);
+			}
+			const status = await statusField(gh, owner, number);
+			if (!status?.id) {
+				changes.push(
+					"no Status field found on the project — create it once in the board UI, then re-preview",
+				);
+				return changes;
+			}
+			const options = new Set((status.options ?? []).map((o) => o.name));
+			for (const lane of plan.lanes) {
+				if (!options.has(lane)) changes.push(`add Status option "${lane}"`);
+			}
+			return changes;
+		},
+
+		async ensurePlan(plan: ProjectPlan): Promise<string[]> {
+			const owner = String(plan.workspace.owner ?? "");
+			const number = String(plan.workspace.projectNumber ?? "");
+			if (!owner || !number) {
+				throw new Error(
+					"The project plan needs a workspace (owner + project number) to apply against.",
+				);
+			}
+			const changes: string[] = [];
+			// Labels: list once, create only the missing ones.
+			const listed = parseJsonLoose<Array<{ name?: string }>>(
+				(await gh(["label", "list", "--json", "name", "--limit", "500"]))
+					.stdout,
+			);
+			const have = new Set((listed ?? []).map((l) => l.name));
+			for (const label of plan.labels) {
+				if (!have.has(label)) {
+					await gh(["label", "create", label]);
+					changes.push(`created label "${label}"`);
+				}
+			}
+			// Lanes: Status field options, read-modify-write via GraphQL.
+			const status = await statusField(gh, owner, number);
+			if (!status?.id) {
+				throw new Error(
+					"The project has no Status field — create it once in the board UI, then re-run the plan apply.",
+				);
+			}
+			const existing = (status.options ?? []).map((o) => ({
+				...(o.id ? { id: o.id } : {}),
+				name: o.name ?? "",
+				...(o.color ? { color: o.color } : {}),
+				...(o.description ? { description: o.description } : {}),
+			}));
+			const names = new Set(existing.map((o) => o.name));
+			const missing = plan.lanes.filter((lane) => !names.has(lane));
+			if (missing.length > 0) {
+				const projectId = await projectIdFor(gh, owner, number);
+				const options = [...existing, ...missing.map((name) => ({ name }))];
+				await gh([
+					"api",
+					"graphql",
+					"-f",
+					`query=${UPDATE_OPTIONS_MUTATION}`,
+					"-f",
+					`fieldId=${status.id}`,
+					"-f",
+					`projectId=${projectId}`,
+					"-F",
+					`options=${JSON.stringify(options)}`,
+				]);
+				for (const name of missing)
+					changes.push(`added Status option "${name}"`);
+			}
+			return changes;
 		},
 	};
 }

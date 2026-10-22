@@ -1,4 +1,5 @@
 import type {
+	ProjectPlan,
 	SinkAdapter,
 	SinkVerify,
 	TaskCreated,
@@ -20,6 +21,9 @@ export function createNullSink(): SinkAdapter {
 			url: "",
 		}),
 		readBack: async () => ({ state: "native" }),
+		// The null sink has no external board: a plan is always converged.
+		previewPlan: async (_plan: ProjectPlan): Promise<string[]> => [],
+		ensurePlan: async (_plan: ProjectPlan): Promise<string[]> => [],
 	};
 	return adapter;
 }

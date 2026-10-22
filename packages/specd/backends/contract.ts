@@ -28,6 +28,31 @@ export interface SinkVerify {
 	detail: string;
 }
 
+/** Sink workspace coordinates — github today; other sinks map their own
+ * keys at their own ports (M2c). */
+export interface PlanWorkspace {
+	/** github: user or org hosting the board. */
+	owner?: string;
+	/** github: Projects v2 project number. */
+	projectNumber?: number;
+	[key: string]: string | number | undefined;
+}
+
+/** The project plan: a vendor-neutral description of the sink structure a
+ * cycle exports into — workspace, lanes, label taxonomy, naming convention.
+ * Applied idempotently (re-running a converged plan changes nothing) with a
+ * read-only preview first. */
+export interface ProjectPlan {
+	/** Sink workspace, adapter-interpreted. */
+	workspace: PlanWorkspace;
+	/** Lanes = board status options exported tasks can be placed in. */
+	lanes: string[];
+	/** Label taxonomy ensured to exist on the workspace. */
+	labels: string[];
+	/** Export title convention with {ref} and {title} placeholders. */
+	naming: string;
+}
+
 export interface SinkAdapter {
 	/** Vendor-neutral adapter id: "null" | "github" | … */
 	id: string;
@@ -45,4 +70,9 @@ export interface SinkAdapter {
 	setTags?(externalRef: string, tags: string[]): Promise<void>;
 	/** Update the sink-side status, if the sink supports it. */
 	updateStatus?(externalRef: string, state: string): Promise<void>;
+	/** Read-only: the changes the sink needs to converge to the plan. */
+	previewPlan?(plan: ProjectPlan): Promise<string[]>;
+	/** Apply the plan; returns what actually changed. Idempotent: a
+	 * converged plan yields []. */
+	ensurePlan?(plan: ProjectPlan): Promise<string[]>;
 }
