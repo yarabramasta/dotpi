@@ -37,6 +37,28 @@ describe("specd store", () => {
 		expect(second.id).toBe("spec-0002");
 	});
 
+	it("ignores agent-supplied status in extras — only the importer seeds status", async () => {
+		t = await makeStore();
+		const item = createItem(t.store, {
+			kind: "spec",
+			title: "Gate bypass attempt",
+			actor: "test",
+			extra: { status: "approved", items: ["keep-me"] },
+		});
+		// The approval gate must not be bypassable via extra.status.
+		expect(item.status).toBe("draft");
+		const created = store_history_first_payload();
+		expect(created.status).toBeUndefined();
+		expect(created.items).toEqual(["keep-me"]);
+
+		function store_history_first_payload(): Record<string, unknown> {
+			const row = t.store.db
+				.prepare("SELECT payload FROM events WHERE item = ? AND type = 'created'")
+				.get(item.id) as { payload: string };
+			return JSON.parse(row.payload) as Record<string, unknown>;
+		}
+	});
+
 	it("rejects unknown kinds and empty titles", async () => {
 		t = await makeStore();
 		expect(() =>

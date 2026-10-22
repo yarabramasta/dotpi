@@ -27,9 +27,14 @@ async function statusField(
 	number: string,
 ): Promise<StatusFieldRow | undefined> {
 	// GraphQL responses wrap everything in { data: ... }; navigating from
-	// the root skips that wrapper is the most common statusField bug.
+	// the root skips that wrapper is the most common statusField bug. The
+	// query aliases both owner kinds: projects can be org- or user-owned,
+	// and a wrong-owner branch nulls out without failing the query.
 	const data = parseJsonLoose<{
-		data?: { organization?: { projectV2?: { field?: StatusFieldRow } } };
+		data?: {
+			organization?: { projectV2?: { field?: StatusFieldRow } };
+			user?: { projectV2?: { field?: StatusFieldRow } };
+		};
 	}>(
 		(
 			await gh([
@@ -44,7 +49,10 @@ async function statusField(
 			])
 		).stdout,
 	);
-	return data?.data?.organization?.projectV2?.field;
+	return (
+		data?.data?.organization?.projectV2?.field ??
+		data?.data?.user?.projectV2?.field
+	);
 }
 
 async function projectIdFor(
@@ -78,6 +86,13 @@ async function projectIdFor(
  * authoritative source. */
 const STATUS_FIELD_QUERY = `query($login: String!, $number: Int!) {
 	organization(login: $login) {
+		projectV2(number: $number) {
+			field(name: "Status") {
+				... on ProjectV2SingleSelectField { id name options { id name color description } }
+			}
+		}
+	}
+	user(login: $login) {
 		projectV2(number: $number) {
 			field(name: "Status") {
 				... on ProjectV2SingleSelectField { id name options { id name color description } }

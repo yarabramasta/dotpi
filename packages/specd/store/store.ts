@@ -279,6 +279,11 @@ export function createItem(store: SpecdStore, input: CreateItemInput): ItemRow {
 	}
 	const id = nextId(store.db, input.kind);
 	const at = nowIso();
+	// status is never agent-seedable via extras — the initial-status seed
+	// in the created payload is importer-only, so spec.approved etc. can't
+	// be bypassed by passing extra={status: "approved"}.
+	const extra = { ...(input.extra ?? {}) };
+	delete (extra as Record<string, unknown>).status;
 	withTransaction(store.db, () => {
 		store.db
 			.prepare(
@@ -308,7 +313,7 @@ export function createItem(store: SpecdStore, input: CreateItemInput): ItemRow {
 					pathScope: input.pathScope ?? null,
 					phase: input.phase ?? null,
 					parallel: input.parallel === true,
-					...(input.extra ?? {}),
+					...extra,
 				}),
 				at,
 				input.actor,

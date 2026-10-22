@@ -379,7 +379,7 @@ export function registerSpecdTools(pi: ExtensionAPI): void {
 		name: "specd_promote",
 		label: "Promote specd item to md",
 		description:
-			"Write (or remove) an item's readable md mirror, per the configured storage mode (/spec storage). db-only mode refuses; md-inrepo writes docs/specd/<id>.md; md-external writes into the configured directory. Re-promoting is idempotent. ",
+			"Write (or remove) an item's readable md mirror, per the configured storage mode (/spec storage). db-only mode refuses; md-inrepo writes docs/specd/<id>.md; md-external writes into the configured directory. Re-promoting is idempotent.",
 		promptSnippet: "Promote an item to an md file",
 		parameters: Type.Object({
 			item: Type.String({ description: "Item id (e.g. spec-0001)." }),

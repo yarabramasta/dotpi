@@ -173,6 +173,9 @@ describe("github project plan (preview + idempotent apply)", () => {
 		/** false simulates a not-onboarded (empty) workspace with no Status
 		 * field at all — the empty-kanban bootstrap path. */
 		hasStatusField?: boolean;
+		/** Projects can be org- or user-owned; the status lookup must find
+		 * the field under either owner kind. */
+		ownerType?: "organization" | "user";
 		graphqlCalls: string[];
 	}): GhRunner {
 		return async (args) => {
@@ -197,27 +200,18 @@ describe("github project plan (preview + idempotent apply)", () => {
 				joined.startsWith("api graphql") &&
 				joined.includes("query($login:")
 			) {
-				if (state.hasStatusField === false) {
-					return {
-						stdout: JSON.stringify({
-							data: { organization: { projectV2: { field: null } } },
-						}),
-						stderr: "",
-					};
-				}
+				const field = state.hasStatusField === false
+					? null
+					: {
+							name: "Status",
+							id: "FIELD_ID_1",
+							options: state.options,
+						};
+				const ownerPath =
+					state.ownerType === "user" ? "user" : "organization";
 				return {
 					stdout: JSON.stringify({
-						data: {
-							organization: {
-								projectV2: {
-									field: {
-										name: "Status",
-										id: "FIELD_ID_1",
-										options: state.options,
-									},
-								},
-							},
-						},
+						data: { [ownerPath]: { projectV2: { field } } },
 					}),
 					stderr: "",
 				};
@@ -337,6 +331,26 @@ describe("github project plan (preview + idempotent apply)", () => {
 		const second = await requireEnsure(sink)(PLAN);
 		expect(second).toEqual([]);
 		expect(state.graphqlCalls).toHaveLength(1);
+	});
+
+	it("finds the Status field on user-owned projects too (no duplicate bootstrap)", async () => {
+		const state = {
+			labelList: ["specd"],
+			options: [
+				{ id: "OPT_MVP", name: "MVP", color: "GRAY", description: "" },
+			],
+			ownerType: "user" as const,
+			graphqlCalls: [] as string[],
+		};
+		const sink = createGithubAdapter("/repo", undefined, planRunner(state));
+		// The field IS found via the user branch — only the genuinely missing
+		// lanes are reported, never a duplicate Status-field creation.
+		const changes = await requirePreview(sink)(PLAN);
+		expect(changes).not.toContain("create Status field");
+		expect(changes).toContain('add Status option "V1"');
+		expect(await requireEnsure(sink)(PLAN)).toContain(
+			'added Status option "V1"',
+		);
 	});
 
 	it("bootstraps an empty workspace — creates the Status field with the plan lanes (empty-kanban rule)", async () => {
