@@ -5,7 +5,6 @@
 		"npm:pi-multimodal-proxy",
 		"npm:@sting8k/pi-vcc",
 		"npm:pi-smart-compact",
-		"npm:pi-slopchop",
 		"npm:pi-ponytail",
 		"npm:pi-caveman",
 		"npm:pi-rtk-optimizer",
@@ -30,16 +29,7 @@
 		"agentOverrides": {
 			"scout": {
 				"model": "wandb/deepseek-ai/DeepSeek-V4-Flash-0731",
-				"thinking": "low",
-				"tools": [
-					"read",
-					"grep",
-					"find",
-					"ls",
-					"bash",
-					"write",
-					"contact_supervisor"
-				]
+				"thinking": "low"
 			},
 			"researcher": {
 				"model": "wandb/deepseek-ai/DeepSeek-V4-Pro-0813",
@@ -48,41 +38,19 @@
 			},
 			"delegate": {
 				"model": "wandb/zai-org/GLM-5.3-Flash",
-				"thinking": "high",
-				"tools": [
-					"read",
-					"grep",
-					"find",
-					"ls",
-					"bash",
-					"edit",
-					"write",
-					"contact_supervisor"
-				]
+				"thinking": "high"
 			},
 			"worker": {
 				"model": "wandb/moonshotai/Kimi-K2.7-Code",
-				"thinking": "high",
-				"tools": [
-					"read",
-					"grep",
-					"find",
-					"ls",
-					"bash",
-					"edit",
-					"write",
-					"contact_supervisor"
-				]
+				"thinking": "high"
 			},
 			"reviewer": {
 				"model": "wandb/deepseek-ai/DeepSeek-V4-Pro-0813",
-				"thinking": "high",
-				"tools": ["read", "grep", "find", "ls", "contact_supervisor"]
+				"thinking": "high"
 			},
 			"oracle": {
 				"model": "wandb/zai-org/GLM-5.2",
-				"thinking": "high",
-				"tools": ["read", "grep", "find", "ls", "bash"]
+				"thinking": "high"
 			}
 		}
 	}
