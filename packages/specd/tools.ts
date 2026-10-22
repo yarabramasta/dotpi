@@ -1,0 +1,354 @@
+import type {
+	ExtensionAPI,
+	ExtensionContext,
+} from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
+import { readSinkConfig, saveSinkConfig } from "./backends/config.js";
+import type { SinkAdapter, TaskExport } from "./backends/contract.js";
+import { createGithubAdapter } from "./backends/github.js";
+import { createNullSink } from "./backends/null.js";
+import { syncExportedTasks } from "./backends/sync.js";
+import { renderDashboard } from "./dashboard.js";
+import {
+	assertCanExport,
+	assertSpecCreationAllowed,
+} from "./pipeline/gates.js";
+import {
+	EVENT_TYPES,
+	type EventType,
+	ITEM_KINDS,
+	type ItemKind,
+	LINK_KINDS,
+	type LinkKind,
+} from "./store/schema.js";
+import {
+	addLink,
+	appendEvent,
+	counts,
+	createItem,
+	getItem,
+	history,
+	type ItemRow,
+	linkedItems,
+	listItems,
+	openStore,
+	type SpecdStore,
+} from "./store/store.js";
+
+function text(content: string, details?: Record<string, unknown>) {
+	return {
+		content: [{ type: "text" as const, text: content }],
+		details,
+	};
+}
+
+async function openSpecd(ctx: ExtensionContext): Promise<SpecdStore> {
+	return openStore(ctx.cwd);
+}
+
+function slugify(title: string): string {
+	return title
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, "-")
+		.replace(/^-+|-+$/g, "")
+		.slice(0, 40);
+}
+
+/** Dashboard content shared by the /spec command and the specd_dashboard
+ * tool. Read-back sync runs best-effort first (exported tasks whose sink
+ * item closed become done), then the projection snapshot renders. */
+export async function dashboardContent(store: SpecdStore): Promise<string> {
+	try {
+		await syncExportedTasks(store);
+	} catch {
+		// best-effort: an unreachable sink never breaks the dashboard
+	}
+	const rows = listItems(store, { limit: 20 });
+	const paused = rows
+		.filter((r) => history(store, r.id).at(-1)?.type === "work.paused")
+		.map((r) => r.id);
+	return renderDashboard(rows, counts(store), paused);
+}
+
+function resolveAdapter(store: SpecdStore, sink: string): SinkAdapter {
+	if (sink === "null") return createNullSink();
+	if (sink === "github") {
+		const config = readSinkConfig(store, "sink.github");
+		if (!config?.owner || !config.projectNumber) {
+			throw new Error(
+				"GitHub sink is not configured yet. Tell me the project owner and project number (and optionally a lane) so I can store them — e.g. pass github_owner + github_project_number to specd_export once, and they persist for every later export.",
+			);
+		}
+		return createGithubAdapter(store.cwd, {
+			owner: String(config.owner),
+			projectNumber: Number(config.projectNumber),
+			lane: typeof config.lane === "string" ? config.lane : undefined,
+		});
+	}
+	throw new Error(`Unknown sink: ${sink}. Valid: null, github.`);
+}
+
+function buildTaskExport(store: SpecdStore, task: ItemRow): TaskExport {
+	const specs = linkedItems(store, task.id, "part-of").filter(
+		(i) => i.kind === "spec",
+	);
+	const spec = specs[0];
+	const specSection = spec
+		? `## Spec reference\n\n${spec.id} — ${spec.title}\n\n${spec.body.slice(0, 1500)}${spec.body.length > 1500 ? "\n…" : ""}`
+		: "## Spec reference\n\n(none linked)";
+	const body = `## Task\n\n${task.body || task.title}\n\n${specSection}\n\n---\nExported from specd (${task.id}).`;
+	const labels = ["specd"];
+	if (spec) labels.push(`spec:${slugify(spec.title)}`);
+	return { ref: task.id, title: task.title, body, labels };
+}
+
+export function registerSpecdTools(pi: ExtensionAPI): void {
+	pi.registerTool({
+		name: "specd_create_item",
+		label: "Create specd item",
+		description:
+			"Create an item in the specd store. Kinds: spec (requires cycle with explore decision go), plan, task, cycle, epic, roadmap, constitution, checklist, knowledge. Returns the generated id.",
+		promptSnippet: "Create a specd store item",
+		parameters: Type.Object({
+			kind: Type.String({
+				description: `Item kind (${ITEM_KINDS.join("|")}).`,
+			}),
+			title: Type.String({ description: "Short title." }),
+			body: Type.Optional(
+				Type.String({
+					description:
+						"Item body. For specs use the template: Intent / Requirements (numbered, testable) / Acceptance criteria / Out of scope.",
+				}),
+			),
+			path_scope: Type.Optional(
+				Type.String({
+					description:
+						"For tasks: the file paths this task owns (e.g. src/auth/**).",
+				}),
+			),
+			cycle: Type.Optional(
+				Type.String({
+					description:
+						"For specs (required): the cycle id whose latest explore decision must be 'go'. The spec is auto-linked part-of the cycle.",
+				}),
+			),
+			phase: Type.Optional(
+				Type.String({
+					description:
+						"For tasks: execution phase (setup/foundational/story/polish).",
+				}),
+			),
+			parallel: Type.Optional(
+				Type.Boolean({
+					description:
+						"For tasks: true when the task may run concurrently with others.",
+				}),
+			),
+			extra: Type.Optional(
+				Type.Record(Type.String(), Type.Unknown(), {
+					description:
+						"Kind-specific extras merged into the created event (e.g. checklists: { items: [...] }).",
+				}),
+			),
+		}),
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const store = await openSpecd(ctx);
+			if (params.kind === "spec") {
+				// The explore decision gate: only a cycle whose latest explore
+				// decision is "go" may spawn a spec.
+				assertSpecCreationAllowed(store, params.cycle);
+			}
+			const item = createItem(store, {
+				kind: params.kind as ItemKind,
+				title: params.title,
+				body: params.body,
+				pathScope: params.path_scope,
+				phase: params.phase,
+				parallel: params.parallel,
+				extra: params.extra,
+				actor: "agent",
+			});
+			if (params.kind === "spec" && params.cycle) {
+				addLink(store, item.id, params.cycle, "part-of");
+			}
+			return text(
+				`Created ${item.id} (${item.kind}, draft) — ${item.title}.${params.kind === "spec" && params.cycle ? ` Linked part-of ${params.cycle}.` : ""}`,
+				{ id: item.id },
+			);
+		},
+	});
+
+	pi.registerTool({
+		name: "specd_append_event",
+		label: "Append specd event",
+		description:
+			"Append an event to a specd item's history. Status-changing events move the item's projected state. Exporting a task (task.exported) is gated: its linked spec must be approved.",
+		promptSnippet: "Append an event to a specd item",
+		parameters: Type.Object({
+			item: Type.String({ description: "Item id (e.g. task-0001)." }),
+			type: Type.String({
+				description: `Event type (${EVENT_TYPES.join("|")}).`,
+			}),
+			payload: Type.Optional(
+				Type.Record(Type.String(), Type.Unknown(), {
+					description: "Event payload (free-form JSON object).",
+				}),
+			),
+			batch: Type.Optional(
+				Type.String({ description: "Batch id (migration runs use this)." }),
+			),
+		}),
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const store = await openSpecd(ctx);
+			const type = params.type as EventType;
+			if (type === "task.exported") {
+				assertCanExport(store, params.item); // throws with plain-language reason
+			}
+			const event = appendEvent(store, {
+				item: params.item,
+				type,
+				payload: params.payload,
+				actor: "agent",
+				batch: params.batch,
+			});
+			const item = getItem(store, params.item);
+			return text(
+				`Appended ${event.type} to ${event.item}. Current state: ${item?.status ?? "?"}.`,
+			);
+		},
+	});
+
+	pi.registerTool({
+		name: "specd_add_link",
+		label: "Link specd items",
+		description:
+			"Link two specd items with a typed relation (e.g. task part-of spec).",
+		promptSnippet: "Link two specd items",
+		parameters: Type.Object({
+			from: Type.String({ description: "Source item id." }),
+			to: Type.String({ description: "Target item id." }),
+			kind: Type.String({
+				description: `Relation kind (${LINK_KINDS.join("|")}).`,
+			}),
+		}),
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const store = await openSpecd(ctx);
+			addLink(store, params.from, params.to, params.kind as LinkKind);
+			return text(`Linked ${params.from} -[${params.kind}]-> ${params.to}.`);
+		},
+	});
+
+	pi.registerTool({
+		name: "specd_show",
+		label: "Show specd item",
+		description:
+			"Show one specd item in full: current state, body, and its complete event history.",
+		promptSnippet: "Show a specd item with its history",
+		parameters: Type.Object({
+			item: Type.String({ description: "Item id (e.g. spec-0001)." }),
+		}),
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const store = await openSpecd(ctx);
+			const item = getItem(store, params.item);
+			if (!item) return text(`Unknown item: ${params.item}.`);
+			const events = history(store, params.item)
+				.map((e) => `- ${e.at} ${e.actor}: ${e.type}`)
+				.join("\n");
+			return text(
+				`# ${item.id}\n\n- kind: ${item.kind}\n- status: ${item.status}\n- path scope: ${item.path_scope ?? "—"}\n\n${item.body}\n\n## History\n\n${events}`,
+			);
+		},
+	});
+
+	pi.registerTool({
+		name: "specd_dashboard",
+		label: "specd dashboard",
+		description:
+			"Current state of the specd store: all items, statuses, counts. Runs sink read-back sync first (best-effort).",
+		promptSnippet: "Show the specd dashboard",
+		parameters: Type.Object({}),
+		async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
+			const store = await openSpecd(ctx);
+			return text(await dashboardContent(store));
+		},
+	});
+
+	pi.registerTool({
+		name: "specd_export",
+		label: "Export specd task to sink",
+		description:
+			"Export an approved task to a work sink (null = store-native, github = issues). Gated: the task's linked spec must be approved. First github export needs the project owner/number (persisted for later exports).",
+		promptSnippet: "Export a task to the team's work sink",
+		parameters: Type.Object({
+			item: Type.String({ description: "Task item id (e.g. task-0001)." }),
+			sink: Type.Optional(
+				Type.String({
+					description: 'Sink id ("null" or "github"). Defaults to null.',
+				}),
+			),
+			lane: Type.Optional(
+				Type.String({
+					description: "Lane to place the item in (e.g. MVP).",
+				}),
+			),
+			github_owner: Type.Optional(
+				Type.String({
+					description:
+						"First github export: the project owner (user or org). Persisted for later exports.",
+				}),
+			),
+			github_project_number: Type.Optional(
+				Type.Number({
+					description:
+						"First github export: the Projects v2 project number. Persisted for later exports.",
+				}),
+			),
+		}),
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const store = await openSpecd(ctx);
+			const sink = params.sink ?? "null";
+			if (sink === "github") {
+				const existing = readSinkConfig(store, "sink.github");
+				if (params.github_owner && params.github_project_number) {
+					saveSinkConfig(store, "sink.github", {
+						owner: params.github_owner,
+						projectNumber: params.github_project_number,
+						lane: params.lane ?? existing?.lane,
+					});
+				}
+			}
+			const adapter = resolveAdapter(store, sink);
+			const task = getItem(store, params.item);
+			if (!task) return text(`Unknown item: ${params.item}.`);
+			assertCanExport(store, params.item); // throws with plain-language reason
+			const taskExport = buildTaskExport(store, task);
+			const created = await adapter.createTask(taskExport);
+			appendEvent(store, {
+				item: task.id,
+				type: "task.exported",
+				payload: {
+					sink: adapter.id,
+					externalRef: created.externalRef,
+					url: created.url,
+				},
+				actor: "agent",
+			});
+			let laneNote = "";
+			const lane =
+				params.lane ??
+				(readSinkConfig(store, "sink.github")?.lane as string | undefined);
+			if (adapter.placeInLane && lane) {
+				try {
+					await adapter.placeInLane(created.externalRef, lane);
+					laneNote = ` Placed in lane "${lane}".`;
+				} catch (error) {
+					laneNote = ` Lane placement failed: ${error instanceof Error ? error.message : String(error)}`;
+				}
+			}
+			return text(
+				`Exported ${task.id} via ${adapter.id}${created.url ? ` — ${created.url}` : " (store-native)"}.${laneNote}`,
+				{ externalRef: created.externalRef, url: created.url },
+			);
+		},
+	});
+}
