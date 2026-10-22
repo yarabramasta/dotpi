@@ -62,25 +62,27 @@ describe("github reference adapter (contract freeze)", () => {
 			if (joined.startsWith("api graphql")) {
 				return {
 					stdout: JSON.stringify({
-						organization: {
-							projectV2: {
-								field: {
-									name: "Status",
-									id: "FIELD_ID_1",
-									options: [
-										{
-											id: "OPT_TODO",
-											name: "Todo",
-											color: "GRAY",
-											description: "",
-										},
-										{
-											id: "OPT_MVP",
-											name: "MVP",
-											color: "GRAY",
-											description: "",
-										},
-									],
+						data: {
+							organization: {
+								projectV2: {
+									field: {
+										name: "Status",
+										id: "FIELD_ID_1",
+										options: [
+											{
+												id: "OPT_TODO",
+												name: "Todo",
+												color: "GRAY",
+												description: "",
+											},
+											{
+												id: "OPT_MVP",
+												name: "MVP",
+												color: "GRAY",
+												description: "",
+											},
+										],
+									},
 								},
 							},
 						},
@@ -186,12 +188,14 @@ describe("github project plan (preview + idempotent apply)", () => {
 			if (joined.startsWith("api graphql") && joined.includes("Status")) {
 				return {
 					stdout: JSON.stringify({
-						organization: {
-							projectV2: {
-								field: {
-									name: "Status",
-									id: "FIELD_ID_1",
-									options: state.options,
+						data: {
+							organization: {
+								projectV2: {
+									field: {
+										name: "Status",
+										id: "FIELD_ID_1",
+										options: state.options,
+									},
 								},
 							},
 						},
