@@ -567,4 +567,95 @@ export function registerSpecdTools(pi: ExtensionAPI): void {
 			);
 		},
 	});
+
+	pi.registerTool({
+		name: "specd_import_preview",
+		label: "Preview grill→specd import",
+		description:
+			"Read-only preview of a grill atoms.db → specd store migration. Returns counts by grill type, sample items, and the number of edges that will become specd links. Pass apply=true to specd_import_apply to run.",
+		promptSnippet: "Preview a grill→specd import",
+		parameters: Type.Object({
+			source: Type.String({
+				description:
+					"Path to the grill repo root (where .pi/knowledge/atoms.db lives).",
+			}),
+		}),
+		async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+			const { snapshotGrill } = await import("./import/grill-source.js");
+			const { mapSnapshot } = await import("./import/map.js");
+			const snap = snapshotGrill(params.source);
+			const mapped = mapSnapshot(snap);
+			const counts = new Map<string, number>();
+			for (const atom of snap.atoms) {
+				counts.set(atom.type, (counts.get(atom.type) ?? 0) + 1);
+			}
+			const sample = mapped.items
+				.slice(0, 5)
+				.map(
+					(item) =>
+						`- ${item.originId} (${item.originalType}) → ${item.kind}: ${item.title}`,
+				)
+				.join("\n");
+			return text(
+				`Import preview from ${params.source}:\n\nAtoms by grill type:\n${[
+					...counts.entries(),
+				]
+					.map(([k, v]) => `  - ${k}: ${v}`)
+					.join(
+						"\n",
+					)}\n\nMapped items: ${mapped.items.length}\nMapped links: ${mapped.links.length}\nSkipped edges (promoted-to / unknown): ${mapped.skippedEdges.length}\n\nSample:\n${sample}\n\nRe-run as specd_import_apply(source=<path>, apply=true) to write.`,
+				{
+					source: params.source,
+					counts: Object.fromEntries(counts),
+					sample: mapped.items.slice(0, 5),
+				},
+			);
+		},
+	});
+
+	pi.registerTool({
+		name: "specd_import_apply",
+		label: "Apply grill→specd import",
+		description:
+			"Run the grill→specd import in one transaction. Returns counts of items + links created. Idempotent: re-running with the same source skips already-imported atoms via the `imported` event origin_id.",
+		promptSnippet: "Apply a grill→specd import",
+		parameters: Type.Object({
+			source: Type.String({
+				description:
+					"Path to the grill repo root (where .pi/knowledge/atoms.db lives).",
+			}),
+			apply: Type.Boolean({ description: "Must be true to write." }),
+		}),
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			if (!params.apply) {
+				return text(
+					"Import refused: apply=true is required to write. Run specd_import_preview first to inspect the mapping.",
+				);
+			}
+			const { snapshotGrill } = await import("./import/grill-source.js");
+			const { mapSnapshot } = await import("./import/map.js");
+			const { planImport, applyImport } = await import("./import/run.js");
+			const store = await openSpecd(ctx);
+			const snap = snapshotGrill(params.source);
+			const mapped = mapSnapshot(snap);
+			const batch = `import-${Date.now()}`;
+			const plan = planImport(store, mapped, batch);
+			// Build the id map from the plan so applyImport doesn't need
+			// to look it up again.
+			const idMap = new Map<string, string>();
+			for (const c of plan.created) idMap.set(c.originId, c.itemId);
+			const report = applyImport(
+				store,
+				plan.steps,
+				plan.links,
+				idMap,
+				batch,
+				ctx.ui ? "agent" : "system",
+			);
+			return text(
+				`Import applied.\n- items created: ${report.created.length}\n- links added: ${report.linksAdded}\n- links skipped (cross-import or duplicates): ${report.linksSkipped}\n- batch: ${batch}`,
+				{ report },
+			);
+		},
+	});
 }

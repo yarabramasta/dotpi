@@ -156,6 +156,32 @@ export function registerCommands(pi: ExtensionAPI): void {
 				pi.sendUserMessage(PLAN_PROMPT);
 				return;
 			}
+			if (sub === "import") {
+				const mode = firstWord(rest);
+				const source = rest.slice(mode.length).trim();
+				if (!source) {
+					ctx.ui.notify(
+						"Usage: /spec import <preview|apply> <source-repo-path>",
+						"warning",
+					);
+					return;
+				}
+				if (mode === "preview") {
+					pi.sendUserMessage(
+						`Run specd_import_preview(source=${JSON.stringify(source)}) and summarize what would be imported.`,
+					);
+				} else if (mode === "apply") {
+					pi.sendUserMessage(
+						`Run specd_import_apply(source=${JSON.stringify(source)}, apply=true). Confirm idempotency by re-running the preview after.`,
+					);
+				} else {
+					ctx.ui.notify(
+						`Usage: /spec import <preview|apply> <source-repo-path> — got mode "${mode}".`,
+						"warning",
+					);
+				}
+				return;
+			}
 			try {
 				const store = await openStore(ctx.cwd);
 				if (sub === "doctor") {
