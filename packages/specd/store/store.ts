@@ -1,6 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
+import { migrateStore } from "./migrate.js";
 import {
 	applySchema,
 	EVENT_TYPES,
@@ -127,7 +128,9 @@ export async function openStore(cwd: string): Promise<SpecdStore> {
 		if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
 	}
 
-	// Old/corrupt stores are never auto-migrated; fail loudly instead.
+	// Legacy/corrupt stores without a version stamp are never auto-migrated
+	// (fail loudly). KNOWN older versions migrate forward in place through
+	// store/migrate.ts; unknown/newer versions still fail loudly.
 	const db = new sqlite.DatabaseSync(path);
 	const version = readSchemaVersion(db);
 	if (version === undefined) {
@@ -138,10 +141,9 @@ export async function openStore(cwd: string): Promise<SpecdStore> {
 			);
 		}
 	} else if (version !== SCHEMA_VERSION) {
-		db.close();
-		throw new Error(
-			`.spec/store.db schema_version ${version} unsupported (expected ${SCHEMA_VERSION}).`,
-		);
+		for (const note of migrateStore(db, version, SCHEMA_VERSION)) {
+			console.warn(`specd: ${note}`);
+		}
 	}
 
 	applySchema(db);
