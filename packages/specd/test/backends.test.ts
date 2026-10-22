@@ -59,10 +59,32 @@ describe("github reference adapter (contract freeze)", () => {
 			if (joined.startsWith("project item-add")) {
 				return { stdout: '{"id":"ITEM_ID_1"}', stderr: "" };
 			}
-			if (joined.startsWith("project field-list")) {
+			if (joined.startsWith("api graphql")) {
 				return {
-					stdout:
-						'{"fields":[{"name":"Status","id":"FIELD_ID_1","options":[{"id":"OPT_TODO","name":"Todo"},{"id":"OPT_MVP","name":"MVP"}]}]}',
+					stdout: JSON.stringify({
+						organization: {
+							projectV2: {
+								field: {
+									name: "Status",
+									id: "FIELD_ID_1",
+									options: [
+										{
+											id: "OPT_TODO",
+											name: "Todo",
+											color: "GRAY",
+											description: "",
+										},
+										{
+											id: "OPT_MVP",
+											name: "MVP",
+											color: "GRAY",
+											description: "",
+										},
+									],
+								},
+							},
+						},
+					}),
 					stderr: "",
 				};
 			}
@@ -140,7 +162,12 @@ describe("github project plan (preview + idempotent apply)", () => {
 	 * extra labels and lanes reports/creates only the missing ones. */
 	function planRunner(state: {
 		labelList: string[];
-		options: Array<{ id: string; name: string }>;
+		options: Array<{
+			id: string;
+			name: string;
+			color: string;
+			description: string;
+		}>;
 		graphqlCalls: string[];
 	}): GhRunner {
 		return async (args) => {
@@ -156,35 +183,38 @@ describe("github project plan (preview + idempotent apply)", () => {
 				state.labelList.push(name);
 				return { stdout: "", stderr: "" };
 			}
-			if (joined.startsWith("project field-list")) {
+			if (joined.startsWith("api graphql") && joined.includes("Status")) {
 				return {
 					stdout: JSON.stringify({
-						fields: [
-							{
-								name: "Status",
-								id: "FIELD_ID_1",
-								options: state.options,
+						organization: {
+							projectV2: {
+								field: {
+									name: "Status",
+									id: "FIELD_ID_1",
+									options: state.options,
+								},
 							},
-						],
+						},
 					}),
 					stderr: "",
 				};
 			}
-			if (joined.startsWith("project view")) {
-				return { stdout: '{"id":"PROJECT_ID_1"}', stderr: "" };
-			}
 			if (joined.startsWith("api graphql")) {
 				state.graphqlCalls.push(args.join(" "));
-				const names = state.options.map((o) => o.name);
-				for (const arg of args) {
-					if (arg.startsWith("options=")) {
-						const opts = JSON.parse(arg.slice(8)) as Array<{
-							name: string;
-						}>;
-						for (const o of opts) {
-							if (!names.includes(o.name)) {
-								state.options.push({ id: `OPT_${o.name}`, name: o.name });
-							}
+				const queryArg = args.find((a) => a.startsWith("query="));
+				const optionsBlock = queryArg?.match(
+					/singleSelectOptions: \[([\s\S]*)\]/,
+				);
+				if (optionsBlock) {
+					for (const m of optionsBlock[1].matchAll(/name: "([^"]+)"/g)) {
+						const name = m[1];
+						if (!state.options.some((o) => o.name === name)) {
+							state.options.push({
+								id: `OPT_${name}`,
+								name,
+								color: "GRAY",
+								description: "",
+							});
 						}
 					}
 				}
@@ -221,19 +251,16 @@ describe("github project plan (preview + idempotent apply)", () => {
 		const state = {
 			labelList: ["specd"],
 			options: [
-				{ id: "OPT_TODO", name: "Todo" },
-				{ id: "OPT_MVP", name: "MVP" },
+				{ id: "OPT_TODO", name: "Todo", color: "GRAY", description: "" },
+				{ id: "OPT_MVP", name: "MVP", color: "GRAY", description: "" },
 			],
 			graphqlCalls: [],
 		};
 		const sink = createGithubAdapter("/repo", undefined, planRunner(state));
 		const changes = await requirePreview(sink)(PLAN);
-		// label specd exists; priority:high is missing.
 		expect(changes).toContain('create label "priority:high"');
-		// MVP exists; V1 and maintenance are missing.
 		expect(changes).toContain('add Status option "V1"');
 		expect(changes).toContain('add Status option "maintenance"');
-		// Preview is read-only — nothing was created.
 		expect(state.labelList).toEqual(["specd"]);
 		expect(state.options).toHaveLength(2);
 		expect(state.graphqlCalls).toHaveLength(0);
@@ -243,8 +270,8 @@ describe("github project plan (preview + idempotent apply)", () => {
 		const state = {
 			labelList: ["specd"],
 			options: [
-				{ id: "OPT_TODO", name: "Todo" },
-				{ id: "OPT_MVP", name: "MVP" },
+				{ id: "OPT_TODO", name: "Todo", color: "GRAY", description: "" },
+				{ id: "OPT_MVP", name: "MVP", color: "GRAY", description: "" },
 			],
 			graphqlCalls: [],
 		};
@@ -257,10 +284,31 @@ describe("github project plan (preview + idempotent apply)", () => {
 		expect(state.options.map((o) => o.name)).toContain("V1");
 		expect(state.graphqlCalls).toHaveLength(1);
 
-		// Re-apply: everything converged — no changes.
 		const second = await requireEnsure(sink)(PLAN);
 		expect(second).toEqual([]);
-		expect(state.graphqlCalls).toHaveLength(1); // no extra graphql call
+		expect(state.graphqlCalls).toHaveLength(1);
+	});
+
+	it("preserves existing option color/description on idempotent re-apply", async () => {
+		const state = {
+			labelList: ["specd"],
+			options: [
+				{ id: "OPT_TODO", name: "Todo", color: "BLUE", description: "kept" },
+				{
+					id: "OPT_MVP",
+					name: "MVP",
+					color: "PURPLE",
+					description: "also kept",
+				},
+			],
+			graphqlCalls: [],
+		};
+		const sink = createGithubAdapter("/repo", undefined, planRunner(state));
+		await requireEnsure(sink)(PLAN);
+		expect(state.options[0]?.color).toBe("BLUE");
+		expect(state.options[0]?.description).toBe("kept");
+		expect(state.options[1]?.color).toBe("PURPLE");
+		expect(state.options[1]?.description).toBe("also kept");
 	});
 
 	it("null sink plan is always converged", async () => {

@@ -26,20 +26,25 @@ async function statusField(
 	owner: string,
 	number: string,
 ): Promise<StatusFieldRow | undefined> {
-	const fields = parseJsonLoose<{ fields?: StatusFieldRow[] }>(
+	// GraphQL responses wrap everything in { data: ... }; navigating from
+	// the root skips that wrapper is the most common statusField bug.
+	const data = parseJsonLoose<{
+		data?: { organization?: { projectV2?: { field?: StatusFieldRow } } };
+	}>(
 		(
 			await gh([
-				"project",
-				"field-list",
-				number,
-				"--owner",
-				owner,
-				"--format",
-				"json",
+				"api",
+				"graphql",
+				"-f",
+				`query=${STATUS_FIELD_QUERY}`,
+				"-f",
+				`login=${owner}`,
+				"-F",
+				`number=${number}`,
 			])
 		).stdout,
 	);
-	return fields?.fields?.find((f) => f.name === "Status");
+	return data?.data?.organization?.projectV2?.field;
 }
 
 async function projectIdFor(
@@ -68,13 +73,56 @@ async function projectIdFor(
 	return view.id;
 }
 
-/** updateProjectV2Field replaces the whole options list — callers must
- * pass every existing option (with ids) plus the new ones. */
-const UPDATE_OPTIONS_MUTATION = `mutation($fieldId: ID!, $projectId: ID!, $options: [ProjectV2SingleSelectFieldOptionInput!]!) {
-	updateProjectV2Field(input: { fieldId: $fieldId, projectId: $projectId, singleSelectField: { options: $options } }) {
-		field { ... on ProjectV2SingleSelectField { options { id name } } }
+/** Full Status-field options via GraphQL: gh project field-list CLI omits
+ * color/description, but the mutation requires them. GraphQL is the only
+ * authoritative source. */
+const STATUS_FIELD_QUERY = `query($login: String!, $number: Int!) {
+	organization(login: $login) {
+		projectV2(number: $number) {
+			field(name: "Status") {
+				... on ProjectV2SingleSelectField { id name options { id name color description } }
+			}
+		}
 	}
 }`;
+
+/** updateProjectV2Field replaces the whole options list — callers must pass
+ * every existing option (with ids) plus the new ones. color is a GraphQL
+ * ENUM (bare identifier, no quotes); description is a required String
+ * (empty string is fine). Options are inlined as GraphQL input-object
+ * literals because gh -F does not parse JSON arrays of objects and the
+ * runner cannot pipe stdin. */
+const OPTION_ENUM_FIELDS = new Set(["color"]);
+function updateOptionsMutation(
+	fieldId: string,
+	options: Array<Record<string, unknown>>,
+): string {
+	const literal = (o: Record<string, unknown>): string => {
+		const parts: string[] = [];
+		for (const [k, v] of Object.entries(o)) {
+			if (v === undefined) continue;
+			// Drop empty values for enum fields (nonsense) but keep them
+			// for required strings like description (empty is allowed).
+			if (typeof v === "string" && v === "" && OPTION_ENUM_FIELDS.has(k))
+				continue;
+			parts.push(
+				`${k}: ${OPTION_ENUM_FIELDS.has(k) ? String(v) : JSON.stringify(v)}`,
+			);
+		}
+		return `{ ${parts.join(", ")} }`;
+	};
+	return `mutation {
+	updateProjectV2Field(input: { fieldId: ${JSON.stringify(fieldId)}, singleSelectOptions: [${options
+		.map(literal)
+		.join(", ")}] }) {
+		projectV2Field { ... on ProjectV2SingleSelectField { options { id name } } }
+	}
+}`;
+}
+
+/** Default color/description for a brand-new option; existing options keep
+ * the values GraphQL returned for them. */
+const DEFAULT_OPTION = { color: "GRAY", description: "" } as const;
 
 /** The GitHub reference adapter — the implementation that freezes the sink
  * contract (M1). Everything runs through the gh CLI: issues via the REST
@@ -286,29 +334,24 @@ export function createGithubAdapter(
 				);
 			}
 			const existing = (status.options ?? []).map((o) => ({
-				...(o.id ? { id: o.id } : {}),
-				name: o.name ?? "",
-				...(o.color ? { color: o.color } : {}),
-				...(o.description ? { description: o.description } : {}),
+				id: o.id,
+				name: o.name,
+				color: o.color ?? DEFAULT_OPTION.color,
+				description: o.description ?? DEFAULT_OPTION.description,
 			}));
 			const names = new Set(existing.map((o) => o.name));
-			const missing = plan.lanes.filter((lane) => !names.has(lane));
+			const missing = plan.lanes
+				.filter((lane) => !names.has(lane))
+				.map((name) => ({ name, ...DEFAULT_OPTION }));
+			const options = [...existing, ...missing];
 			if (missing.length > 0) {
-				const projectId = await projectIdFor(gh, owner, number);
-				const options = [...existing, ...missing.map((name) => ({ name }))];
 				await gh([
 					"api",
 					"graphql",
 					"-f",
-					`query=${UPDATE_OPTIONS_MUTATION}`,
-					"-f",
-					`fieldId=${status.id}`,
-					"-f",
-					`projectId=${projectId}`,
-					"-F",
-					`options=${JSON.stringify(options)}`,
+					`query=${updateOptionsMutation(status.id, options)}`,
 				]);
-				for (const name of missing)
+				for (const { name } of missing)
 					changes.push(`added Status option "${name}"`);
 			}
 			return changes;
