@@ -8,11 +8,16 @@
  * payload records `{origin: "grill", atom_id: <origin>}`; the planner
  * skips origin-ids that already have such an event in the target store.
  *
+ * Event history: every item's history starts with a `created` event
+ * (carrying the mapped status as the initial-status seed), then the
+ * `imported` provenance event. Replay via recomputeProjection then
+ * reproduces the stored rows exactly — doctor stays clean.
+ *
  * Promoted-to pointers (acceptance criterion #9) become provenance
  * entries on the `imported` event payload, not edges. */
 
 import type { ItemKind } from "../store/schema.js";
-import type { SpecdStore } from "../store/store.js";
+import { recomputeProjection, type SpecdStore } from "../store/store.js";
 import type { MappedItem, MappedLink, MappedSnapshot } from "./map.js";
 
 export interface ImportReport {
@@ -166,7 +171,7 @@ export function applyImport(
 		"INSERT INTO items (id, kind, title, status, body, path_scope, phase, parallel, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
 	);
 	const insertEvent = store.db.prepare(
-		"INSERT INTO events (item, type, payload, at, actor, batch) VALUES (?, 'imported', ?, ?, ?, ?)",
+		"INSERT INTO events (item, type, payload, at, actor, batch) VALUES (?, ?, ?, ?, ?, ?)",
 	);
 	const insertLink = store.db.prepare(
 		"INSERT OR IGNORE INTO links (from_item, to_item, kind) VALUES (?, ?, ?)",
@@ -195,7 +200,33 @@ export function applyImport(
 				now,
 				now,
 			);
-			insertEvent.run(id, JSON.stringify(step.provenance), now, actor, batch);
+			// History starts with `created` (mapped status as the seed),
+			// then the `imported` provenance event — replay equals storage.
+			insertEvent.run(
+				id,
+				"created",
+				JSON.stringify({
+					kind: step.kind,
+					title: step.title,
+					body: step.body,
+					pathScope: step.scope,
+					phase: null,
+					parallel: false,
+					status: step.status,
+				}),
+				now,
+				actor,
+				batch,
+			);
+			insertEvent.run(
+				id,
+				"imported",
+				JSON.stringify(step.provenance),
+				now,
+				actor,
+				batch,
+			);
+			recomputeProjection(store.db, id);
 			created.push({ originId: step.originId, itemId: id, kind: step.kind });
 		}
 		for (const link of links) {

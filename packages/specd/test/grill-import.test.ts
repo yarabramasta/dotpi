@@ -1,20 +1,22 @@
-import { mkdtempSync, mkdirSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { applySchema, atomPaths } from "../../grill/atom/store.js";
-import {
-	createAtom,
-	addEdge as grillAddEdge,
-} from "../../grill/atom/atoms.js";
-import type { AtomStore } from "../../grill/atom/store.js";
 import { DatabaseSync } from "node:sqlite";
-import { makeStore } from "./helpers.js";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { createAtom, addEdge as grillAddEdge } from "../../grill/atom/atoms.js";
+import type { AtomStore } from "../../grill/atom/store.js";
+import { applySchema, atomPaths } from "../../grill/atom/store.js";
 import { snapshotGrill } from "../import/grill-source.js";
 import { mapAtom, mapEdge, mapSnapshot } from "../import/map.js";
-import { planImport, applyImport } from "../import/run.js";
+import { applyImport, planImport } from "../import/run.js";
+import { runDoctor } from "../store/doctor.js";
+import { makeStore } from "./helpers.js";
 
-function makeGrillFixture(): { store: AtomStore; dir: string; cleanup: () => void } {
+function makeGrillFixture(): {
+	store: AtomStore;
+	dir: string;
+	cleanup: () => void;
+} {
 	const dir = mkdtempSync(join(tmpdir(), "grill-fixture-"));
 	const paths = atomPaths(dir);
 	mkdirSync(paths.dir, { recursive: true });
@@ -163,6 +165,27 @@ describe("grill→specd import", () => {
 		expect(report.created).toHaveLength(2);
 		expect(report.linksAdded).toBe(1);
 
+		// Event history: created first (with the mapped status seed), then
+		// imported provenance; replay reproduces the stored rows, so doctor
+		// is clean and FTS is populated.
+		const histories = store.store.db
+			.prepare("SELECT item, type FROM events ORDER BY item, id")
+			.all() as unknown as Array<{ item: string; type: string }>;
+		const grouped = new Map<string, string[]>();
+		for (const { item, type } of histories) {
+			const list = grouped.get(item) ?? [];
+			list.push(type);
+			grouped.set(item, list);
+		}
+		for (const [item, types] of grouped) {
+			expect(types, item).toEqual(["created", "imported"]);
+		}
+		const ftsRows = store.store.db
+			.prepare("SELECT COUNT(*) AS n FROM item_fts")
+			.get() as { n: number };
+		expect(ftsRows.n).toBe(2);
+		expect(runDoctor(store.store)).toEqual([]);
+
 		const beforeCounts = store.store.db
 			.prepare("SELECT COUNT(*) as c FROM items")
 			.get() as { c: number };
@@ -210,19 +233,16 @@ describe("grill→specd import", () => {
 			.get() as { c: number };
 
 		// Replace the items-insert prepared statement with one that
-		// throws on the second execution. The first row succeeds; the
-		// second throws inside BEGIN IMMEDIATE — ROLLBACK must zero it.
+		// throws on the first execution. The transaction must roll back
+		// entirely — no items, no events.
 		const originalPrepare = store.store.db.prepare.bind(store.store.db);
-		let itemCalls = 0;
 		store.store.db.prepare = (sql: string) => {
 			if (sql.startsWith("INSERT INTO items")) {
 				return {
 					run: () => {
-						itemCalls += 1;
-						if (itemCalls >= 2) throw new Error("synthetic mid-import failure");
-						return { changes: 1, lastInsertRowid: 0 };
+						throw new Error("synthetic mid-import failure");
 					},
-				} as ReturnType<typeof originalPrepare>;
+				} as unknown as ReturnType<typeof originalPrepare>;
 			}
 			return originalPrepare(sql);
 		};

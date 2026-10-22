@@ -7,6 +7,7 @@ import {
 	EVENT_TYPES,
 	type EventType,
 	ITEM_KINDS,
+	ITEM_STATUSES,
 	type ItemKind,
 	type ItemStatus,
 	type LinkKind,
@@ -177,7 +178,16 @@ export function projectItem(
 		typeof payload.pathScope === "string" ? payload.pathScope : null;
 	const phase = typeof payload.phase === "string" ? payload.phase : null;
 	const parallel = payload.parallel === true ? 1 : 0;
+	// The created payload may seed the initial status (imported items land
+	// with their mapped source status); event rules below still override it.
 	let status: ItemStatus = "draft";
+	const seeded = payload.status;
+	if (
+		typeof seeded === "string" &&
+		(ITEM_STATUSES as readonly string[]).includes(seeded)
+	) {
+		status = seeded as ItemStatus;
+	}
 	for (const event of events) {
 		const next = STATUS_RULES[event.type];
 		if (next) status = next;
@@ -223,7 +233,10 @@ function eventsForItem(db: DatabaseSync, item: string): SpecdEvent[] {
 		.all(item) as unknown as SpecdEvent[];
 }
 
-function recomputeProjection(db: DatabaseSync, item: string): void {
+/** Rewrite one item's stored row + FTS entry from its full event history.
+ * The canonical projection writer — append, import, and repair all go
+ * through this so replay and storage can never diverge by implementation. */
+export function recomputeProjection(db: DatabaseSync, item: string): void {
 	const projected = projectItem(eventsForItem(db, item));
 	if (!projected) return; // corrupt/missing created event — doctor flags drift
 	db.prepare(
