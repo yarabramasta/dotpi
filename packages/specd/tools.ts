@@ -1,3 +1,4 @@
+import path from "node:path";
 import type {
 	ExtensionAPI,
 	ExtensionContext,
@@ -44,8 +45,38 @@ import {
 	linkedItems,
 	listItems,
 	openStore,
+	parseJsonLoose,
 	type SpecdStore,
 } from "./store/store.js";
+
+/** Render a work.paused capsule payload (decisions / openQuestions /
+ * evidence / nextStep) as a readable block above the event timeline.
+ * Anything unknown is preserved as-is under "extras" so callers don't
+ * lose information if the schema grows. */
+function renderCapsule(payload: Record<string, unknown> | undefined): string {
+	if (!payload) return "";
+	const section = (label: string, value: unknown): string => {
+		if (value === undefined || value === null) return "";
+		const items = Array.isArray(value)
+			? value.map((v) => `- ${String(v)}`).join("\n")
+			: String(value);
+		if (!items.trim()) return "";
+		return `\n### ${label}\n${items}`;
+	};
+	const known = new Set(["decisions", "openQuestions", "evidence", "nextStep"]);
+	const extras = Object.entries(payload)
+		.filter(([k]) => !known.has(k))
+		.map(([k, v]) => `- ${k}: ${String(v)}`)
+		.join("\n");
+	return (
+		"\n\n## Resume Capsule\n" +
+		section("Decisions", payload.decisions) +
+		section("Open Questions", payload.openQuestions) +
+		section("Evidence", payload.evidence) +
+		section("Next Step", payload.nextStep ? [payload.nextStep] : undefined) +
+		(extras ? `\n### Extras\n${extras}` : "")
+	);
+}
 
 function text(content: string, details?: Record<string, unknown>) {
 	return {
@@ -269,11 +300,18 @@ export function registerSpecdTools(pi: ExtensionAPI): void {
 			const store = await openSpecd(ctx);
 			const item = getItem(store, params.item);
 			if (!item) return text(`Unknown item: ${params.item}.`);
-			const events = history(store, params.item)
+			const events = history(store, params.item);
+			const capsule = events.findLast((e) => e.type === "work.paused");
+			const capsuleSection = capsule
+				? renderCapsule(
+						parseJsonLoose<Record<string, unknown>>(capsule.payload),
+					)
+				: "";
+			const historySection = events
 				.map((e) => `- ${e.at} ${e.actor}: ${e.type}`)
 				.join("\n");
 			return text(
-				`# ${item.id}\n\n- kind: ${item.kind}\n- status: ${item.status}\n- path scope: ${item.path_scope ?? "—"}\n\n${item.body}\n\n## History\n\n${events}`,
+				`# ${item.id}\n\n- kind: ${item.kind}\n- status: ${item.status}\n- path scope: ${item.path_scope ?? "—"}\n\n${item.body}${capsuleSection}\n\n## History\n\n${historySection}`,
 			);
 		},
 	});
@@ -488,6 +526,44 @@ export function registerSpecdTools(pi: ExtensionAPI): void {
 					? `Plan applied for ${sink}: already converged — no changes.`
 					: `Plan applied for ${sink} (${changes.length} change(s)):\n${changes.map((c) => `- ${c}`).join("\n")}`,
 				{ changes, plan },
+			);
+		},
+	});
+
+	pi.registerTool({
+		name: "specd_create_worktree",
+		label: "Create specd execution worktree",
+		description:
+			"Create a plain git worktree for the task with branch specd/<task-id>-<slug>. The /spec run prompt expects this tool to be called before spawning the worker so branch naming and isolation are convention-owned. Returns the worktree path and branch.",
+		promptSnippet: "Create a specd-style worktree for task execution",
+		parameters: Type.Object({
+			item: Type.String({ description: "Task id (e.g. task-0001)." }),
+		}),
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const store = await openSpecd(ctx);
+			const task = getItem(store, params.item);
+			if (!task) return text(`Unknown item: ${params.item}.`);
+			const slug = slugify(task.title);
+			const branch = `specd/${task.id}-${slug}`.slice(0, 96);
+			const parent = path.dirname(ctx.cwd);
+			const leaf = path.basename(ctx.cwd);
+			const worktreePath = path.join(
+				parent,
+				`${leaf}-${branch.replace(/\//g, "-")}`,
+			);
+			const { execFileSync } = await import("node:child_process");
+			try {
+				execFileSync("git", ["worktree", "add", "-b", branch, worktreePath], {
+					cwd: ctx.cwd,
+					stdio: "pipe",
+				});
+			} catch (error) {
+				const msg = error instanceof Error ? error.message : String(error);
+				return text(`Worktree creation failed: ${msg}`);
+			}
+			return text(
+				`Worktree ready.\n- path: ${worktreePath}\n- branch: ${branch}\n\nSpawn the worker in cwd=${worktreePath} (subagent tool, agent=worker, worktree=false — the worker inherits the prepared worktree).`,
+				{ path: worktreePath, branch },
 			);
 		},
 	});
