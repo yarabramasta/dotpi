@@ -8,8 +8,14 @@ import type { AtomStore } from "../../grill/atom/store.js";
 import { applySchema, atomPaths } from "../../grill/atom/store.js";
 import { snapshotGrill } from "../import/grill-source.js";
 import { mapAtom, mapEdge, mapSnapshot } from "../import/map.js";
-import { applyImport, planImport } from "../import/run.js";
+import {
+	applyImport,
+	listImportBatches,
+	planImport,
+	revertImport,
+} from "../import/run.js";
 import { runDoctor } from "../store/doctor.js";
+import { addLink, appendEvent, createItem } from "../store/store.js";
 import { makeStore } from "./helpers.js";
 
 function makeGrillFixture(): {
@@ -255,5 +261,116 @@ describe("grill→specd import", () => {
 			.prepare("SELECT COUNT(*) as c FROM items")
 			.get() as { c: number };
 		expect(after.c).toBe(before.c);
+	});
+});
+
+describe("import batch revert", () => {
+	let fixture: ReturnType<typeof makeGrillFixture>;
+	let store: Awaited<ReturnType<typeof makeStore>>;
+
+	beforeEach(async () => {
+		fixture = makeGrillFixture();
+		store = await makeStore();
+	});
+
+	afterEach(() => {
+		fixture.cleanup();
+		store.cleanup();
+	});
+
+	function importTwoAtoms(): void {
+		createAtom(fixture.store, {
+			type: "concept",
+			title: "Auth model",
+			body: "OAuth + session",
+		});
+		createAtom(fixture.store, {
+			type: "decision",
+			title: "Pick JWT",
+			body: "",
+		});
+		grillAddEdge(fixture.store, "dec-0001", "con-0001", "cited");
+		const snap = snapshotGrill(fixture.dir);
+		const mapped = mapSnapshot(snap);
+		const plan = planImport(store.store, mapped, "revert-batch");
+		const idMap = new Map<string, string>();
+		for (const c of plan.created) idMap.set(c.originId, c.itemId);
+		applyImport(
+			store.store,
+			plan.steps,
+			plan.links,
+			idMap,
+			"revert-batch",
+			"test",
+		);
+	}
+
+	it("restores the exact pre-import projection (items, links, FTS, doctor)", () => {
+		const pre = store.store.db
+			.prepare("SELECT COUNT(*) as c FROM items")
+			.get() as { c: number };
+		importTwoAtoms();
+		expect(
+			(
+				store.store.db.prepare("SELECT COUNT(*) as c FROM items").get() as {
+					c: number;
+				}
+			).c,
+		).toBe(pre.c + 2);
+		expect(listImportBatches(store.store)).toEqual([
+			{ batch: "revert-batch", items: 2, at: expect.any(String) },
+		]);
+
+		const report = revertImport(store.store, "revert-batch");
+		expect(report.itemsRemoved).toHaveLength(2);
+		expect(report.linksRemoved).toBe(1);
+		const post = store.store.db
+			.prepare("SELECT COUNT(*) as c FROM items")
+			.get() as { c: number };
+		expect(post.c).toBe(pre.c);
+		expect(
+			(
+				store.store.db.prepare("SELECT COUNT(*) as c FROM item_fts").get() as {
+					c: number;
+				}
+			).c,
+		).toBe(pre.c);
+		expect(runDoctor(store.store)).toEqual([]);
+		expect(listImportBatches(store.store)).toEqual([]);
+	});
+
+	it("refuses when a batch item carries post-import work", () => {
+		importTwoAtoms();
+		appendEvent(store.store, {
+			item: "knowledge-0001",
+			type: "body.updated",
+			payload: { body: "edited after import" },
+			actor: "test",
+		});
+		expect(() => revertImport(store.store, "revert-batch")).toThrow(
+			/post-import events/,
+		);
+	});
+
+	it("refuses when a batch item is linked to a native item", () => {
+		importTwoAtoms();
+		const native = createItem(store.store, {
+			kind: "spec",
+			title: "Native spec",
+			body: "",
+			actor: "test",
+		});
+		addLink(store.store, "knowledge-0001", native.id, "cited");
+		expect(() => revertImport(store.store, "revert-batch")).toThrow(
+			/native items/,
+		);
+	});
+
+	it("names known batches when the batch is unknown", () => {
+		expect(() => revertImport(store.store, "nope")).toThrow(
+			/Known batches: none/,
+		);
+		importTwoAtoms();
+		expect(() => revertImport(store.store, "nope")).toThrow(/revert-batch/);
 	});
 });

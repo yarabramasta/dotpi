@@ -253,3 +253,124 @@ export function applyImport(
 		batch,
 	};
 }
+
+export interface ImportBatchSummary {
+	batch: string;
+	items: number;
+	at: string | null;
+}
+
+/** Distinct import batches present in the store, oldest first. The batch
+ * id is the revert handle. */
+export function listImportBatches(store: SpecdStore): ImportBatchSummary[] {
+	// SAFETY: three-column rows (batch, count, min-at) matching the
+	// destructure below.
+	const rows = store.db
+		.prepare(
+			"SELECT batch, COUNT(DISTINCT item) AS n, MIN(at) AS at FROM events WHERE type = 'imported' AND batch IS NOT NULL GROUP BY batch ORDER BY MIN(at)",
+		)
+		.all() as unknown as Array<{ batch: string; n: number; at: string | null }>;
+	return rows.map((r) => ({ batch: r.batch, items: r.n, at: r.at }));
+}
+
+export interface RevertReport {
+	batch: string;
+	itemsRemoved: string[];
+	linksRemoved: number;
+}
+
+/** Revert one import batch: remove every item whose entire event history
+ * belongs to the batch, together with its events, links, and FTS rows —
+ * the projection returns to the exact pre-import state (doctor-clean).
+ * Atomic: any batch item carrying post-import work (events outside the
+ * batch) or linked to a native item refuses the whole revert — user work
+ * is never silently destroyed. */
+export function revertImport(store: SpecdStore, batch: string): RevertReport {
+	// SAFETY: single-column rows (item ids) matching the destructure below.
+	const batchItems = store.db
+		.prepare(
+			"SELECT DISTINCT item FROM events WHERE type = 'imported' AND batch = ?",
+		)
+		.all(batch) as unknown as Array<{ item: string }>;
+	const itemIds = batchItems.map((r) => r.item);
+	if (itemIds.length === 0) {
+		throw new Error(
+			`No imported items found for batch ${batch}. Known batches: ${
+				listImportBatches(store)
+					.map((b) => b.batch)
+					.join(", ") || "none"
+			}.`,
+		);
+	}
+	// SAFETY: the clause contains literal '?' placeholders only, built from
+	// the item count; every value is bound via .run(...) — no user data is
+	// ever interpolated into SQL.
+	const inItems = "IN (" + itemIds.map(() => "?").join(", ") + ")";
+	const notInItems = "NOT IN (" + itemIds.map(() => "?").join(", ") + ")";
+
+	// SAFETY: single-column rows (item ids) matching the destructure below.
+	const withOutsideWork = store.db
+		.prepare(
+			"SELECT DISTINCT e.item AS item FROM events e WHERE e.item " +
+				inItems +
+				" AND (e.batch IS NULL OR e.batch != ?)",
+		)
+		.all(...itemIds, batch) as unknown as Array<{ item: string }>;
+	if (withOutsideWork.length > 0) {
+		throw new Error(
+			`Batch ${batch} cannot be reverted: ${withOutsideWork.map((r) => r.item).join(", ")} carries post-import events. Worked-on imports are not revertible — remove them individually instead.`,
+		);
+	}
+	// SAFETY: two-column rows (from_item, to_item) matching the destructure.
+	const cross = store.db
+		.prepare(
+			"SELECT from_item, to_item FROM links WHERE (from_item " +
+				inItems +
+				" AND to_item " +
+				notInItems +
+				") OR (to_item " +
+				inItems +
+				" AND from_item " +
+				notInItems +
+				")",
+		)
+		.all(...itemIds, ...itemIds, ...itemIds, ...itemIds) as unknown as Array<{
+		from_item: string;
+		to_item: string;
+	}>;
+	if (cross.length > 0) {
+		const l = cross[0];
+		throw new Error(
+			`Batch ${batch} cannot be reverted: imported items are linked to native items (e.g. ${l.from_item} → ${l.to_item}). Unlink them first — reverting must not destroy links you created by hand.`,
+		);
+	}
+
+	let linksRemoved = 0;
+	store.db.exec("BEGIN IMMEDIATE");
+	try {
+		const linksResult = store.db
+			.prepare(
+				"DELETE FROM links WHERE from_item " +
+					inItems +
+					" OR to_item " +
+					inItems,
+			)
+			.run(...itemIds, ...itemIds);
+		linksRemoved = Number(linksResult.changes);
+		store.db
+			.prepare("DELETE FROM item_fts WHERE id " + inItems)
+			.run(...itemIds);
+		store.db
+			.prepare("DELETE FROM events WHERE item " + inItems)
+			.run(...itemIds);
+		store.db
+			.prepare("DELETE FROM promotions WHERE item_id " + inItems)
+			.run(...itemIds);
+		store.db.prepare("DELETE FROM items WHERE id " + inItems).run(...itemIds);
+		store.db.exec("COMMIT");
+	} catch (error) {
+		store.db.exec("ROLLBACK");
+		throw error;
+	}
+	return { batch, itemsRemoved: itemIds, linksRemoved };
+}

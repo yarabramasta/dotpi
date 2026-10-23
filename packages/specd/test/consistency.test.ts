@@ -195,4 +195,102 @@ describe("consistency check", () => {
 		expect(rendered.indexOf("🔴")).toBeLessThan(rendered.indexOf("🟡"));
 		expect(rendered).toContain("task-of-unapproved-spec");
 	});
+
+	it("notes a plan with no constitution anchor", async () => {
+		t = await makeStore();
+		const plan = createItem(t.store, {
+			kind: "plan",
+			title: "Auth plan",
+			body: "",
+			actor: "t",
+		});
+		let findings = checkConsistency(t.store);
+		expect(findings).toContainEqual(
+			expect.objectContaining({ rule: "plan-without-constitution" }),
+		);
+		const constitution = createItem(t.store, {
+			kind: "constitution",
+			title: "Product principles",
+			body: "Simple, local-first.",
+			actor: "t",
+		});
+		addLink(t.store, plan.id, constitution.id, "part-of");
+		findings = checkConsistency(t.store);
+		expect(findings.some((f) => f.rule === "plan-without-constitution")).toBe(
+			false,
+		);
+	});
+
+	it("flags an epic without a roadmap", async () => {
+		t = await makeStore();
+		const epic = createItem(t.store, {
+			kind: "epic",
+			title: "Multi-tenant platform",
+			body: "",
+			actor: "t",
+		});
+		expect(checkConsistency(t.store)).toContainEqual(
+			expect.objectContaining({ rule: "epic-without-roadmap", item: epic.id }),
+		);
+		const roadmap = createItem(t.store, {
+			kind: "roadmap",
+			title: "Platform roadmap",
+			body: "",
+			actor: "t",
+		});
+		addLink(t.store, roadmap.id, epic.id, "part-of");
+		expect(
+			checkConsistency(t.store).some((f) => f.rule === "epic-without-roadmap"),
+		).toBe(false);
+	});
+
+	it("checks roadmap slices: presence, spec-ness, and ordering", async () => {
+		t = await makeStore();
+		const roadmap = createItem(t.store, {
+			kind: "roadmap",
+			title: "R",
+			body: "",
+			actor: "t",
+		});
+		expect(checkConsistency(t.store)).toContainEqual(
+			expect.objectContaining({ rule: "roadmap-without-slices" }),
+		);
+
+		const sliceA = createItem(t.store, {
+			kind: "spec",
+			title: "Slice A",
+			body: "",
+			actor: "t",
+		});
+		const sliceB = createItem(t.store, {
+			kind: "spec",
+			title: "Slice B",
+			body: "",
+			actor: "t",
+		});
+		const strayTask = createItem(t.store, {
+			kind: "task",
+			title: "Not a slice",
+			body: "",
+			actor: "t",
+		});
+		addLink(t.store, sliceA.id, roadmap.id, "part-of");
+		addLink(t.store, sliceB.id, roadmap.id, "part-of");
+		addLink(t.store, strayTask.id, roadmap.id, "part-of");
+		const findings = checkConsistency(t.store);
+		expect(findings).toContainEqual(
+			expect.objectContaining({ rule: "roadmap-slice-not-spec" }),
+		);
+		expect(findings).toContainEqual(
+			expect.objectContaining({ rule: "roadmap-unordered-slices" }),
+		);
+
+		// Recording the slice order clears the ordering finding.
+		addLink(t.store, sliceB.id, sliceA.id, "depends-on");
+		expect(
+			checkConsistency(t.store).some(
+				(f) => f.rule === "roadmap-unordered-slices",
+			),
+		).toBe(false);
+	});
 });

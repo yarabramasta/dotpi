@@ -468,6 +468,42 @@ export function registerSpecdTools(pi: ExtensionAPI): void {
 	});
 
 	pi.registerTool({
+		name: "specd_import_revert",
+		label: "Revert a specd import batch",
+		description:
+			"Revert one grill→specd import batch: removes every batch item (plus its events, links, FTS rows) restoring the exact pre-import projection. Atomic and conservative — refuses when any batch item carries post-import work or links to native items. Pass no batch to list known batches.",
+		promptSnippet: "Revert an import batch",
+		parameters: Type.Object({
+			batch: Type.Optional(
+				Type.String({
+					description:
+						"The import batch id to revert. Omit to list known batches.",
+				}),
+			),
+		}),
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const { listImportBatches, revertImport } = await import(
+				"./import/run.js"
+			);
+			const store = await openSpecd(ctx);
+			if (!params.batch) {
+				const batches = listImportBatches(store);
+				return text(
+					batches.length === 0
+						? "No import batches in this store."
+						: `Known import batches:\n${batches.map((b) => `- ${b.batch}: ${b.items} items (imported ${b.at ?? "?"})`).join("\n")}\n\nRevert with specd_import_revert(batch=<id>).`,
+					{ batches },
+				);
+			}
+			const report = revertImport(store, params.batch);
+			return text(
+				`Reverted batch ${report.batch}: removed ${report.itemsRemoved.length} item(s) and ${report.linksRemoved} link(s). Pre-import projection restored.`,
+				{ ...report },
+			);
+		},
+	});
+
+	pi.registerTool({
 		name: "specd_export",
 		label: "Export specd task to sink",
 		description:

@@ -47,14 +47,14 @@ Follow the fast-path flow. The specd tools enforce the gates — never work arou
 
 1. CYCLE — create it: specd_create_item(kind=cycle, title=<short idea>).
 2. EXPLORE — ask me once: "any unknowns worth researching first?" If yes, run one web research query and record findings on the cycle: specd_append_event(item=<cycle id>, type=evidence.added, payload={finding}). Then record my decision: specd_append_event(item=<cycle id>, type=explore.decided, payload={decision:"go"|"needs-clarification"|"stop", reason}). A documented "stop" is a valid outcome and ends the cycle; "needs-clarification" loops through more research; only "go" reaches the next step — the tools refuse otherwise.
-3. INTERVIEW — ask me targeted questions (use the ask-user-question tool) to fill this template:
+3. INTERVIEW — first ask me how deep this cycle should go: fast-path (default: one spec → plan → 1–3 tasks) or the epic/roadmap ladder (for big multi-slice efforts: specd_create_item kind=epic → kind=roadmap linked part-of it → ordered per-slice specs linked part-of the roadmap — record slice order with specd_add_link kind=depends-on → then plan+tasks per slice; /spec analyze will check the ladder). Then ask me targeted questions (use the ask-user-question tool) to fill this template:
    ## Intent
    ## Requirements (numbered, testable)
    ## Acceptance criteria
    ## Out of scope
 4. SPEC — specd_create_item(kind=spec, title=…, body=<filled template>, cycle=<cycle id>) — the gate checks the explore decision and links the spec to the cycle.
 5. APPROVAL — show me the finished spec and ask for approval. On yes: specd_append_event(item=<spec id>, type=spec.approved). Nothing can be exported before this — the tools will refuse.
-6. PLAN — specd_create_item(kind=plan, title=…, body=<short technical approach>), then link it: specd_add_link(from=<plan id>, to=<spec id>, kind=part-of). Record each technical decision: specd_append_event(item=<plan id>, type=decision.made, payload={decision}). Also: if this repo has no constitution item yet, ask me whether to capture the product purpose and principles as one — specd_create_item(kind=constitution, title=…, body=…) — and link it: specd_add_link(from=<plan id>, to=<constitution id>, kind=part-of).
+6. PLAN — specd_create_item(kind=plan, title=…, body=<short technical approach>), then link it: specd_add_link(from=<plan id>, to=<spec id>, kind=part-of). Record each technical decision: specd_append_event(item=<plan id>, type=decision.made, payload={decision}). Also: if this repo has no constitution item yet, ask me whether to capture the product purpose and principles as one — specd_create_item(kind=constitution, title=…, body=…) — and link it: specd_add_link(from=<plan id>, to=<constitution id>, kind=part-of). If a constitution already exists, link the plan to it — consistency checks every plan for a constitution anchor.
 7. PROJECT PLAN — if the sink is not null, interview me once for the project plan (ask-user-question): workspace (github: owner + project number), lanes, label taxonomy, naming convention. Then specd_apply_plan(sink=…, github_owner=…, github_project_number=…, lanes=[…], labels=[…], naming=…). This previews what would change. Show me the preview, and on my OK re-run with apply=true — it is idempotent, so re-runs converge. If the sink is null, skip this step.
 8. TASKS — break the spec into 1–3 tasks: specd_create_item(kind=task, title=…, body=<acceptance criteria>, path_scope=<file paths this task owns>) each, linked with specd_add_link(from=<task id>, to=<spec id>, kind=part-of). If the spec has meaningful ambiguity, also generate a requirements checklist: specd_create_item(kind=checklist, title=…, extra={items:[…]}), linked part-of the spec — I review it via /spec review before implementation runs.
 9. EXPORT — ask me whether to export the tasks now. If yes: specd_export(item=<task id>, sink="github" or "null"). First github export needs the project owner and project number — ask me, then pass github_owner + github_project_number once; they persist. The project plan (if applied) drives the export title, labels, and lane placement.
@@ -255,6 +255,10 @@ export function registerCommands(pi: ExtensionAPI): void {
 				} else if (mode === "apply") {
 					pi.sendUserMessage(
 						`Run specd_import_apply(source=${JSON.stringify(source)}, apply=true). Confirm idempotency by re-running the preview after.`,
+					);
+				} else if (mode === "revert") {
+					pi.sendUserMessage(
+						`Run specd_import_revert() to list known import batches, show me the list, and revert only the batch I name (specd_import_revert(batch=<id>)). After reverting, run /spec doctor to confirm the store is clean.`,
 					);
 				} else {
 					ctx.ui.notify(

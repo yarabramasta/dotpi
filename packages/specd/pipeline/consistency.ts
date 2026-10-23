@@ -198,6 +198,76 @@ export function checkConsistency(
 		}
 	}
 
+	// Constitution checked at plan: every plan should be anchored to the
+	// project's purpose-and-principles item.
+	for (const plan of items.filter((i) => i.kind === "plan")) {
+		const hasConstitution = relatedItems(store, plan.id, "part-of").some(
+			(i) => i.kind === "constitution",
+		);
+		if (!hasConstitution) {
+			findings.push({
+				severity: "note",
+				rule: "plan-without-constitution",
+				item: plan.id,
+				message: `Plan ${plan.id} has no constitution linked — capture the product purpose and principles (specd_create_item kind=constitution) and link it part-of the plan.`,
+			});
+		}
+	}
+
+	// Epic/roadmap ladder: epics plan through an ordered roadmap of
+	// per-slice specs, not loose tasks.
+	for (const epic of items.filter((i) => i.kind === "epic")) {
+		const roads = relatedItems(store, epic.id, "part-of").filter(
+			(i) => i.kind === "roadmap",
+		);
+		if (roads.length === 0) {
+			findings.push({
+				severity: "warning",
+				rule: "epic-without-roadmap",
+				item: epic.id,
+				message: `Epic ${epic.id} has no roadmap — plan it as a roadmap with ordered per-slice specs (each slice links part-of the roadmap).`,
+			});
+		}
+	}
+	for (const roadmap of items.filter((i) => i.kind === "roadmap")) {
+		const slices = relatedItems(store, roadmap.id, "part-of");
+		if (slices.length === 0) {
+			findings.push({
+				severity: "warning",
+				rule: "roadmap-without-slices",
+				item: roadmap.id,
+				message: `Roadmap ${roadmap.id} has no slices — link per-slice specs part-of it, in execution order.`,
+			});
+			continue;
+		}
+		const sliceSpecs = slices.filter((i) => i.kind === "spec");
+		for (const slice of slices.filter((i) => i.kind !== "spec")) {
+			findings.push({
+				severity: "warning",
+				rule: "roadmap-slice-not-spec",
+				item: slice.id,
+				message: `Roadmap ${roadmap.id} slice ${slice.id} is a ${slice.kind} — slices are per-slice specs.`,
+			});
+		}
+		// Ordering lives in depends-on edges between the slice specs; a
+		// two-plus-slice roadmap without any is unordered.
+		if (sliceSpecs.length >= 2) {
+			const anyDepends = sliceSpecs.some((s) =>
+				relatedItems(store, s.id, "depends-on").some((d) =>
+					sliceSpecs.some((o) => o.id === d.id),
+				),
+			);
+			if (!anyDepends) {
+				findings.push({
+					severity: "note",
+					rule: "roadmap-unordered-slices",
+					item: roadmap.id,
+					message: `Roadmap ${roadmap.id} has ${sliceSpecs.length} slices but no depends-on edges between them — record the slice order with specd_add_link(kind=depends-on).`,
+				});
+			}
+		}
+	}
+
 	findings.sort((a, b) => {
 		const bySeverity = SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity];
 		return bySeverity !== 0
