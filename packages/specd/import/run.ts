@@ -302,20 +302,21 @@ export function revertImport(store: SpecdStore, batch: string): RevertReport {
 			}.`,
 		);
 	}
-	// SAFETY: the clause contains literal '?' placeholders only, built from
-	// the item count; every value is bound via .run(...) — no user data is
-	// ever interpolated into SQL.
-	const inItems = "IN (" + itemIds.map(() => "?").join(", ") + ")";
-	const notInItems = "NOT IN (" + itemIds.map(() => "?").join(", ") + ")";
+	// Stage the batch's item ids in a temp table so every statement below
+	// is fully static SQL — nothing is ever interpolated into a query.
+	store.db.exec(
+		"CREATE TEMP TABLE IF NOT EXISTS revert_ids (id TEXT PRIMARY KEY)",
+	);
+	store.db.exec("DELETE FROM revert_ids");
+	const insertId = store.db.prepare("INSERT INTO revert_ids (id) VALUES (?)");
+	for (const id of itemIds) insertId.run(id);
 
 	// SAFETY: single-column rows (item ids) matching the destructure below.
 	const withOutsideWork = store.db
 		.prepare(
-			"SELECT DISTINCT e.item AS item FROM events e WHERE e.item " +
-				inItems +
-				" AND (e.batch IS NULL OR e.batch != ?)",
+			"SELECT DISTINCT e.item AS item FROM events e WHERE e.item IN (SELECT id FROM revert_ids) AND (e.batch IS NULL OR e.batch != ?)",
 		)
-		.all(...itemIds, batch) as unknown as Array<{ item: string }>;
+		.all(batch) as unknown as Array<{ item: string }>;
 	if (withOutsideWork.length > 0) {
 		throw new Error(
 			`Batch ${batch} cannot be reverted: ${withOutsideWork.map((r) => r.item).join(", ")} carries post-import events. Worked-on imports are not revertible — remove them individually instead.`,
@@ -324,17 +325,9 @@ export function revertImport(store: SpecdStore, batch: string): RevertReport {
 	// SAFETY: two-column rows (from_item, to_item) matching the destructure.
 	const cross = store.db
 		.prepare(
-			"SELECT from_item, to_item FROM links WHERE (from_item " +
-				inItems +
-				" AND to_item " +
-				notInItems +
-				") OR (to_item " +
-				inItems +
-				" AND from_item " +
-				notInItems +
-				")",
+			"SELECT from_item, to_item FROM links WHERE (from_item IN (SELECT id FROM revert_ids) AND to_item NOT IN (SELECT id FROM revert_ids)) OR (to_item IN (SELECT id FROM revert_ids) AND from_item NOT IN (SELECT id FROM revert_ids))",
 		)
-		.all(...itemIds, ...itemIds, ...itemIds, ...itemIds) as unknown as Array<{
+		.all() as unknown as Array<{
 		from_item: string;
 		to_item: string;
 	}>;
@@ -350,27 +343,30 @@ export function revertImport(store: SpecdStore, batch: string): RevertReport {
 	try {
 		const linksResult = store.db
 			.prepare(
-				"DELETE FROM links WHERE from_item " +
-					inItems +
-					" OR to_item " +
-					inItems,
+				"DELETE FROM links WHERE from_item IN (SELECT id FROM revert_ids) OR to_item IN (SELECT id FROM revert_ids)",
 			)
-			.run(...itemIds, ...itemIds);
+			.run();
 		linksRemoved = Number(linksResult.changes);
 		store.db
-			.prepare("DELETE FROM item_fts WHERE id " + inItems)
-			.run(...itemIds);
+			.prepare("DELETE FROM item_fts WHERE id IN (SELECT id FROM revert_ids)")
+			.run();
 		store.db
-			.prepare("DELETE FROM events WHERE item " + inItems)
-			.run(...itemIds);
+			.prepare("DELETE FROM events WHERE item IN (SELECT id FROM revert_ids)")
+			.run();
 		store.db
-			.prepare("DELETE FROM promotions WHERE item_id " + inItems)
-			.run(...itemIds);
-		store.db.prepare("DELETE FROM items WHERE id " + inItems).run(...itemIds);
+			.prepare(
+				"DELETE FROM promotions WHERE item_id IN (SELECT id FROM revert_ids)",
+			)
+			.run();
+		store.db
+			.prepare("DELETE FROM items WHERE id IN (SELECT id FROM revert_ids)")
+			.run();
 		store.db.exec("COMMIT");
 	} catch (error) {
 		store.db.exec("ROLLBACK");
 		throw error;
+	} finally {
+		store.db.exec("DROP TABLE IF EXISTS temp.revert_ids");
 	}
 	return { batch, itemsRemoved: itemIds, linksRemoved };
 }

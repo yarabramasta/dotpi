@@ -5,19 +5,13 @@ import {
 	parseJsonLoose,
 	type SpecdStore,
 } from "../store/store.js";
-import { readSinkConfig } from "./config.js";
-import { createGithubAdapter } from "./github.js";
+import { tryResolveAdapter } from "./resolve.js";
 
-/** Read-back sync: exported tasks whose GitHub issue has closed get a
- * work.completed event (actor: sink-sync). Best-effort — a sink that is
- * unreachable must never break the dashboard. */
+/** Read-back sync: exported tasks whose sink item has closed/completed get
+ * a work.completed event (actor: sink-sync). Works for every ported sink —
+ * the task.exported payload records which sink it went to. Best-effort —
+ * an unreachable sink must never break the dashboard. */
 export async function syncExportedTasks(store: SpecdStore): Promise<number> {
-	const config = readSinkConfig(store, "sink.github");
-	if (!config?.owner || !config.projectNumber) return 0;
-	const adapter = createGithubAdapter(store.cwd, {
-		owner: String(config.owner),
-		projectNumber: Number(config.projectNumber),
-	});
 	let synced = 0;
 	// SAFETY: two-column rows (item id + payload) matching the destructure.
 	const exported = store.db
@@ -39,7 +33,9 @@ export async function syncExportedTasks(store: SpecdStore): Promise<number> {
 				sink?: string;
 				externalRef?: string;
 			}>(row.payload);
-			if (payload?.sink !== "github" || !payload.externalRef) continue;
+			if (!payload?.sink || !payload.externalRef) continue;
+			const adapter = tryResolveAdapter(store, payload.sink);
+			if (!adapter) continue;
 			const { state } = await adapter.readBack(payload.externalRef);
 			if (state === "closed") {
 				appendEvent(store, {

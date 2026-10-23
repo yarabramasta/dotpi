@@ -3,11 +3,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { readSinkConfig, saveSinkConfig } from "../backends/config.js";
+import { sinkCredentials } from "../backends/credentials.js";
 import {
 	ONBOARDING,
 	probeSink,
 	readinessMatrix,
-	resolveSinkCredentials,
 	SINK_IDS,
 	type SinkOnboarding,
 } from "../backends/onboarding.js";
@@ -36,8 +36,8 @@ describe("sink onboarding registry", () => {
 			expect(ob.parity, id).toContain("lanes");
 			if (id !== "null" && id !== "github") {
 				expect(Object.keys(ob.envVars).length, id).toBeGreaterThan(0);
-				// Graded parity: every port documents what it lacks.
-				expect(ob.ported, id).toBe(false);
+				// All five ports are landed (M2c) — graded parity is documented.
+				expect(ob.ported, id).toBe(true);
 			}
 		}
 	});
@@ -83,7 +83,7 @@ describe("credential resolution (env first, then ~/.pi/agent/auth.json)", () => 
 	it("resolves from env vars when set", async () => {
 		await setup();
 		setEnv("LINEAR_API_KEY", "lin_env");
-		const { present, missing } = resolveSinkCredentials("linear");
+		const { present, missing } = sinkCredentials("linear");
 		expect(present).toEqual({ key: "lin_env" });
 		expect(missing).toEqual([]);
 	});
@@ -101,15 +101,15 @@ describe("credential resolution (env first, then ~/.pi/agent/auth.json)", () => 
 		);
 		// $VAR with the var present → resolved
 		setEnv("LINEAR_API_KEY", "lin_indirect");
-		expect(resolveSinkCredentials("linear").present).toEqual({
+		expect(sinkCredentials("linear").present).toEqual({
 			key: "lin_indirect",
 		});
 		// $VAR with the var absent → missing, not a broken half-credential
 		setEnv("LINEAR_API_KEY", undefined);
-		const linear = resolveSinkCredentials("linear");
+		const linear = sinkCredentials("linear");
 		expect(linear.missing).toEqual(["LINEAR_API_KEY"]);
 		// plain file values resolve without env
-		const trello = resolveSinkCredentials("trello");
+		const trello = sinkCredentials("trello");
 		expect(trello.present).toEqual({
 			key: "trello-file-key",
 			token: "trello-file-token",
@@ -124,7 +124,7 @@ describe("credential resolution (env first, then ~/.pi/agent/auth.json)", () => 
 			JSON.stringify({ linear: { key: "file-key" } }),
 		);
 		setEnv("LINEAR_API_KEY", "env-key");
-		expect(resolveSinkCredentials("linear").present).toEqual({
+		expect(sinkCredentials("linear").present).toEqual({
 			key: "env-key",
 		});
 	});
@@ -132,25 +132,25 @@ describe("credential resolution (env first, then ~/.pi/agent/auth.json)", () => 
 	it("reports each missing credential by env-var name", async () => {
 		await setup();
 		setEnv("JIRA_HOST", "https://x.atlassian.net");
-		const { present, missing } = resolveSinkCredentials("jira");
+		const { present, missing } = sinkCredentials("jira");
 		expect(present).toEqual({ host: "https://x.atlassian.net" });
 		expect(missing.sort()).toEqual(["JIRA_API_TOKEN", "JIRA_EMAIL"].sort());
 	});
 
 	it("unknown sink resolves to nothing (probeSink handles the refusal)", async () => {
 		await setup();
-		expect(resolveSinkCredentials("asana")).toEqual({
+		expect(sinkCredentials("asana")).toEqual({
 			present: {},
 			missing: [],
 		});
 	});
 
-	it("probeSink: not-ported sink is ok when credentials are present, plain otherwise", async () => {
+	it("probeSink: ported sink with credential but no workspace reports the gap", async () => {
 		const s = await setup();
 		setEnv("NOTION_API_TOKEN", "ntn_x");
 		const ok = await probeSink(s, "notion");
-		expect(ok.ok).toBe(true);
-		expect(ok.detail).toContain("adapter port");
+		expect(ok.ok).toBe(false);
+		expect(ok.detail).toContain("workspace ids not stored yet");
 		delete process.env.NOTION_API_TOKEN;
 		const no = await probeSink(s, "notion");
 		expect(no.ok).toBe(false);
@@ -173,9 +173,11 @@ describe("credential resolution (env first, then ~/.pi/agent/auth.json)", () => 
 		for (const id of SINK_IDS) {
 			expect(matrix).toContain(`| ${id} |`);
 		}
-		expect(matrix).toContain("no — M2c"); // not-ported sinks are labeled
-		// clickup credential present → configured
-		expect(matrix).toContain("| clickup | no — M2c | yes |");
+		expect(matrix).not.toContain("no — M2c"); // all six ports landed
+		// clickup credential present but workspace not configured yet
+		expect(matrix).toContain(
+			"| clickup | yes | no | credential present; workspace ids not stored yet",
+		);
 		// github probe without stored owner/project → surfaced, not crashed
 		expect(matrix).toContain("| github | yes | no |");
 	});

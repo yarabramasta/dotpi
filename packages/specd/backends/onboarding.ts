@@ -1,12 +1,11 @@
-import { readFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
 import type { SpecdStore } from "../store/store.js";
 import { readSinkConfig } from "./config.js";
-import type { SinkAdapter, SinkVerify } from "./contract.js";
+import type { SinkVerify } from "./contract.js";
+import { sinkCredentials } from "./credentials.js";
 import type { GhRunner } from "./gh.js";
 import { realGhRunner } from "./gh.js";
 import { createGithubAdapter } from "./github.js";
+import { tryResolveAdapter } from "./resolve.js";
 
 /** Sink onboarding (design §4.6): each non-GitHub sink is completable from
  * the guided flow alone — plain-language steps, exact credential URLs and
@@ -63,7 +62,7 @@ export const ONBOARDING: Record<string, SinkOnboarding> = {
 	linear: {
 		id: "linear",
 		name: "Linear",
-		ported: false,
+		ported: true,
 		credentialUrl: "https://linear.app/settings/api",
 		scopes: "read/write issues and projects (GraphQL, scoped API key)",
 		envVars: { LINEAR_API_KEY: "key" },
@@ -78,7 +77,7 @@ export const ONBOARDING: Record<string, SinkOnboarding> = {
 	jira: {
 		id: "jira",
 		name: "Jira",
-		ported: false,
+		ported: true,
 		credentialUrl:
 			"https://id.atlassian.com/manage-profile/security/api-tokens",
 		scopes: "REST v3 via Basic auth (email + API token)",
@@ -94,7 +93,7 @@ export const ONBOARDING: Record<string, SinkOnboarding> = {
 	notion: {
 		id: "notion",
 		name: "Notion",
-		ported: false,
+		ported: true,
 		credentialUrl: "https://www.notion.so/my-integrations",
 		scopes: "integration token; share target database(s) with the integration",
 		envVars: { NOTION_API_TOKEN: "key" },
@@ -109,7 +108,7 @@ export const ONBOARDING: Record<string, SinkOnboarding> = {
 	trello: {
 		id: "trello",
 		name: "Trello",
-		ported: false,
+		ported: true,
 		credentialUrl: "https://trello.com/app-key",
 		scopes: "key + token (read/write boards and cards)",
 		envVars: { TRELLO_KEY: "key", TRELLO_TOKEN: "token" },
@@ -123,7 +122,7 @@ export const ONBOARDING: Record<string, SinkOnboarding> = {
 	clickup: {
 		id: "clickup",
 		name: "ClickUp",
-		ported: false,
+		ported: true,
 		credentialUrl: "https://app.clickup.com/settings/developers",
 		scopes: "personal API token (pk_…), sent as a raw header",
 		envVars: { CLICKUP_API_TOKEN: "key" },
@@ -138,70 +137,9 @@ export const ONBOARDING: Record<string, SinkOnboarding> = {
 
 export const SINK_IDS = Object.keys(ONBOARDING);
 
-/** Read one auth.json section (pi's provider-key store — same file jina
- * reads) with $VAR indirection so secrets can stay in the shell. */
-function authSection(id: string): Record<string, unknown> | undefined {
-	const agentDir =
-		process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent");
-	try {
-		const auth = JSON.parse(
-			readFileSync(join(agentDir, "auth.json"), "utf8"),
-		) as Record<string, unknown>;
-		const section = auth[id];
-		return section && typeof section === "object"
-			? (section as Record<string, unknown>)
-			: undefined;
-	} catch {
-		return undefined;
-	}
-}
-
-function dereference(value: string): string {
-	return value.startsWith("$") ? (process.env[value.slice(1)] ?? "") : value;
-}
-
-export interface CredentialResolution {
-	/** auth.json field → resolved value (env var wins, then auth.json). */
-	present: Record<string, string>;
-	/** env var names with no value anywhere. */
-	missing: string[];
-}
-
-/** Resolve one sink's credentials: each registry env var is looked up in
- * process.env first, then in ~/.pi/agent/auth.json under the sink id
- * (auth.<sink>.<field>, $VAR indirection supported). The file is read
- * fresh at every call, so testing or migrating between adapters never
- * needs a pi restart, and the same credentials follow the dev across
- * sandboxes. Adapters (M2c) consume this same resolution. */
-export function resolveSinkCredentials(sinkId: string): CredentialResolution {
-	const ob = ONBOARDING[sinkId];
-	if (!ob) return { present: {}, missing: [] };
-	const section = authSection(sinkId);
-	const present: Record<string, string> = {};
-	const missing: string[] = [];
-	for (const [envName, field] of Object.entries(ob.envVars)) {
-		const fromEnv = process.env[envName];
-		if (fromEnv) {
-			present[field] = fromEnv;
-			continue;
-		}
-		const raw = section?.[field];
-		if (typeof raw === "string" && raw) {
-			const resolved = dereference(raw);
-			if (resolved) {
-				present[field] = resolved;
-				continue;
-			}
-		}
-		missing.push(envName);
-	}
-	return { present, missing };
-}
-
-/** Probe one sink's readiness. GitHub runs its real adapter probe; the
- * not-yet-ported sinks report env-var presence as "configured" and defer
- * full verification to their port (M2c). ghRunner is injectable so tests
- * run offline. */
+/** Probe one sink's readiness: real adapter probe when the sink is
+ * configured, credential-presence fallback when it isn't yet. ghRunner is
+ * injectable so tests run offline. */
 export async function probeSink(
 	store: SpecdStore,
 	id: string,
@@ -219,7 +157,7 @@ export async function probeSink(
 					"gh authenticated check skipped — project owner/number not stored yet (/spec plan or first export sets them).",
 			};
 		}
-		const adapter: SinkAdapter = createGithubAdapter(
+		const adapter = createGithubAdapter(
 			store.cwd,
 			{
 				owner: String(config.owner),
@@ -230,18 +168,20 @@ export async function probeSink(
 		);
 		return adapter.verify();
 	}
-	const ob = ONBOARDING[id];
-	if (!ob) return { ok: false, detail: `unknown sink: ${id}` };
-	const { missing } = resolveSinkCredentials(id);
+	const adapter = tryResolveAdapter(store, id);
+	if (adapter) return adapter.verify();
+	const { missing } = sinkCredentials(id);
 	if (missing.length > 0) {
 		return {
 			ok: false,
 			detail: `credential(s) not set in env or ~/.pi/agent/auth.json: ${missing.join(", ")} — /spec connect ${id} walks through it.`,
 		};
 	}
+	// Credential present but the workspace isn't wired yet: the readiness
+	// matrix must not claim "configured" for a sink we have never probed.
 	return {
-		ok: true,
-		detail: "credential present; full probe lands with the adapter port.",
+		ok: false,
+		detail: `credential present; workspace ids not stored yet — run /spec plan to set them, then this row probes the live ${ONBOARDING[id]?.name ?? id} API.`,
 	};
 }
 

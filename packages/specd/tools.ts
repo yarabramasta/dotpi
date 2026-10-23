@@ -12,13 +12,8 @@ import {
 	saveProjectPlan,
 	saveSinkConfig,
 } from "./backends/config.js";
-import type {
-	PlanWorkspace,
-	SinkAdapter,
-	TaskExport,
-} from "./backends/contract.js";
-import { createGithubAdapter } from "./backends/github.js";
-import { createNullSink } from "./backends/null.js";
+import type { PlanWorkspace, TaskExport } from "./backends/contract.js";
+import { resolveAdapter } from "./backends/resolve.js";
 import { syncExportedTasks } from "./backends/sync.js";
 import { renderDashboard } from "./dashboard.js";
 import { checkConsistency, formatFindings } from "./pipeline/consistency.js";
@@ -135,24 +130,6 @@ export async function dashboardContent(store: SpecdStore): Promise<string> {
 		.filter((r) => history(store, r.id).at(-1)?.type === "work.paused")
 		.map((r) => r.id);
 	return renderDashboard(rows, counts(store), paused);
-}
-
-function resolveAdapter(store: SpecdStore, sink: string): SinkAdapter {
-	if (sink === "null") return createNullSink();
-	if (sink === "github") {
-		const config = readSinkConfig(store, "sink.github");
-		if (!config?.owner || !config.projectNumber) {
-			throw new Error(
-				"GitHub sink is not configured yet. Tell me the project owner and project number (and optionally a lane) so I can store them — e.g. pass github_owner + github_project_number to specd_export once, and they persist for every later export. For guided setup run /spec connect github.",
-			);
-		}
-		return createGithubAdapter(store.cwd, {
-			owner: String(config.owner),
-			projectNumber: Number(config.projectNumber),
-			lane: typeof config.lane === "string" ? config.lane : undefined,
-		});
-	}
-	throw new Error(`Unknown sink: ${sink}. Valid: null, github.`);
 }
 
 export function buildTaskExport(store: SpecdStore, task: ItemRow): TaskExport {
@@ -582,6 +559,16 @@ export function registerSpecdTools(pi: ExtensionAPI): void {
 		},
 	});
 
+	function sanitizeWorkspace(
+		raw: Record<string, unknown> | undefined,
+	): PlanWorkspace {
+		const out: PlanWorkspace = {};
+		for (const [k, v] of Object.entries(raw ?? {})) {
+			if (typeof v === "string" || typeof v === "number") out[k] = v;
+		}
+		return out;
+	}
+
 	pi.registerTool({
 		name: "specd_apply_plan",
 		label: "Apply specd project plan",
@@ -590,7 +577,8 @@ export function registerSpecdTools(pi: ExtensionAPI): void {
 		promptSnippet: "Preview/apply the project plan",
 		parameters: Type.Object({
 			sink: Type.String({
-				description: 'Sink id ("null" or "github").',
+				description:
+					'Sink id ("null", "github", "linear", "jira", "notion", "trello", or "clickup").',
 			}),
 			apply: Type.Optional(
 				Type.Boolean({
@@ -606,6 +594,12 @@ export function registerSpecdTools(pi: ExtensionAPI): void {
 			github_project_number: Type.Optional(
 				Type.Number({
 					description: "github workspace: Projects v2 project number.",
+				}),
+			),
+			workspace: Type.Optional(
+				Type.Record(Type.String(), Type.Unknown(), {
+					description:
+						"Non-github sinks: workspace coords — linear {teamId}; jira {projectKey, issueTypeName?}; notion {databaseId}; trello {boardId, listId?}; clickup {teamId, spaceId, listId}. Persisted and reused.",
 				}),
 			),
 			lanes: Type.Optional(
@@ -643,7 +637,17 @@ export function registerSpecdTools(pi: ExtensionAPI): void {
 									? stored.projectNumber
 									: undefined),
 						}
-					: {};
+					: sanitizeWorkspace(
+							params.workspace ?? readSinkConfig(store, `sink.${sink}`),
+						);
+
+			// Persist the workspace coords so later exports resolve the
+			// adapter straight from the store.
+			const priorConfig = readSinkConfig(store, `sink.${sink}`) ?? {};
+			saveSinkConfig(store, `sink.${sink}`, {
+				...priorConfig,
+				...workspace,
+			});
 
 			// Merge with defaults and any stored plan.
 			const prior = readProjectPlan(store);
