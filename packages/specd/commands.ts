@@ -23,7 +23,9 @@ Spec-driven development for this repo. Knowledge lives in .spec/store.db (SQLite
 
 - /spec — current state of everything (default)
 - /spec start <idea> — begin a development cycle (fast-path: spec → plan → tasks → export)
-- /spec run <task-id> — run a task through the execution seam (one worker, one worktree, one PR)
+- /spec run <task-id> — run a task through the execution seam (one worker, one worktree, reviewer-signed PR)
+- /spec run — run all not-done tasks in parallel waves (specd_schedule: phase-ordered, scope-collision-serialized)
+- /spec converge <spec-or-cycle-id> — convergence loop: assess gaps, append missing work, repeat until converged
 - /spec pause — write the resume capsule for in-progress work
 - /spec review <checklist-id> — reviewer pass over a requirements checklist
 - /spec analyze [cycle-or-spec-id] — cross-artifact consistency review
@@ -60,18 +62,35 @@ Follow the fast-path flow. The specd tools enforce the gates — never work arou
 
 const RUN_PROMPT = (
 	task: string,
-) => `Run the task ${task} through the M1 execution seam:
+) => `Run the task ${task} through the execution seam (checklist-gated, reviewer-signed):
 
 1. specd_show(item=${task}) — read the task body (acceptance criteria), path scope, and the linked spec for context. If the history ends with work.paused, read that capsule and resume from it.
-2. specd_append_event(item=${task}, type=work.started)
-3. Branch name: specd/<task id>-<short-slug-of-title> (example: specd/task-0001-add-login-route).
-4. Spawn ONE worker subagent (subagent tool, agent=worker, worktree=true) with a brief containing:
+2. specd_create_worktree(item=${task}) — get the isolated worktree path and convention branch (specd/<task-id>-<slug>). Never reuse another task's worktree.
+3. specd_append_event(item=${task}, type=work.started) — the tool refuses if a requirements checklist is not fully reviewed or another in-progress task claims an overlapping path scope. Do not work around refusals.
+4. Spawn ONE worker subagent (subagent tool, agent=worker) in the worktree cwd with a brief containing:
    - the task title, body (acceptance criteria), and path scope
    - the linked spec's intent and acceptance criteria
-   - the branch name (the worktree is already isolated)
-   - worker rules: implement only inside the path scope; commit to the branch; push the branch; open the PR with gh pr create (base = default branch); NEVER touch main; NEVER force-push; report the PR URL when done.
-5. On worker completion: specd_append_event(item=${task}, type=pr.created, payload={url, branch}).
-6. Self-check the PR against the task's acceptance criteria. If they pass: specd_append_event(item=${task}, type=work.completed, payload={pr}). If not: tell me exactly what is missing — merging is always my call.`;
+   - the branch name
+   - worker rules: implement only inside the path scope; commit to the branch; push the branch; NEVER touch main; NEVER force-push; do NOT create the PR — report the pushed branch when done.
+5. REVIEW GATE: spawn ONE reviewer subagent (read-only) over the worktree diff (default branch vs the task branch) against the task's acceptance criteria and the spec. Record its verdict: specd_append_event(item=${task}, type=review.completed, payload={passed: true|false, findings: [...]}).
+6. If the review passed: from the worktree run gh pr create (base = default branch) and record specd_append_event(item=${task}, type=pr.created, payload={url, branch}). If it failed: tell me exactly what failed — fix, re-review, and only then PR; completion is blocked until a review passes.
+7. When a PR exists and its review passed: specd_append_event(item=${task}, type=work.completed, payload={pr}) — the tool refuses without a passing review.`;
+
+const RUN_WAVES_PROMPT = `Run tasks through the execution seam in parallel waves:
+
+1. specd_schedule() — the wave plan: tasks ordered by phase (setup → foundational → story → polish), [P]-marked tasks with disjoint path scopes share a wave, collisions are serialized into later waves. Show me the plan.
+2. For each wave in order: run its tasks CONCURRENTLY — one full flow per task (worktree → work.started → worker → review gate → PR → work.completed), each with its own worktree and branch; the tools serialize any scope collision.
+3. Between waves, check the dashboard: failed or paused tasks are surfaced to me before the next wave starts.`;
+
+const CONVERGE_PROMPT = (
+	scope: string,
+) => `Run a convergence assessment for ${scope} (append-only; fixes at source):
+
+1. specd_show(item=${scope}) and list its tasks with statuses (specd_dashboard). Mechanical pass: specd_consistency(item=${scope}).
+2. Assess gaps: requirements in the spec with no covering task, tasks not done, work discovered during execution that the spec now implies, decisions that contradict the spec.
+3. For each real gap, create the missing work: specd_create_item(kind=task, …) linked part-of the spec — new work is APPENDED, never silently folded into existing tasks.
+4. Record the assessment: specd_append_event(item=${scope}, type=convergence.assessed, payload={done: true|false, gaps: [...]}).
+5. Report "converged" only when every gap is closed (all tasks done, no uncovered requirements). Otherwise loop: run the new tasks (/spec run), then converge again.`;
 
 const PLAN_PROMPT = `Manage the project plan (workspace, lanes, labels, naming) for the configured sink:
 
@@ -165,12 +184,21 @@ export function registerCommands(pi: ExtensionAPI): void {
 				return;
 			}
 			if (sub === "run") {
-				const task = rest;
-				if (!task) {
-					ctx.ui.notify("Usage: /spec run <task-id>", "warning");
+				if (!rest) {
+					pi.sendUserMessage(RUN_WAVES_PROMPT);
 					return;
 				}
+				const task = rest;
 				pi.sendUserMessage(RUN_PROMPT(task));
+				return;
+			}
+			if (sub === "converge") {
+				const scope = rest;
+				if (!scope) {
+					ctx.ui.notify("Usage: /spec converge <spec-or-cycle-id>", "warning");
+					return;
+				}
+				pi.sendUserMessage(CONVERGE_PROMPT(scope));
 				return;
 			}
 			if (sub === "pause") {

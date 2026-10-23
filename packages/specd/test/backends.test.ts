@@ -200,15 +200,15 @@ describe("github project plan (preview + idempotent apply)", () => {
 				joined.startsWith("api graphql") &&
 				joined.includes("query($login:")
 			) {
-				const field = state.hasStatusField === false
-					? null
-					: {
-							name: "Status",
-							id: "FIELD_ID_1",
-							options: state.options,
-						};
-				const ownerPath =
-					state.ownerType === "user" ? "user" : "organization";
+				const field =
+					state.hasStatusField === false
+						? null
+						: {
+								name: "Status",
+								id: "FIELD_ID_1",
+								options: state.options,
+							};
+				const ownerPath = state.ownerType === "user" ? "user" : "organization";
 				return {
 					stdout: JSON.stringify({
 						data: { [ownerPath]: { projectV2: { field } } },
@@ -336,9 +336,7 @@ describe("github project plan (preview + idempotent apply)", () => {
 	it("finds the Status field on user-owned projects too (no duplicate bootstrap)", async () => {
 		const state = {
 			labelList: ["specd"],
-			options: [
-				{ id: "OPT_MVP", name: "MVP", color: "GRAY", description: "" },
-			],
+			options: [{ id: "OPT_MVP", name: "MVP", color: "GRAY", description: "" }],
 			ownerType: "user" as const,
 			graphqlCalls: [] as string[],
 		};

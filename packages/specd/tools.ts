@@ -23,10 +23,13 @@ import { syncExportedTasks } from "./backends/sync.js";
 import { renderDashboard } from "./dashboard.js";
 import { checkConsistency, formatFindings } from "./pipeline/consistency.js";
 import {
+	assertCanCompleteWork,
 	assertCanExport,
+	assertCanStartWork,
 	assertSpecCreationAllowed,
 	checklistState,
 } from "./pipeline/gates.js";
+import { planWaves } from "./pipeline/schedule.js";
 import {
 	EVENT_TYPES,
 	type EventType,
@@ -252,7 +255,7 @@ export function registerSpecdTools(pi: ExtensionAPI): void {
 		name: "specd_append_event",
 		label: "Append specd event",
 		description:
-			"Append an event to a specd item's history. Status-changing events move the item's projected state. Exporting a task (task.exported) is gated: its linked spec must be approved.",
+			"Append an event to a specd item's history. Status-changing events move the item's projected state. Gated events: task.exported requires an approved spec; work.started requires reviewer-checked requirements checklists and no overlapping in-progress path scope; work.completed requires a passing review.completed.",
 		promptSnippet: "Append an event to a specd item",
 		parameters: Type.Object({
 			item: Type.String({ description: "Item id (e.g. task-0001)." }),
@@ -273,6 +276,16 @@ export function registerSpecdTools(pi: ExtensionAPI): void {
 			const type = params.type as EventType;
 			if (type === "task.exported") {
 				assertCanExport(store, params.item); // throws with plain-language reason
+			}
+			if (type === "work.started") {
+				// Execution gates: reviewer-owned checklists clear, and no
+				// in-progress task claims an overlapping path scope.
+				assertCanStartWork(store, params.item);
+			}
+			if (type === "work.completed") {
+				// A reviewer subagent must have signed off (review.completed
+				// with passed=true) — failing review blocks completion.
+				assertCanCompleteWork(store, params.item);
 			}
 			const event = appendEvent(store, {
 				item: params.item,
@@ -372,6 +385,55 @@ export function registerSpecdTools(pi: ExtensionAPI): void {
 			const store = await openSpecd(ctx);
 			const findings = checkConsistency(store, params.item);
 			return text(formatFindings(findings), { findings });
+		},
+	});
+
+	pi.registerTool({
+		name: "specd_schedule",
+		label: "Schedule specd task execution",
+		description:
+			"Compute the execution waves for a spec's tasks (or all not-done tasks): tasks ordered by phase (setup → foundational → story → polish), [P]-marked tasks with disjoint path scopes share a wave, scope collisions are serialized into later waves. Run wave 1 concurrently, then wave 2, and so on. Read-only.",
+		promptSnippet: "Compute parallel execution waves",
+		parameters: Type.Object({
+			spec: Type.Optional(
+				Type.String({
+					description:
+						"Scope to the tasks linked part-of this spec id (e.g. spec-0001). Omit for all not-done tasks in the store.",
+				}),
+			),
+		}),
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const store = await openSpecd(ctx);
+			let tasks = listItems(store, { kind: "task" }).filter(
+				(t) => t.status !== "done" && t.status !== "stopped",
+			);
+			if (params.spec) {
+				const spec = getItem(store, params.spec);
+				if (!spec) return text(`Unknown item: ${params.spec}.`);
+				const ids = new Set(
+					linkedItems(store, params.spec, "part-of").map((i) => i.id),
+				);
+				tasks = tasks.filter((t) => ids.has(t.id));
+			}
+			const result = planWaves(tasks);
+			const lines: string[] = [];
+			for (const wave of result.waves) {
+				const concurrency =
+					wave.tasks.length > 1
+						? `run these ${wave.tasks.length} concurrently`
+						: "single task";
+				lines.push(
+					`Wave ${wave.n} (${concurrency}):\n${wave.tasks.map((t) => `- ${t.id} ${t.title}${t.phase ? ` [${t.phase}]` : ""}${t.parallel ? " [P]" : ""} scope=${t.pathScope ?? "(unscoped)"}`).join("\n")}`,
+				);
+			}
+			for (const s of result.serialized) {
+				lines.push(`serialized ${s.a} after ${s.b}: ${s.reason}`);
+			}
+			if (result.waves.length === 0) lines.push("No tasks to schedule.");
+			return text(lines.join("\n\n"), {
+				waves: result.waves,
+				serialized: result.serialized,
+			});
 		},
 	});
 

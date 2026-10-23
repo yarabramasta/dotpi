@@ -2,10 +2,12 @@ import {
 	getItem,
 	history,
 	linkedItems,
+	listItems,
 	parseJsonLoose,
 	relatedItems,
 	type SpecdStore,
 } from "../store/store.js";
+import { pathScopesOverlap } from "./schedule.js";
 
 export interface GateCheck {
 	ok: boolean;
@@ -133,6 +135,78 @@ export function assertSpecCreationAllowed(
 	cycleId: string | undefined,
 ): void {
 	const check = checkSpecCreation(store, cycleId);
+	if (!check.ok) throw new Error(check.reason);
+}
+
+/** The start gate (work.started): requirements checklists clear (reviewer
+ * owns them) AND no other in-progress task claims an overlapping path
+ * scope — concurrent workers may share a repo, never a file. */
+export function checkCanStartWork(
+	store: SpecdStore,
+	taskId: string,
+): GateCheck {
+	const task = getItem(store, taskId);
+	if (!task) return { ok: false, reason: `Unknown item: ${taskId}.` };
+	if (task.kind !== "task") {
+		return {
+			ok: false,
+			reason: `Only tasks run through the execution seam, and ${taskId} is a ${task.kind}.`,
+		};
+	}
+	const checklists = checkChecklistsClear(store, taskId);
+	if (!checklists.ok) return checklists;
+
+	const inProgress = listItems(store, { status: "in-progress" }).filter(
+		(t) => t.id !== taskId && t.kind === "task",
+	);
+	const clash = inProgress.find((t) =>
+		pathScopesOverlap(t.path_scope, task.path_scope),
+	);
+	if (clash) {
+		return {
+			ok: false,
+			reason: `${clash.id} is already in progress and its path scope${clash.path_scope ? ` (${clash.path_scope})` : " is unscoped"} overlaps${task.path_scope ? ` ${task.path_scope}` : " this task's (unscoped)"}. Finish or pause it first — concurrent workers never share files.`,
+		};
+	}
+	return { ok: true };
+}
+
+/** The completion gate (work.completed): a reviewer subagent must have
+ * signed off — the latest review.completed event for the task must say
+ * passed. Failing review blocks completion. */
+export function checkCanCompleteWork(
+	store: SpecdStore,
+	taskId: string,
+): GateCheck {
+	const task = getItem(store, taskId);
+	if (!task) return { ok: false, reason: `Unknown item: ${taskId}.` };
+	const reviews = history(store, taskId).filter(
+		(e) => e.type === "review.completed",
+	);
+	const last = reviews.at(-1);
+	if (!last) {
+		return {
+			ok: false,
+			reason: `${taskId} has no review yet. Spawn a reviewer subagent over the implemented work and record its verdict: specd_append_event(type=review.completed, payload={passed: true|false, findings: [...]}).`,
+		};
+	}
+	const payload = parseJsonLoose<{ passed?: boolean }>(last.payload);
+	if (payload?.passed !== true) {
+		return {
+			ok: false,
+			reason: `The latest review of ${taskId} did not pass (or recorded no verdict). Address the findings, re-run the reviewer, and record a passing review.completed before completing.`,
+		};
+	}
+	return { ok: true };
+}
+
+export function assertCanStartWork(store: SpecdStore, taskId: string): void {
+	const check = checkCanStartWork(store, taskId);
+	if (!check.ok) throw new Error(check.reason);
+}
+
+export function assertCanCompleteWork(store: SpecdStore, taskId: string): void {
+	const check = checkCanCompleteWork(store, taskId);
 	if (!check.ok) throw new Error(check.reason);
 }
 

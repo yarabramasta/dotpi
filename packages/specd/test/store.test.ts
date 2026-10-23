@@ -53,7 +53,9 @@ describe("specd store", () => {
 
 		function store_history_first_payload(): Record<string, unknown> {
 			const row = t.store.db
-				.prepare("SELECT payload FROM events WHERE item = ? AND type = 'created'")
+				.prepare(
+					"SELECT payload FROM events WHERE item = ? AND type = 'created'",
+				)
 				.get(item.id) as { payload: string };
 			return JSON.parse(row.payload) as Record<string, unknown>;
 		}
