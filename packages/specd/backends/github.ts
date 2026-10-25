@@ -26,29 +26,35 @@ async function statusField(
 	owner: string,
 	number: string,
 ): Promise<StatusFieldRow | undefined> {
-	// GraphQL responses wrap everything in { data: ... }; navigating from
-	// the root skips that wrapper is the most common statusField bug. The
-	// query aliases both owner kinds: projects can be org- or user-owned,
-	// and a wrong-owner branch nulls out without failing the query.
+	// The query aliases both owner kinds (projects can be org- or
+	// user-owned). gh api graphql EXITS 1 whenever the response carries
+	// GraphQL errors — and one leg always misses (an org owner nulls the
+	// user leg and vice versa) — even though the other leg's data is on
+	// stdout. So: parse stdout regardless of the runner's exit code; only
+	// when BOTH legs come back null does this degrade to "no Status
+	// field", where the callers raise their plain-language errors.
+	let stdout = "";
+	try {
+		({ stdout } = await gh([
+			"api",
+			"graphql",
+			"-f",
+			`query=${STATUS_FIELD_QUERY}`,
+			"-f",
+			`login=${owner}`,
+			"-F",
+			`number=${number}`,
+		]));
+	} catch (err) {
+		// exec/execFile attach the child's captured stdout to the rejection.
+		stdout = (err as { stdout?: string }).stdout ?? "";
+	}
 	const data = parseJsonLoose<{
 		data?: {
 			organization?: { projectV2?: { field?: StatusFieldRow } };
 			user?: { projectV2?: { field?: StatusFieldRow } };
 		};
-	}>(
-		(
-			await gh([
-				"api",
-				"graphql",
-				"-f",
-				`query=${STATUS_FIELD_QUERY}`,
-				"-f",
-				`login=${owner}`,
-				"-F",
-				`number=${number}`,
-			])
-		).stdout,
-	);
+	}>(stdout);
 	return (
 		data?.data?.organization?.projectV2?.field ??
 		data?.data?.user?.projectV2?.field

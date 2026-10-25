@@ -351,6 +351,64 @@ describe("github project plan (preview + idempotent apply)", () => {
 		);
 	});
 
+	it("parses the surviving leg when gh exits 1 on GraphQL errors (found live, P1.c)", async () => {
+		// gh api graphql exits 1 whenever the response carries GraphQL errors
+		// — one alias leg always misses — while the other leg's data is on
+		// stdout. The runner rejects; statusField must still parse stdout.
+		const state = {
+			labelList: ["specd"],
+			options: [
+				{ id: "OPT_MVP", name: "MVP", color: "GRAY", description: "" },
+			],
+			ownerType: "organization" as const,
+			graphqlCalls: [] as string[],
+		};
+		const base = planRunner(state);
+		const exitOneRunner: GhRunner = async (args, cwd) => {
+			const joined = args.join(" ");
+			if (joined.startsWith("api graphql") && joined.includes("query($login:")) {
+				const res = await base(args, cwd);
+				const err = Object.assign(
+					new Error(
+						"Command failed: gh api graphql (GraphQL errors: NOT_FOUND on the user leg)",
+					),
+					{ stdout: res.stdout, code: 1 },
+				);
+				throw err;
+			}
+			return base(args, cwd);
+		};
+		const sink = createGithubAdapter("/repo", undefined, exitOneRunner);
+		const changes = await requirePreview(sink)(PLAN);
+		expect(changes).toContain('add Status option "V1"');
+		expect(changes).not.toContain("create Status field");
+	});
+
+	it("degrades to the bootstrap path when BOTH owner legs miss", async () => {
+		const state = {
+			labelList: [],
+			options: [],
+			hasStatusField: false,
+			ownerType: "user" as const,
+			graphqlCalls: [] as string[],
+		};
+		const base = planRunner(state);
+		const exitOneRunner: GhRunner = async (args, cwd) => {
+			const joined = args.join(" ");
+			if (joined.startsWith("api graphql") && joined.includes("query($login:")) {
+				const err = Object.assign(
+					new Error("Command failed: gh api graphql"),
+					{ stdout: '{"data":{"organization":null,"user":null},"errors":[{"message":"NOT_FOUND"}]}', code: 1 },
+				);
+				throw err;
+			}
+			return base(args, cwd);
+		};
+		const sink = createGithubAdapter("/repo", undefined, exitOneRunner);
+		const changes = await requirePreview(sink)(PLAN);
+		expect(changes).toContain("create Status field with lanes: MVP, V1, maintenance");
+	});
+
 	it("bootstraps an empty workspace — creates the Status field with the plan lanes (empty-kanban rule)", async () => {
 		const state = {
 			labelList: [],
