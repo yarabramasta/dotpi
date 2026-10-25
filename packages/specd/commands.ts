@@ -7,7 +7,10 @@ import {
 	readinessMatrix,
 	SINK_IDS,
 } from "./backends/onboarding.js";
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { runDoctor } from "./store/doctor.js";
+import { renderSessionReport, sessionReportFilename } from "./report.js";
 import {
 	readStorageConfig,
 	STORAGE_MODES,
@@ -33,6 +36,7 @@ Spec-driven development for this repo. Knowledge lives in .spec/store.db (SQLite
 - /spec storage [mode [path]] — show or set the storage mode (db-only | md-inrepo | md-external <path>); specd_promote writes md mirrors per mode
 - /spec connect <sink> — guided onboarding for a sink (github, linear, jira, notion, trello, clickup)
 - /spec doctor — store integrity audit + sink readiness matrix
+- /spec export [path] — write a self-contained HTML report of the store (items, event timelines, links, doctor) for handoff
 - /spec help — this text
 
 The pipeline is agent-sequenced and code-gated: I (the agent) drive the stages, and the specd tools refuse anything the store state doesn't allow — like exporting tasks from an unapproved spec.`;
@@ -311,6 +315,17 @@ export function registerCommands(pi: ExtensionAPI): void {
 						`Storage mode set to ${mode}${mdPath ? ` (${mdPath})` : ""}.`,
 						"info",
 					);
+					return;
+				}
+				if (sub === "export") {
+					const target = rest || join(ctx.cwd, sessionReportFilename());
+					const html = renderSessionReport(store);
+					writeFileSync(target, html, "utf8");
+					pi.sendMessage({
+						customType: "specd-export",
+						content: `Session report written: ${target}\n\npi's own conversation export covers the chat side — run it from the session as well when handing both to another agent.`,
+						display: true,
+					});
 					return;
 				}
 				if (sub === "" || sub === "status" || sub === "dashboard") {
