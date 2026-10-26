@@ -244,6 +244,38 @@ describe("consistency check", () => {
 		).toBe(false);
 	});
 
+	it("stays clean for the full live ladder: epic + roadmap(child) + ordered slices (P3 regression)", async () => {
+		t = await makeStore();
+		const epic = createItem(t.store, {
+			kind: "epic",
+			title: "Core v1",
+			body: "",
+			actor: "t",
+		});
+		const roadmap = createItem(t.store, {
+			kind: "roadmap",
+			title: "Roadmap",
+			body: "",
+			actor: "t",
+		});
+		addLink(t.store, roadmap.id, epic.id, "part-of"); // roadmap is the epic's child
+		const s1 = createItem(t.store, { kind: "spec", title: "Slice 1", body: "", actor: "t" });
+		const s2 = createItem(t.store, { kind: "spec", title: "Slice 2", body: "", actor: "t" });
+		addLink(t.store, s1.id, roadmap.id, "part-of");
+		addLink(t.store, s2.id, roadmap.id, "part-of");
+		addLink(t.store, s2.id, s1.id, "depends-on");
+		const plan = createItem(t.store, { kind: "plan", title: "Plan", body: "", actor: "t" });
+		const constitution = createItem(t.store, {
+			kind: "constitution",
+			title: "Principles",
+			body: "",
+			actor: "t",
+		});
+		addLink(t.store, plan.id, constitution.id, "part-of");
+		const findings = checkConsistency(t.store, epic.id);
+		expect(findings).toEqual([]);
+	});
+
 	it("checks roadmap slices: presence, spec-ness, and ordering", async () => {
 		t = await makeStore();
 		const roadmap = createItem(t.store, {

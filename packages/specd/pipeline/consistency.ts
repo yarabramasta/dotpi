@@ -1,4 +1,5 @@
 import {
+	childItems,
 	getItem,
 	type ItemRow,
 	listItems,
@@ -217,7 +218,9 @@ export function checkConsistency(
 	// Epic/roadmap ladder: epics plan through an ordered roadmap of
 	// per-slice specs, not loose tasks.
 	for (const epic of items.filter((i) => i.kind === "epic")) {
-		const roads = relatedItems(store, epic.id, "part-of").filter(
+		// Directional: the roadmap is the epic's CHILD (roadmap part-of
+		// epic) — a bidirectional read would pull unrelated items in.
+		const roads = childItems(store, epic.id, "part-of").filter(
 			(i) => i.kind === "roadmap",
 		);
 		if (roads.length === 0) {
@@ -230,7 +233,9 @@ export function checkConsistency(
 		}
 	}
 	for (const roadmap of items.filter((i) => i.kind === "roadmap")) {
-		const slices = relatedItems(store, roadmap.id, "part-of");
+		// Directional: slices point at the roadmap (slice part-of
+		// roadmap); the epic (the roadmap's parent) is not a slice.
+		const slices = childItems(store, roadmap.id, "part-of");
 		if (slices.length === 0) {
 			findings.push({
 				severity: "warning",

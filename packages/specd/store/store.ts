@@ -434,6 +434,22 @@ export function history(store: SpecdStore, item: string): SpecdEvent[] {
 	return eventsForItem(store.db, item);
 }
 
+/** Items pointing AT `itemId` with the given kind — the directional
+ * child/ingredient lookup (`spec part-of roadmap` → the roadmap's
+ * children). Direction matters for ladder rules: an epic↔roadmap edge
+ * must not make the epic one of the roadmap's slices. */
+export function childItems(
+	store: SpecdStore,
+	itemId: string,
+	kind: LinkKind,
+): ItemRow[] {
+	// SAFETY: SELECT f.* on items (aliased f) matches ItemRow.
+	return store.db
+		.prepare(
+			"SELECT f.* FROM links l JOIN items f ON f.id = l.from_item WHERE l.to_item = ? AND l.kind = ?",
+		)
+		.all(itemId, kind) as unknown as ItemRow[];
+}
 export function linkedItems(
 	store: SpecdStore,
 	fromItem: string,
