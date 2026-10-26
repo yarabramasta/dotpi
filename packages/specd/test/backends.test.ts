@@ -198,7 +198,7 @@ describe("github reference adapter (contract freeze)", () => {
 	});
 });
 
-describe("github project plan (preview + idempotent apply)", () => {
+describe("github sink setup (preview + idempotent apply)", () => {
 	/** A fake runner that simulates a workspace with one existing label
 	 * ("specd") and two existing lanes ("Todo", "MVP") — so a plan with
 	 * extra labels and lanes reports/creates only the missing ones. */

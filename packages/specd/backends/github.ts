@@ -1,6 +1,6 @@
 import { parseJsonLoose } from "../store/store.js";
 import type {
-	ProjectPlan,
+	SinkSetup,
 	SinkAdapter,
 	SinkVerify,
 	TaskCreated,
@@ -361,12 +361,12 @@ export function createGithubAdapter(
 			await setWorkflowStatus(externalRef, mapped);
 		},
 
-		async previewPlan(plan: ProjectPlan): Promise<string[]> {
+		async previewPlan(plan: SinkSetup): Promise<string[]> {
 			const owner = String(plan.workspace.owner ?? "");
 			const number = String(plan.workspace.projectNumber ?? "");
 			if (!owner || !number) {
 				throw new Error(
-					"The project plan needs a workspace (owner + project number) to preview against.",
+					"The sink setup needs a workspace (owner + project number) to preview against.",
 				);
 			}
 			const changes: string[] = [];
@@ -402,12 +402,12 @@ export function createGithubAdapter(
 			return changes;
 		},
 
-		async ensurePlan(plan: ProjectPlan): Promise<string[]> {
+		async ensurePlan(plan: SinkSetup): Promise<string[]> {
 			const owner = String(plan.workspace.owner ?? "");
 			const number = String(plan.workspace.projectNumber ?? "");
 			if (!owner || !number) {
 				throw new Error(
-					"The project plan needs a workspace (owner + project number) to apply against.",
+					"The sink setup needs a workspace (owner + project number) to apply against.",
 				);
 			}
 			const changes: string[] = [];

@@ -38,11 +38,11 @@ export interface PlanWorkspace {
 	[key: string]: string | number | undefined;
 }
 
-/** The project plan: a vendor-neutral description of the sink structure a
+/** The sink setup: a vendor-neutral description of the sink structure a
  * cycle exports into — workspace, lanes, label taxonomy, naming convention.
  * Applied idempotently (re-running a converged plan changes nothing) with a
  * read-only preview first. */
-export interface ProjectPlan {
+export interface SinkSetup {
 	/** Sink workspace, adapter-interpreted. */
 	workspace: PlanWorkspace;
 	/** Lanes = board status options exported tasks can be placed in. */
@@ -83,12 +83,12 @@ export interface SinkAdapter {
 	 * the preview reports the structure that would be created. Status
 	 * options are the board's own workflow — never bootstrapped from
 	 * lanes. */
-	previewPlan?(plan: ProjectPlan): Promise<string[]>;
+	previewPlan?(plan: SinkSetup): Promise<string[]>;
 	/** Apply the plan; returns what actually changed. Idempotent: a
 	 * converged plan yields []. A not-onboarded (empty) workspace is
 	 * treated as an empty kanban — the adapter creates missing structure
 	 * (workflow options for lanes, labels for tags) itself instead of
 	 * requiring pre-setup in a web UI. Milestones/sprints are the
 	 * developer's own grouping and are never written by specd. */
-	ensurePlan?(plan: ProjectPlan): Promise<string[]>;
+	ensurePlan?(plan: SinkSetup): Promise<string[]>;
 }

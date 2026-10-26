@@ -1,7 +1,7 @@
 import type { SpecdStore } from "../store/store.js";
 import { readSinkConfig } from "./config.js";
 import type {
-	ProjectPlan,
+	SinkSetup,
 	SinkAdapter,
 	SinkVerify,
 	TaskCreated,
@@ -71,7 +71,7 @@ export function createLinearAdapter(
 		);
 		if (!state) {
 			throw new Error(
-				`Linear workflow state "${lane}" not found on team ${config?.teamId}. Apply the project plan (/spec sink) first.`,
+				`Linear workflow state "${lane}" not found on team ${config?.teamId}. Apply the sink setup (/spec sink) first.`,
 			);
 		}
 		return state.id;
@@ -141,7 +141,7 @@ export function createLinearAdapter(
 		async createTask(task: TaskExport): Promise<TaskCreated> {
 			if (!config?.teamId) {
 				throw new Error(
-					"Linear sink needs a team id — set it in the project plan (/spec sink).",
+					"Linear sink needs a team id — set it in the sink setup (/spec sink).",
 				);
 			}
 			const labelIds = await ensureLabelIds(task.labels);
@@ -201,10 +201,10 @@ export function createLinearAdapter(
 			);
 		},
 
-		async previewPlan(plan: ProjectPlan): Promise<string[]> {
+		async previewPlan(plan: SinkSetup): Promise<string[]> {
 			if (!config?.teamId) {
 				throw new Error(
-					"Linear sink needs a team id before planning — set it in the project plan interview.",
+					"Linear sink needs a team id before planning — set it in the sink setup interview.",
 				);
 			}
 			const [labels, states] = await Promise.all([
@@ -234,7 +234,7 @@ export function createLinearAdapter(
 			return changes;
 		},
 
-		async ensurePlan(plan: ProjectPlan): Promise<string[]> {
+		async ensurePlan(plan: SinkSetup): Promise<string[]> {
 			// Empty-kanban rule: a workspace without the structure is
 			// bootstrapped, not refused.
 			const changes: string[] = [];
@@ -263,7 +263,7 @@ export function createLinearAdapter(
 	};
 }
 
-/** Build the Linear sink config from the stored project plan / sink config. */
+/** Build the Linear sink config from the stored sink setup / sink config. */
 export function linearConfigFrom(
 	store: SpecdStore,
 ): LinearSinkConfig | undefined {

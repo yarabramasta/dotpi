@@ -59,9 +59,9 @@ Follow the fast-path flow. The specd tools enforce the gates — never work arou
 4. SPEC — specd_create_item(kind=spec, title=…, body=<filled template>, cycle=<cycle id>) — the gate checks the explore decision and links the spec to the cycle.
 5. APPROVAL — show me the finished spec and ask for approval. On yes: specd_append_event(item=<spec id>, type=spec.approved). Nothing can be exported before this — the tools will refuse.
 6. PLAN — specd_create_item(kind=plan, title=…, body=<short technical approach>), then link it: specd_add_link(from=<plan id>, to=<spec id>, kind=part-of). Record each technical decision: specd_append_event(item=<plan id>, type=decision.made, payload={decision}). Also: if this repo has no constitution item yet, ask me whether to capture the product purpose and principles as one — specd_create_item(kind=constitution, title=…, body=…) — and link it: specd_add_link(from=<plan id>, to=<constitution id>, kind=part-of). If a constitution already exists, link the plan to it — consistency checks every plan for a constitution anchor.
-7. PROJECT PLAN — if the sink is not null, interview me once for the project plan (ask-user-question): workspace coords (github: owner + project number; linear: team id; jira: project key; notion: database id; trello: board id; clickup: team/space/list ids), lanes, label taxonomy, naming convention. Then specd_apply_plan(sink=…, workspace={…} for non-github sinks, github_owner=…, github_project_number=…, lanes=[…], labels=[…], naming=…). This previews what would change. Show me the preview, and on my OK re-run with apply=true — it is idempotent, so re-runs converge. If the sink is null, skip this step.
+7. SINK SETUP — if the sink is not null, interview me once for the sink setup (ask-user-question): workspace coords (github: owner + project number; linear: team id; jira: project key; notion: database id; trello: board id; clickup: team/space/list ids), lanes, label taxonomy, naming convention. Then specd_configure_sink(sink=…, workspace={…} for non-github sinks, github_owner=…, github_project_number=…, lanes=[…], labels=[…], naming=…). This previews what would change. Show me the preview, and on my OK re-run with apply=true — it is idempotent, so re-runs converge. If the sink is null, skip this step.
 8. TASKS — break the spec into 1–3 tasks: specd_create_item(kind=task, title=…, body=<acceptance criteria>, path_scope=<file paths this task owns>) each, linked with specd_add_link(from=<task id>, to=<spec id>, kind=part-of). If the spec has meaningful ambiguity, also generate a requirements checklist: specd_create_item(kind=checklist, title=…, extra={items:[…]}), linked part-of the spec — I review it via /spec review before implementation runs.
-9. EXPORT — ask me whether to export the tasks now. If yes: specd_export(item=<task id>, sink=<sink id>). Ported sinks: null, github, linear, jira, notion, trello, clickup. For github the first export needs the project owner and project number — ask me, then pass github_owner + github_project_number once; they persist. The other sinks take their workspace coords from the project plan (step 7). The project plan (if applied) drives the export title, labels, and lane placement.
+9. EXPORT — ask me whether to export the tasks now. If yes: specd_export(item=<task id>, sink=<sink id>). Ported sinks: null, github, linear, jira, notion, trello, clickup. For github the first export needs the project owner and project number — ask me, then pass github_owner + github_project_number once; they persist. The other sinks take their workspace coords from the sink setup (step 7). The sink setup (if applied) drives the export title, labels, and lane placement.
 10. RUN — when I want a task implemented: /spec run <task id>.`;
 
 const RUN_PROMPT = (
@@ -96,13 +96,13 @@ const CONVERGE_PROMPT = (
 4. Record the assessment: specd_append_event(item=${scope}, type=convergence.assessed, payload={done: true|false, gaps: [...]}).
 5. Report "converged" only when every gap is closed (all tasks done, no uncovered requirements). Otherwise loop: run the new tasks (/spec run), then converge again.`;
 
-const PLAN_PROMPT = `Configure the sink (workspace coords, lanes, labels, naming, statusMap):
+const SINK_PROMPT = `Configure the sink (workspace coords, lanes, labels, naming, statusMap):
 
 1. Ask me which sink to plan for (null = native; github, linear, jira, notion, trello, clickup). If null, there is nothing to plan — the null sink has no external board.
-2. Workspace coords per sink: github — owner + project number; linear — team id; jira — project key (and issue type name if not "Task"); notion — database id; trello — board id (and optionally a default list id); clickup — team id, space id, list id. Ask me (ask-user-question) for the coords plus lanes, label taxonomy, and naming convention. Offer the defaults if I don't override. Also set the statusMap: ask which board option each specd state maps to (exported / in-progress / done → e.g. Ready / In progress / Done) and pass statusMap={…} to specd_apply_plan — updateStatus writes exactly the mapped option. Pass the coords via specd_apply_plan(sink=…, workspace={…}) for non-github sinks.
-3. specd_apply_plan(sink=…, github_owner=…, github_project_number=…, workspace={…} for non-github sinks, lanes=[…], labels=[…], naming=…) — this is a PREVIEW (read-only). Show me the listed changes.
+2. Workspace coords per sink: github — owner + project number; linear — team id; jira — project key (and issue type name if not "Task"); notion — database id; trello — board id (and optionally a default list id); clickup — team id, space id, list id. Ask me (ask-user-question) for the coords plus lanes, label taxonomy, and naming convention. Offer the defaults if I don't override. Also set the statusMap: ask which board option each specd state maps to (exported / in-progress / done → e.g. Ready / In progress / Done) and pass statusMap={…} to specd_configure_sink — updateStatus writes exactly the mapped option. Pass the coords via specd_configure_sink(sink=…, workspace={…}) for non-github sinks.
+3. specd_configure_sink(sink=…, github_owner=…, github_project_number=…, workspace={…} for non-github sinks, lanes=[…], labels=[…], naming=…) — this is a PREVIEW (read-only). Show me the listed changes.
 4. On my OK: re-run with apply=true. It is idempotent — re-runs converge, so a converged plan yields no changes.
-5. Record the decision: specd_append_event(item=<cycle or first item id>, type=decision.made, payload={decision: "project plan applied", sink, lanes, labels, naming}).`;
+5. Record the decision: specd_append_event(item=<cycle or first item id>, type=decision.made, payload={decision: "sink setup applied", sink, lanes, labels, naming}).`;
 
 const PAUSE_PROMPT = `Pause the active work: write the resume capsule. For each in-progress item, run specd_append_event(item=<item id>, type=work.paused, payload={decisions: […], openQuestions: […], evidence: […], nextStep: "…"}) — summarize from our conversation. Then confirm what was parked so I can pick it up later (or hand it off).`;
 
@@ -223,7 +223,7 @@ export function registerCommands(pi: ExtensionAPI): void {
 				return;
 			}
 			if (sub === "sink") {
-				pi.sendUserMessage(PLAN_PROMPT);
+				pi.sendUserMessage(SINK_PROMPT);
 				return;
 			}
 			if (sub === "connect") {

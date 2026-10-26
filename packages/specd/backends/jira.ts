@@ -1,7 +1,7 @@
 import type { SpecdStore } from "../store/store.js";
 import { readSinkConfig } from "./config.js";
 import type {
-	ProjectPlan,
+	SinkSetup,
 	SinkAdapter,
 	SinkVerify,
 	TaskCreated,
@@ -158,7 +158,7 @@ export function createJiraAdapter(
 		async createTask(task: TaskExport): Promise<TaskCreated> {
 			if (!config?.projectKey) {
 				throw new Error(
-					"Jira sink needs a project key — set it in the project plan (/spec sink).",
+					"Jira sink needs a project key — set it in the sink setup (/spec sink).",
 				);
 			}
 			const created = await call<{ key?: string }>("POST", "/issue", {
@@ -229,10 +229,10 @@ export function createJiraAdapter(
 			});
 		},
 
-		async previewPlan(plan: ProjectPlan): Promise<string[]> {
+		async previewPlan(plan: SinkSetup): Promise<string[]> {
 			if (!config?.projectKey) {
 				throw new Error(
-					"Jira sink needs a project key before planning — set it in the project plan interview.",
+					"Jira sink needs a project key before planning — set it in the sink setup interview.",
 				);
 			}
 			const types = await call<Array<{ statuses?: Array<{ name?: string }> }>>(
@@ -257,7 +257,7 @@ export function createJiraAdapter(
 			return changes;
 		},
 
-		async ensurePlan(_plan: ProjectPlan): Promise<string[]> {
+		async ensurePlan(_plan: SinkSetup): Promise<string[]> {
 			// Workflow columns are admin work in Jira (company-managed
 			// projects); previewPlan reports exactly what the UI needs.
 			return [];
@@ -265,7 +265,7 @@ export function createJiraAdapter(
 	};
 }
 
-/** Build the Jira sink config from the stored project plan / sink config. */
+/** Build the Jira sink config from the stored sink setup / sink config. */
 export function jiraConfigFrom(store: SpecdStore): JiraSinkConfig | undefined {
 	const raw = readSinkConfig(store, "sink.jira");
 	if (!raw?.projectKey) return undefined;

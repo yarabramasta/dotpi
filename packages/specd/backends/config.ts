@@ -1,5 +1,5 @@
 import type { SpecdStore } from "../store/store.js";
-import type { PlanWorkspace, ProjectPlan } from "./contract.js";
+import type { PlanWorkspace, SinkSetup } from "./contract.js";
 
 /** Canonical lane taxonomy and naming convention — defaults the plan
  * interview offers; a saved plan overrides them. Lanes are the sink's
@@ -45,10 +45,13 @@ export function saveSinkConfig(
 		.run(key, JSON.stringify(value));
 }
 
-/** Read the stored project plan, loosely validated — a corrupt record
+/** Read the stored sink setup, loosely validated — a corrupt record
  * degrades to undefined rather than breaking every export. */
-export function readProjectPlan(store: SpecdStore): ProjectPlan | undefined {
-	const raw = readSinkConfig(store, "project_plan");
+export function readSinkSetup(store: SpecdStore): SinkSetup | undefined {
+	// "sink_setup" since the plan→sink rename; fall back to the legacy
+	// "project_plan" key so existing stores keep working.
+	const raw =
+		readSinkConfig(store, "sink_setup") ?? readSinkConfig(store, "project_plan");
 	if (!raw) return undefined;
 	const ws = (raw.workspace ?? {}) as Record<string, unknown>;
 	const workspace: PlanWorkspace = {
@@ -79,10 +82,10 @@ export function readProjectPlan(store: SpecdStore): ProjectPlan | undefined {
 	};
 }
 
-export function saveProjectPlan(
+export function saveSinkSetup(
 	store: SpecdStore,
-	plan: ProjectPlan,
+	plan: SinkSetup,
 	sink: string,
 ): void {
-	saveSinkConfig(store, "project_plan", { ...plan, sink });
+	saveSinkConfig(store, "sink_setup", { ...plan, sink });
 }

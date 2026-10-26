@@ -1,7 +1,7 @@
 import type { SpecdStore } from "../store/store.js";
 import { readSinkConfig } from "./config.js";
 import type {
-	ProjectPlan,
+	SinkSetup,
 	SinkAdapter,
 	SinkVerify,
 	TaskCreated,
@@ -78,7 +78,7 @@ export function createTrelloAdapter(
 		const list = lists.find((l) => l.name.toLowerCase() === lane.toLowerCase());
 		if (!list) {
 			throw new Error(
-				`Trello list "${lane}" not found on board ${config?.boardId}. Apply the project plan (/spec sink) first.`,
+				`Trello list "${lane}" not found on board ${config?.boardId}. Apply the sink setup (/spec sink) first.`,
 			);
 		}
 		return list.id;
@@ -147,7 +147,7 @@ export function createTrelloAdapter(
 		async createTask(task: TaskExport): Promise<TaskCreated> {
 			if (!config?.boardId) {
 				throw new Error(
-					"Trello sink needs a board id — set it in the project plan (/spec sink).",
+					"Trello sink needs a board id — set it in the sink setup (/spec sink).",
 				);
 			}
 			let idList = config.listId;
@@ -156,7 +156,7 @@ export function createTrelloAdapter(
 				idList = lists[0]?.id;
 				if (!idList) {
 					throw new Error(
-						`Board ${config.boardId} has no lists yet — apply the project plan (/spec sink) to create the lane lists.`,
+						`Board ${config.boardId} has no lists yet — apply the sink setup (/spec sink) to create the lane lists.`,
 					);
 				}
 			}
@@ -207,10 +207,10 @@ export function createTrelloAdapter(
 			});
 		},
 
-		async previewPlan(plan: ProjectPlan): Promise<string[]> {
+		async previewPlan(plan: SinkSetup): Promise<string[]> {
 			if (!config?.boardId) {
 				throw new Error(
-					"Trello sink needs a board id before planning — set it in the project plan interview.",
+					"Trello sink needs a board id before planning — set it in the sink setup interview.",
 				);
 			}
 			const [lists, labels] = await Promise.all([boardLists(), boardLabels()]);
@@ -228,7 +228,7 @@ export function createTrelloAdapter(
 			return changes;
 		},
 
-		async ensurePlan(plan: ProjectPlan): Promise<string[]> {
+		async ensurePlan(plan: SinkSetup): Promise<string[]> {
 			// Empty-kanban rule: a workspace without the structure is
 			// bootstrapped, not refused.
 			const changes: string[] = [];
@@ -254,7 +254,7 @@ export function createTrelloAdapter(
 	};
 }
 
-/** Build the Trello sink config from the stored project plan / sink config. */
+/** Build the Trello sink config from the stored sink setup / sink config. */
 export function trelloConfigFrom(
 	store: SpecdStore,
 ): TrelloSinkConfig | undefined {

@@ -1,6 +1,6 @@
 import type { SpecdStore } from "../store/store.js";
 import { clickupConfigFrom, createClickUpAdapter } from "./clickup.js";
-import { readProjectPlan, readSinkConfig } from "./config.js";
+import { readSinkSetup, readSinkConfig } from "./config.js";
 import type { SinkAdapter } from "./contract.js";
 import { createGithubAdapter } from "./github.js";
 import { createJiraAdapter, jiraConfigFrom } from "./jira.js";
@@ -27,7 +27,7 @@ export function tryResolveAdapter(
 			return createGithubAdapter(store.cwd, {
 				owner: String(config.owner),
 				projectNumber: Number(config.projectNumber),
-				statusMap: readProjectPlan(store)?.statusMap,
+				statusMap: readSinkSetup(store)?.statusMap,
 			});
 		}
 		case "linear": {
@@ -35,7 +35,7 @@ export function tryResolveAdapter(
 			return config
 				? createLinearAdapter({
 						...config,
-						statusMap: readProjectPlan(store)?.statusMap,
+						statusMap: readSinkSetup(store)?.statusMap,
 					})
 				: undefined;
 		}
@@ -44,7 +44,7 @@ export function tryResolveAdapter(
 			return config
 				? createJiraAdapter({
 						...config,
-						statusMap: readProjectPlan(store)?.statusMap,
+						statusMap: readSinkSetup(store)?.statusMap,
 					})
 				: undefined;
 		}
@@ -53,7 +53,7 @@ export function tryResolveAdapter(
 			return config
 				? createNotionAdapter({
 						...config,
-						statusMap: readProjectPlan(store)?.statusMap,
+						statusMap: readSinkSetup(store)?.statusMap,
 					})
 				: undefined;
 		}
@@ -62,7 +62,7 @@ export function tryResolveAdapter(
 			return config
 				? createTrelloAdapter({
 						...config,
-						statusMap: readProjectPlan(store)?.statusMap,
+						statusMap: readSinkSetup(store)?.statusMap,
 					})
 				: undefined;
 		}
@@ -71,7 +71,7 @@ export function tryResolveAdapter(
 			return config
 				? createClickUpAdapter({
 						...config,
-						statusMap: readProjectPlan(store)?.statusMap,
+						statusMap: readSinkSetup(store)?.statusMap,
 					})
 				: undefined;
 		}
@@ -104,6 +104,6 @@ export function resolveAdapter(store: SpecdStore, sink: string): SinkAdapter {
 		);
 	}
 	throw new Error(
-		`Sink "${sink}" is not configured yet. Its workspace ids (team/board/database/list) live in the project plan — run /spec sink, or /spec connect ${sink} for guided setup.`,
+		`Sink "${sink}" is not configured yet. Its workspace ids (team/board/database/list) live in the sink setup — run /spec sink, or /spec connect ${sink} for guided setup.`,
 	);
 }

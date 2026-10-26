@@ -1,5 +1,5 @@
 import type { SpecdStore } from "../store/store.js";
-import { readProjectPlan, readSinkConfig } from "./config.js";
+import { readSinkSetup, readSinkConfig } from "./config.js";
 import type { SinkVerify } from "./contract.js";
 import { sinkCredentials } from "./credentials.js";
 import type { GhRunner } from "./gh.js";
@@ -162,7 +162,7 @@ export async function probeSink(
 			{
 				owner: String(config.owner),
 				projectNumber: Number(config.projectNumber),
-				statusMap: readProjectPlan(store)?.statusMap,
+				statusMap: readSinkSetup(store)?.statusMap,
 			},
 			ghRunner ?? realGhRunner,
 		);

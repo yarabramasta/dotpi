@@ -1,7 +1,7 @@
 import type { SpecdStore } from "../store/store.js";
 import { readSinkConfig } from "./config.js";
 import type {
-	ProjectPlan,
+	SinkSetup,
 	SinkAdapter,
 	SinkVerify,
 	TaskCreated,
@@ -94,7 +94,7 @@ export function createClickUpAdapter(
 		async createTask(task: TaskExport): Promise<TaskCreated> {
 			if (!config?.listId || !config?.teamId) {
 				throw new Error(
-					"ClickUp sink needs workspace ids (team, space, list) — set them in the project plan (/spec sink).",
+					"ClickUp sink needs workspace ids (team, space, list) — set them in the sink setup (/spec sink).",
 				);
 			}
 			const created = await call<{
@@ -142,10 +142,10 @@ export function createClickUpAdapter(
 			}
 		},
 
-		async previewPlan(plan: ProjectPlan): Promise<string[]> {
+		async previewPlan(plan: SinkSetup): Promise<string[]> {
 			if (!config?.spaceId) {
 				throw new Error(
-					"ClickUp sink needs a space id before planning — set it in the project plan interview.",
+					"ClickUp sink needs a space id before planning — set it in the sink setup interview.",
 				);
 			}
 			const tags = await call<Array<{ name?: string }>>(
@@ -168,7 +168,7 @@ export function createClickUpAdapter(
 			return changes;
 		},
 
-		async ensurePlan(plan: ProjectPlan): Promise<string[]> {
+		async ensurePlan(plan: SinkSetup): Promise<string[]> {
 			// Empty-kanban rule, graded: tags bootstrap; statuses honestly
 			// can't (no API) — they are reported, never silently skipped.
 			const changes: string[] = [];
@@ -195,7 +195,7 @@ export function createClickUpAdapter(
 	};
 }
 
-/** Build the ClickUp sink config from the stored project plan / sink config. */
+/** Build the ClickUp sink config from the stored sink setup / sink config. */
 export function clickupConfigFrom(
 	store: SpecdStore,
 ): ClickUpSinkConfig | undefined {

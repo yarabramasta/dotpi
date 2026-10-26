@@ -1,7 +1,7 @@
 import type { SpecdStore } from "../store/store.js";
 import { readSinkConfig } from "./config.js";
 import type {
-	ProjectPlan,
+	SinkSetup,
 	SinkAdapter,
 	SinkVerify,
 	TaskCreated,
@@ -173,14 +173,14 @@ export function createNotionAdapter(
 		async createTask(task: TaskExport): Promise<TaskCreated> {
 			if (!config?.databaseId) {
 				throw new Error(
-					"Notion sink needs a database id — set it in the project plan (/spec sink).",
+					"Notion sink needs a database id — set it in the sink setup (/spec sink).",
 				);
 			}
 			const s = await schema();
 			const props = findProps(s);
 			if (!props.status) {
 				throw new Error(
-					`Database ${config.databaseId} has no status property — add one (Notion UI or the project plan apply), then re-export.`,
+					`Database ${config.databaseId} has no status property — add one (Notion UI or the sink setup apply), then re-export.`,
 				);
 			}
 			const properties: Record<string, unknown> = {
@@ -232,7 +232,7 @@ export function createNotionAdapter(
 			const props = findProps(s);
 			if (!props.status) {
 				throw new Error(
-					`Database ${config?.databaseId} has no status property — apply the project plan (/spec sink) first.`,
+					`Database ${config?.databaseId} has no status property — apply the sink setup (/spec sink) first.`,
 				);
 			}
 			await call("PATCH", `/pages/${externalRef}`, {
@@ -250,7 +250,7 @@ export function createNotionAdapter(
 			const props = findProps(s);
 			if (!props.tags) {
 				throw new Error(
-					`Database ${config?.databaseId} has no multi-select property for tags — apply the project plan (/spec sink) first.`,
+					`Database ${config?.databaseId} has no multi-select property for tags — apply the sink setup (/spec sink) first.`,
 				);
 			}
 			await call("PATCH", `/pages/${externalRef}`, {
@@ -260,10 +260,10 @@ export function createNotionAdapter(
 			});
 		},
 
-		async previewPlan(plan: ProjectPlan): Promise<string[]> {
+		async previewPlan(plan: SinkSetup): Promise<string[]> {
 			if (!config?.databaseId) {
 				throw new Error(
-					"Notion sink needs a database id before planning — set it in the project plan interview.",
+					"Notion sink needs a database id before planning — set it in the sink setup interview.",
 				);
 			}
 			const props = findProps(await schema());
@@ -295,7 +295,7 @@ export function createNotionAdapter(
 			return changes;
 		},
 
-		async ensurePlan(plan: ProjectPlan): Promise<string[]> {
+		async ensurePlan(plan: SinkSetup): Promise<string[]> {
 			// Empty-kanban rule: a workspace without the structure is
 			// bootstrapped, not refused. Status/multi-select updates take the
 			// COMPLETE retained option list; new options land in the To-do
@@ -358,7 +358,7 @@ export function createNotionAdapter(
 	};
 }
 
-/** Build the Notion sink config from the stored project plan / sink config. */
+/** Build the Notion sink config from the stored sink setup / sink config. */
 export function notionConfigFrom(
 	store: SpecdStore,
 ): NotionSinkConfig | undefined {

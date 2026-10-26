@@ -7,9 +7,9 @@ import { Type } from "typebox";
 import {
 	DEFAULT_LANES,
 	DEFAULT_NAMING,
-	readProjectPlan,
+	readSinkSetup,
 	readSinkConfig,
-	saveProjectPlan,
+	saveSinkSetup,
 	saveSinkConfig,
 } from "./backends/config.js";
 import type { PlanWorkspace, TaskExport } from "./backends/contract.js";
@@ -143,7 +143,7 @@ export function buildTaskExport(store: SpecdStore, task: ItemRow): TaskExport {
 	const body = `## Task\n\n${task.body || task.title}\n\n${specSection}\n\n---\nExported from specd (${task.id}).`;
 	const labels = ["specd"];
 	if (spec) labels.push(`spec:${slugify(spec.title)}`);
-	const plan = readProjectPlan(store);
+	const plan = readSinkSetup(store);
 	if (plan) {
 		for (const l of plan.labels) if (!labels.includes(l)) labels.push(l);
 	}
@@ -570,11 +570,11 @@ export function registerSpecdTools(pi: ExtensionAPI): void {
 	}
 
 	pi.registerTool({
-		name: "specd_apply_plan",
-		label: "Apply specd project plan",
+		name: "specd_configure_sink",
+		label: "Configure the specd sink",
 		description:
-			"Preview (default) or apply the project plan for a sink: workspace, lanes, label taxonomy, naming convention. Preview is read-only and lists what would change. Apply is idempotent — a converged plan yields no changes. The plan persists in the store and drives export titles, labels, and lane placement.",
-		promptSnippet: "Preview/apply the project plan",
+			"Preview (default) or apply the sink setup for a sink: workspace, lanes, label taxonomy, naming convention. Preview is read-only and lists what would change. Apply is idempotent — a converged plan yields no changes. The plan persists in the store and drives export titles, labels, and lane placement.",
+		promptSnippet: "Preview/apply the sink setup",
 		parameters: Type.Object({
 			sink: Type.String({
 				description:
@@ -656,7 +656,7 @@ export function registerSpecdTools(pi: ExtensionAPI): void {
 			});
 
 			// Merge with defaults and any stored plan.
-			const prior = readProjectPlan(store);
+			const prior = readSinkSetup(store);
 			const plan = {
 				workspace,
 				lanes: params.lanes ?? prior?.lanes ?? [...DEFAULT_LANES],
@@ -668,13 +668,13 @@ export function registerSpecdTools(pi: ExtensionAPI): void {
 			const adapter = resolveAdapter(store, sink);
 			if (!adapter.previewPlan || !adapter.ensurePlan) {
 				return text(
-					`Sink "${sink}" does not support project plans (no external board). Nothing to apply.`,
+					`Sink "${sink}" does not support sink setups (no external board). Nothing to apply.`,
 				);
 			}
 
 			if (!params.apply) {
 				const changes = await adapter.previewPlan(plan);
-				saveProjectPlan(store, plan, sink); // persist intent even on preview
+				saveSinkSetup(store, plan, sink); // persist intent even on preview
 				return text(
 					changes.length === 0
 						? `Plan preview for ${sink}: already converged — no changes needed.`
@@ -684,7 +684,7 @@ export function registerSpecdTools(pi: ExtensionAPI): void {
 			}
 
 			const changes = await adapter.ensurePlan(plan);
-			saveProjectPlan(store, plan, sink);
+			saveSinkSetup(store, plan, sink);
 			return text(
 				changes.length === 0
 					? `Plan applied for ${sink}: already converged — no changes.`
