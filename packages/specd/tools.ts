@@ -618,6 +618,12 @@ export function registerSpecdTools(pi: ExtensionAPI): void {
 					description: `Export title convention with {ref} and {title} placeholders. Defaults: "${DEFAULT_NAMING}".`,
 				}),
 			),
+			statusMap: Type.Optional(
+				Type.Record(Type.String(), Type.String(), {
+					description:
+						"specd item status → the board's own workflow option (D15), e.g. { exported: \"Ready\", \"in-progress\": \"In progress\", done: \"Done\" }. updateStatus writes exactly the mapped option.",
+				}),
+			),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const store = await openSpecd(ctx);
@@ -656,6 +662,7 @@ export function registerSpecdTools(pi: ExtensionAPI): void {
 				lanes: params.lanes ?? prior?.lanes ?? [...DEFAULT_LANES],
 				labels: params.labels ?? prior?.labels ?? ["specd"],
 				naming: params.naming ?? prior?.naming ?? DEFAULT_NAMING,
+				statusMap: params.statusMap ?? prior?.statusMap,
 			};
 
 			const adapter = resolveAdapter(store, sink);

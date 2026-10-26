@@ -192,6 +192,88 @@ export function createGithubAdapter(
 		}
 	}
 
+	/** Attach the issue to the project board (idempotent per content) and
+	 * return the project item id. */
+	async function ensureInProject(externalRef: string): Promise<string> {
+		if (!config?.owner || !config.projectNumber) {
+			throw new Error(
+				"GitHub Projects placement needs a configured project (owner + project number). Run the export setup first.",
+			);
+		}
+		const number = String(config.projectNumber);
+		const projectId = await projectIdFor(gh, config.owner, number);
+		const issueView = parseJsonLoose<{ url?: string }>(
+			(await gh(["issue", "view", externalRef, "--json", "url"])).stdout,
+		);
+		const issueUrl = issueView?.url ?? "";
+		if (!issueUrl) {
+			throw new Error(`Could not resolve the issue URL for ${externalRef}.`);
+		}
+		const added = parseJsonLoose<{ id?: string }>(
+			(
+				await gh([
+					"project",
+					"item-add",
+					number,
+					"--owner",
+					config.owner,
+					"--url",
+					issueUrl,
+					"--format",
+					"json",
+				])
+			).stdout,
+		);
+		const itemId = added?.id ?? "";
+		if (!itemId) {
+			throw new Error(
+				`Could not attach ${externalRef} to project #${number}.`,
+			);
+		}
+		return itemId;
+	}
+
+	/** Set the project item's Status field to the named option — the
+	 * board's OWN workflow option (D15); case-insensitive match. */
+	async function setWorkflowStatus(
+		externalRef: string,
+		optionName: string,
+	): Promise<void> {
+		if (!config?.owner || !config.projectNumber) {
+			throw new Error(
+				"GitHub Projects placement needs a configured project (owner + project number). Run the export setup first.",
+			);
+		}
+		const number = String(config.projectNumber);
+		const projectId = await projectIdFor(gh, config.owner, number);
+		const itemId = await ensureInProject(externalRef);
+		const status = await statusField(gh, config.owner, number);
+		const option = status?.options?.find(
+			(o) => (o.name ?? "").toLowerCase() === optionName.toLowerCase(),
+		);
+		if (!status?.id || !option?.id) {
+			throw new Error(
+				`Status option "${optionName}" not found on the project. Available: ${(
+					status?.options ?? []
+				)
+					.map((o) => o.name ?? "")
+					.join(", ")}.`,
+			);
+		}
+		await gh([
+			"project",
+			"item-edit",
+			"--id",
+			itemId,
+			"--project-id",
+			projectId,
+			"--field-id",
+			status.id,
+			"--single-select-option-id",
+			option.id,
+		]);
+	}
+
 	return {
 		id: "github",
 
@@ -243,6 +325,16 @@ export function createGithubAdapter(
 				);
 			}
 			const externalRef = url.split("/issues/").at(-1) ?? "";
+			if (!externalRef) {
+				throw new Error("gh issue create did not return an issue number.");
+			}
+			// Land the issue on the board in the mapped workflow state (D15);
+			// lanes are the board's own columns and arrive via placeInLane.
+			if (config?.projectNumber) {
+				await ensureInProject(externalRef);
+				const exportedAs = config.statusMap?.exported;
+				if (exportedAs) await setWorkflowStatus(externalRef, exportedAs);
+			}
 			return { externalRef, url };
 		},
 
@@ -259,66 +351,14 @@ export function createGithubAdapter(
 		},
 
 		async placeInLane(externalRef: string, lane: string): Promise<void> {
-			if (!config?.owner || !config.projectNumber) {
-				throw new Error(
-					"GitHub Projects placement needs a configured project (owner + project number). Run the export setup first.",
-				);
-			}
-			const owner = config.owner;
-			const number = String(config.projectNumber);
-			const projectId = await projectIdFor(gh, owner, number);
-			// Attach the issue to the project.
-			const issueView = parseJsonLoose<{ url?: string }>(
-				(await gh(["issue", "view", externalRef, "--json", "url"])).stdout,
-			);
-			const issueUrl = issueView?.url ?? "";
-			if (!issueUrl) {
-				throw new Error(`Could not resolve the issue URL for ${externalRef}.`);
-			}
-			const added = parseJsonLoose<{ id?: string }>(
-				(
-					await gh([
-						"project",
-						"item-add",
-						number,
-						"--owner",
-						owner,
-						"--url",
-						issueUrl,
-						"--format",
-						"json",
-					])
-				).stdout,
-			);
-			const itemId = added?.id ?? "";
-			if (!itemId) {
-				throw new Error(
-					`Could not attach ${externalRef} to project #${number}.`,
-				);
-			}
-			const status = await statusField(gh, owner, number);
-			const option = status?.options?.find((o) => o.name === lane);
-			if (!status?.id || !option?.id) {
-				throw new Error(
-					`Lane "${lane}" not found on the project's Status field. Available options: ${(
-						status?.options ?? []
-					)
-						.map((o) => o.name)
-						.join(", ")}.`,
-				);
-			}
-			await gh([
-				"project",
-				"item-edit",
-				"--id",
-				itemId,
-				"--project-id",
-				projectId,
-				"--field-id",
-				status.id,
-				"--single-select-option-id",
-				option.id,
-			]);
+			// Lanes are the board's workflow columns (Model B): the Status
+			// option IS the lane.
+			await setWorkflowStatus(externalRef, lane);
+		},
+
+		async updateStatus(externalRef: string, state: string): Promise<void> {
+			const mapped = config?.statusMap?.[state] ?? state;
+			await setWorkflowStatus(externalRef, mapped);
 		},
 
 		async previewPlan(plan: ProjectPlan): Promise<string[]> {
@@ -350,6 +390,14 @@ export function createGithubAdapter(
 			const options = new Set((status.options ?? []).map((o) => o.name));
 			for (const lane of plan.lanes) {
 				if (!options.has(lane)) changes.push(`add Status option "${lane}"`);
+			}
+			// statusMap targets (D15): verified against the board's own
+			// options — never created.
+			for (const [state, option] of Object.entries(plan.statusMap ?? {})) {
+				if (!options.has(option))
+					changes.push(
+						`statusMap: option "${option}" (for ${state}) is missing on the board`,
+					);
 			}
 			return changes;
 		},

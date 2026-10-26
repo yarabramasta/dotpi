@@ -20,6 +20,9 @@ export interface JiraSinkConfig {
 	projectKey: string;
 	/** Issue type name for created tasks (default "Task"). */
 	issueTypeName?: string;
+	/** specd item status → the Jira status name to transition to (D15);
+	 * updateStatus maps through it; unmapped states pass through. */
+	statusMap?: Record<string, string>;
 }
 
 /** Minimal markdown → Atlassian Document Format. Line-based: `#` headings,
@@ -216,7 +219,8 @@ export function createJiraAdapter(
 		},
 
 		async updateStatus(externalRef: string, state: string): Promise<void> {
-			return this.placeInLane?.(externalRef, state);
+			const mapped = config?.statusMap?.[state] ?? state;
+			return this.placeInLane?.(externalRef, mapped);
 		},
 
 		async setTags(externalRef: string, tags: string[]): Promise<void> {

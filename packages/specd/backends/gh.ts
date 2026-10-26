@@ -18,8 +18,9 @@ export interface GithubSinkConfig {
 	owner: string;
 	/** Projects v2 project number (from the board URL). */
 	projectNumber: number;
-	/** Lane name on the project's Status field (e.g. "MVP"). */
-	lane?: string;
+	/** specd item status → the board's own Status option (D15). Used by
+	 * updateStatus; unmapped states pass through as the option name. */
+	statusMap?: Record<string, string>;
 }
 
 /** Tolerant JSON parse for gh CLI output lives in ../store/store.js

@@ -18,6 +18,9 @@ import {
 export interface LinearSinkConfig {
 	/** The Linear team whose workflow states and issues this sink uses. */
 	teamId: string;
+	/** specd item status → the sink's workflow state name (D15);
+	 * updateStatus maps through it; unmapped states pass through. */
+	statusMap?: Record<string, string>;
 }
 
 const ENDPOINT = "https://api.linear.app/graphql";
@@ -186,7 +189,8 @@ export function createLinearAdapter(
 		},
 
 		async updateStatus(externalRef: string, state: string): Promise<void> {
-			return this.placeInLane?.(externalRef, state);
+			const mapped = config?.statusMap?.[state] ?? state;
+			return this.placeInLane?.(externalRef, mapped);
 		},
 
 		async setTags(externalRef: string, tags: string[]): Promise<void> {

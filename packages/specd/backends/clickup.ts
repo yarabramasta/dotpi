@@ -22,6 +22,9 @@ export interface ClickUpSinkConfig {
 	spaceId: string;
 	/** The list new tasks land in. */
 	listId: string;
+	/** specd item status → the sink's workflow state name (D15);
+	 * updateStatus maps through it; unmapped states pass through. */
+	statusMap?: Record<string, string>;
 }
 
 const BASE = "https://api.clickup.com/api/v2";
@@ -126,7 +129,8 @@ export function createClickUpAdapter(
 		},
 
 		async updateStatus(externalRef: string, state: string): Promise<void> {
-			return this.placeInLane?.(externalRef, state);
+			const mapped = config?.statusMap?.[state] ?? state;
+			return this.placeInLane?.(externalRef, mapped);
 		},
 
 		async setTags(externalRef: string, tags: string[]): Promise<void> {

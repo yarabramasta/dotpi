@@ -2,13 +2,17 @@ import type { SpecdStore } from "../store/store.js";
 import type { PlanWorkspace, ProjectPlan } from "./contract.js";
 
 /** Canonical lane taxonomy and naming convention — defaults the plan
- * interview offers; a saved plan overrides them. */
+ * interview offers; a saved plan overrides them. Lanes are the sink's
+ * workflow columns (Status options on GitHub, lists on Trello, …) — the
+ * kanban workflow itself. Milestones/sprints are the developer's own
+ * grouping on top (specd does not write them). */
 export const DEFAULT_LANES = [
-	"MVP",
-	"V1",
-	"V2",
-	"after-MVP",
-	"maintenance",
+	"Backlog",
+	"Ready",
+	"In progress",
+	"In review",
+	"Done",
+	"Blocked",
 ] as const;
 export const DEFAULT_NAMING = "specd/{ref} {title}";
 
@@ -56,11 +60,22 @@ export function readProjectPlan(store: SpecdStore): ProjectPlan | undefined {
 		Array.isArray(value)
 			? value.filter((v): v is string => typeof v === "string")
 			: [];
+	// statusMap: specd item status → the board's own workflow option
+	// (D15). Only string→string entries are kept.
+	const statusMap: Record<string, string> = {};
+	if (raw.statusMap && typeof raw.statusMap === "object") {
+		for (const [k, v] of Object.entries(
+			raw.statusMap as Record<string, unknown>,
+		)) {
+			if (typeof v === "string" && v) statusMap[k] = v;
+		}
+	}
 	return {
 		workspace,
 		lanes: strings(raw.lanes),
 		labels: strings(raw.labels),
 		naming: typeof raw.naming === "string" ? raw.naming : "",
+		...(Object.keys(statusMap).length > 0 ? { statusMap } : {}),
 	};
 }
 

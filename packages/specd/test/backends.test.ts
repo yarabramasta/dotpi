@@ -146,7 +146,7 @@ describe("github reference adapter (contract freeze)", () => {
 			fakeRunner([]),
 		);
 		await expect(requirePlaceInLane(sink)("42", "Nope")).rejects.toThrow(
-			/Lane "Nope" not found/,
+			/Status option "Nope" not found/,
 		);
 	});
 
@@ -154,6 +154,46 @@ describe("github reference adapter (contract freeze)", () => {
 		const sink = createGithubAdapter("/repo", undefined, fakeRunner([]));
 		await expect(requirePlaceInLane(sink)("42", "MVP")).rejects.toThrow(
 			/needs a configured project/,
+		);
+	});
+
+	it("lands the issue on the board in the mapped workflow state at export (D15)", async () => {
+		const log: string[][] = [];
+		const sink = createGithubAdapter(
+			"/repo",
+			{ owner: "acme", projectNumber: 7, statusMap: { exported: "MVP" } },
+			fakeRunner(log),
+		);
+		const created = await sink.createTask(TASK);
+		expect(created.externalRef).toBe("42");
+		expect(log.find((a) => a[0] === "project" && a[1] === "item-add")).toBeDefined();
+		const edit = log.find((a) => a[0] === "project" && a[1] === "item-edit");
+		expect(edit?.join(" ")).toContain("OPT_MVP");
+	});
+
+	it("updateStatus maps specd states through the plan statusMap (D15)", async () => {
+		const log: string[][] = [];
+		const sink = createGithubAdapter(
+			"/repo",
+			{
+				owner: "acme",
+				projectNumber: 7,
+				statusMap: { done: "MVP", "in-progress": "Todo" },
+			},
+			fakeRunner(log),
+		);
+		await sink.updateStatus?.("42", "done");
+		expect(
+			log.find((a) => a[0] === "project" && a[1] === "item-edit")?.join(" "),
+		).toContain("OPT_MVP");
+		log.length = 0;
+		await sink.updateStatus?.("42", "in-progress");
+		expect(
+			log.find((a) => a[0] === "project" && a[1] === "item-edit")?.join(" "),
+		).toContain("OPT_TODO");
+		// unmapped state passes through as the option name → absent → plain error
+		await expect(sink.updateStatus?.("42", "blocked")).rejects.toThrow(
+			/Status option "blocked" not found/,
 		);
 	});
 });

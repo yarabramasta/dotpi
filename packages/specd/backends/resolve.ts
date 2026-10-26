@@ -1,6 +1,6 @@
 import type { SpecdStore } from "../store/store.js";
 import { clickupConfigFrom, createClickUpAdapter } from "./clickup.js";
-import { readSinkConfig } from "./config.js";
+import { readProjectPlan, readSinkConfig } from "./config.js";
 import type { SinkAdapter } from "./contract.js";
 import { createGithubAdapter } from "./github.js";
 import { createJiraAdapter, jiraConfigFrom } from "./jira.js";
@@ -27,28 +27,53 @@ export function tryResolveAdapter(
 			return createGithubAdapter(store.cwd, {
 				owner: String(config.owner),
 				projectNumber: Number(config.projectNumber),
-				lane: typeof config.lane === "string" ? config.lane : undefined,
+				statusMap: readProjectPlan(store)?.statusMap,
 			});
 		}
 		case "linear": {
 			const config = linearConfigFrom(store);
-			return config ? createLinearAdapter(config) : undefined;
+			return config
+				? createLinearAdapter({
+						...config,
+						statusMap: readProjectPlan(store)?.statusMap,
+					})
+				: undefined;
 		}
 		case "jira": {
 			const config = jiraConfigFrom(store);
-			return config ? createJiraAdapter(config) : undefined;
+			return config
+				? createJiraAdapter({
+						...config,
+						statusMap: readProjectPlan(store)?.statusMap,
+					})
+				: undefined;
 		}
 		case "notion": {
 			const config = notionConfigFrom(store);
-			return config ? createNotionAdapter(config) : undefined;
+			return config
+				? createNotionAdapter({
+						...config,
+						statusMap: readProjectPlan(store)?.statusMap,
+					})
+				: undefined;
 		}
 		case "trello": {
 			const config = trelloConfigFrom(store);
-			return config ? createTrelloAdapter(config) : undefined;
+			return config
+				? createTrelloAdapter({
+						...config,
+						statusMap: readProjectPlan(store)?.statusMap,
+					})
+				: undefined;
 		}
 		case "clickup": {
 			const config = clickupConfigFrom(store);
-			return config ? createClickUpAdapter(config) : undefined;
+			return config
+				? createClickUpAdapter({
+						...config,
+						statusMap: readProjectPlan(store)?.statusMap,
+					})
+				: undefined;
 		}
 		default:
 			return undefined;
