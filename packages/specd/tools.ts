@@ -26,6 +26,7 @@ import {
 	checklistState,
 } from "./pipeline/gates.js";
 import { childItems } from "./store/store.js";
+import { insightLine, queryItems, renderInsight } from "./query.js";
 import { planWaves } from "./pipeline/schedule.js";
 import {
 	EVENT_TYPES,
@@ -486,6 +487,70 @@ export function registerSpecdTools(pi: ExtensionAPI): void {
 				`Reverted batch ${report.batch}: removed ${report.itemsRemoved.length} item(s) and ${report.linksRemoved} link(s). Pre-import projection restored.`,
 				{ ...report },
 			);
+		},
+	});
+
+	pi.registerTool({
+		name: "specd_query",
+		label: "Query specd items",
+		description:
+			"Query specd items with filters and get short insight: filter by kind/status/text, scope to items linked to an item, and render one-line digests (state, last event, links). For full histories use specd_show; for store-wide state use specd_dashboard.",
+		promptSnippet: "Query and summarize items",
+		parameters: Type.Object({
+			kind: Type.Optional(
+				Type.String({ description: "Filter by item kind (e.g. task, spec)." }),
+			),
+			status: Type.Optional(
+				Type.String({ description: "Filter by projected status (e.g. exported, done)." }),
+			),
+			q: Type.Optional(
+				Type.String({
+					description: "Case-insensitive substring search over titles and bodies.",
+				}),
+			),
+			of: Type.Optional(
+				Type.String({
+					description:
+						"Item id — restrict to items linked to/from it (part-of family, direction annotated by the digest).",
+				}),
+			),
+			insight: Type.Optional(
+				Type.Boolean({
+					description:
+						"true renders one-line digests per match (state, last event, links) and, for exactly one match, a fuller summary.",
+				}),
+			),
+			limit: Type.Optional(
+				Type.Number({ description: "Max matches returned. Defaults to 20." }),
+			),
+		}),
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const store = await openSpecd(ctx);
+			const rows = queryItems(store, {
+				kind: params.kind,
+				status: params.status,
+				q: params.q,
+				of: params.of,
+				limit: params.limit,
+			});
+			if (rows.length === 0) {
+				return text("No items match the query.", { matches: [] });
+			}
+			if (params.insight) {
+				const lines = rows.map((r) => insightLine(store, r.id)).join("\n");
+				const deep =
+					rows.length === 1
+						? `\n\n${renderInsight(store, rows[0].id)}`
+						: "";
+				return text(lines + deep);
+			}
+			const table = rows
+				.map(
+					(r) =>
+						`- **${r.id}** (${r.kind}, ${r.status}) ${r.title}`,
+				)
+				.join("\n");
+			return text(`${rows.length} match(es):\n${table}`);
 		},
 	});
 
