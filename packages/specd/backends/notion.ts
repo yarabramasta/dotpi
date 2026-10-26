@@ -173,7 +173,7 @@ export function createNotionAdapter(
 		async createTask(task: TaskExport): Promise<TaskCreated> {
 			if (!config?.databaseId) {
 				throw new Error(
-					"Notion sink needs a database id — set it in the project plan (/spec plan).",
+					"Notion sink needs a database id — set it in the project plan (/spec sink).",
 				);
 			}
 			const s = await schema();
@@ -232,7 +232,7 @@ export function createNotionAdapter(
 			const props = findProps(s);
 			if (!props.status) {
 				throw new Error(
-					`Database ${config?.databaseId} has no status property — apply the project plan (/spec plan) first.`,
+					`Database ${config?.databaseId} has no status property — apply the project plan (/spec sink) first.`,
 				);
 			}
 			await call("PATCH", `/pages/${externalRef}`, {
@@ -250,7 +250,7 @@ export function createNotionAdapter(
 			const props = findProps(s);
 			if (!props.tags) {
 				throw new Error(
-					`Database ${config?.databaseId} has no multi-select property for tags — apply the project plan (/spec plan) first.`,
+					`Database ${config?.databaseId} has no multi-select property for tags — apply the project plan (/spec sink) first.`,
 				);
 			}
 			await call("PATCH", `/pages/${externalRef}`, {

@@ -158,7 +158,7 @@ export function createJiraAdapter(
 		async createTask(task: TaskExport): Promise<TaskCreated> {
 			if (!config?.projectKey) {
 				throw new Error(
-					"Jira sink needs a project key — set it in the project plan (/spec plan).",
+					"Jira sink needs a project key — set it in the project plan (/spec sink).",
 				);
 			}
 			const created = await call<{ key?: string }>("POST", "/issue", {

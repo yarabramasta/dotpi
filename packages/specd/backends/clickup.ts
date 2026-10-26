@@ -94,7 +94,7 @@ export function createClickUpAdapter(
 		async createTask(task: TaskExport): Promise<TaskCreated> {
 			if (!config?.listId || !config?.teamId) {
 				throw new Error(
-					"ClickUp sink needs workspace ids (team, space, list) — set them in the project plan (/spec plan).",
+					"ClickUp sink needs workspace ids (team, space, list) — set them in the project plan (/spec sink).",
 				);
 			}
 			const created = await call<{

@@ -71,7 +71,7 @@ export function createLinearAdapter(
 		);
 		if (!state) {
 			throw new Error(
-				`Linear workflow state "${lane}" not found on team ${config?.teamId}. Apply the project plan (/spec plan) first.`,
+				`Linear workflow state "${lane}" not found on team ${config?.teamId}. Apply the project plan (/spec sink) first.`,
 			);
 		}
 		return state.id;
@@ -141,7 +141,7 @@ export function createLinearAdapter(
 		async createTask(task: TaskExport): Promise<TaskCreated> {
 			if (!config?.teamId) {
 				throw new Error(
-					"Linear sink needs a team id — set it in the project plan (/spec plan).",
+					"Linear sink needs a team id — set it in the project plan (/spec sink).",
 				);
 			}
 			const labelIds = await ensureLabelIds(task.labels);

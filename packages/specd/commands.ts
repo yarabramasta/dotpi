@@ -32,7 +32,7 @@ Spec-driven development for this repo. Knowledge lives in .spec/store.db (SQLite
 - /spec pause — write the resume capsule for in-progress work
 - /spec review <checklist-id> — reviewer pass over a requirements checklist
 - /spec analyze [cycle-or-spec-id] — cross-artifact consistency review
-- /spec plan — manage the project plan (preview then apply)
+- /spec sink — configure the sink: workspace coords, lanes, statusMap (preview then apply)
 - /spec storage [mode [path]] — show or set the storage mode (db-only | md-inrepo | md-external <path>); specd_promote writes md mirrors per mode
 - /spec connect <sink> — guided onboarding for a sink (github, linear, jira, notion, trello, clickup)
 - /spec doctor — store integrity audit + sink readiness matrix
@@ -96,7 +96,7 @@ const CONVERGE_PROMPT = (
 4. Record the assessment: specd_append_event(item=${scope}, type=convergence.assessed, payload={done: true|false, gaps: [...]}).
 5. Report "converged" only when every gap is closed (all tasks done, no uncovered requirements). Otherwise loop: run the new tasks (/spec run), then converge again.`;
 
-const PLAN_PROMPT = `Manage the project plan (workspace, lanes, labels, naming) for the configured sink:
+const PLAN_PROMPT = `Configure the sink (workspace coords, lanes, labels, naming, statusMap):
 
 1. Ask me which sink to plan for (null = native; github, linear, jira, notion, trello, clickup). If null, there is nothing to plan — the null sink has no external board.
 2. Workspace coords per sink: github — owner + project number; linear — team id; jira — project key (and issue type name if not "Task"); notion — database id; trello — board id (and optionally a default list id); clickup — team id, space id, list id. Ask me (ask-user-question) for the coords plus lanes, label taxonomy, and naming convention. Offer the defaults if I don't override. Also set the statusMap: ask which board option each specd state maps to (exported / in-progress / done → e.g. Ready / In progress / Done) and pass statusMap={…} to specd_apply_plan — updateStatus writes exactly the mapped option. Pass the coords via specd_apply_plan(sink=…, workspace={…}) for non-github sinks.
@@ -222,7 +222,7 @@ export function registerCommands(pi: ExtensionAPI): void {
 				pi.sendUserMessage(ANALYZE_PROMPT(rest));
 				return;
 			}
-			if (sub === "plan") {
+			if (sub === "sink") {
 				pi.sendUserMessage(PLAN_PROMPT);
 				return;
 			}

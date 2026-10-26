@@ -78,7 +78,7 @@ export function createTrelloAdapter(
 		const list = lists.find((l) => l.name.toLowerCase() === lane.toLowerCase());
 		if (!list) {
 			throw new Error(
-				`Trello list "${lane}" not found on board ${config?.boardId}. Apply the project plan (/spec plan) first.`,
+				`Trello list "${lane}" not found on board ${config?.boardId}. Apply the project plan (/spec sink) first.`,
 			);
 		}
 		return list.id;
@@ -147,7 +147,7 @@ export function createTrelloAdapter(
 		async createTask(task: TaskExport): Promise<TaskCreated> {
 			if (!config?.boardId) {
 				throw new Error(
-					"Trello sink needs a board id — set it in the project plan (/spec plan).",
+					"Trello sink needs a board id — set it in the project plan (/spec sink).",
 				);
 			}
 			let idList = config.listId;
@@ -156,7 +156,7 @@ export function createTrelloAdapter(
 				idList = lists[0]?.id;
 				if (!idList) {
 					throw new Error(
-						`Board ${config.boardId} has no lists yet — apply the project plan (/spec plan) to create the lane lists.`,
+						`Board ${config.boardId} has no lists yet — apply the project plan (/spec sink) to create the lane lists.`,
 					);
 				}
 			}

@@ -154,7 +154,7 @@ export async function probeSink(
 			return {
 				ok: false,
 				detail:
-					"gh authenticated check skipped — project owner/number not stored yet (/spec plan or first export sets them).",
+					"gh authenticated check skipped — project owner/number not stored yet (/spec sink or first export sets them).",
 			};
 		}
 		const adapter = createGithubAdapter(
@@ -181,7 +181,7 @@ export async function probeSink(
 	// matrix must not claim "configured" for a sink we have never probed.
 	return {
 		ok: false,
-		detail: `credential present; workspace ids not stored yet — run /spec plan to set them, then this row probes the live ${ONBOARDING[id]?.name ?? id} API.`,
+		detail: `credential present; workspace ids not stored yet — run /spec sink to set them, then this row probes the live ${ONBOARDING[id]?.name ?? id} API.`,
 	};
 }
 

@@ -104,6 +104,6 @@ export function resolveAdapter(store: SpecdStore, sink: string): SinkAdapter {
 		);
 	}
 	throw new Error(
-		`Sink "${sink}" is not configured yet. Its workspace ids (team/board/database/list) live in the project plan — run /spec plan, or /spec connect ${sink} for guided setup.`,
+		`Sink "${sink}" is not configured yet. Its workspace ids (team/board/database/list) live in the project plan — run /spec sink, or /spec connect ${sink} for guided setup.`,
 	);
 }
