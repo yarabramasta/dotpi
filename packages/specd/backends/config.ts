@@ -14,7 +14,7 @@ export const DEFAULT_LANES = [
 	"Done",
 	"Blocked",
 ] as const;
-export const DEFAULT_NAMING = "specd/{ref} {title}";
+export const DEFAULT_NAMING = "{type}({scope}): {title}";
 
 /** Sink targeting config lives in the store's meta table — non-secret ids
  * only (owner, project number, lane). Credentials stay in the dev's shell. */

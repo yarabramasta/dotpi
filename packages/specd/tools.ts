@@ -15,6 +15,7 @@ import {
 import type { PlanWorkspace, TaskExport } from "./backends/contract.js";
 import { resolveAdapter } from "./backends/resolve.js";
 import { syncExportedTasks } from "./backends/sync.js";
+import { branchName, ccTitle, ccTypeOf, scopeOf } from "./naming.js";
 import { renderDashboard } from "./dashboard.js";
 import { checkConsistency, formatFindings } from "./pipeline/consistency.js";
 import {
@@ -148,7 +149,11 @@ export function buildTaskExport(store: SpecdStore, task: ItemRow): TaskExport {
 		for (const l of plan.labels) if (!labels.includes(l)) labels.push(l);
 	}
 	const naming = plan?.naming || DEFAULT_NAMING;
-	const title = naming.replace("{ref}", task.id).replace("{title}", task.title);
+	const title = naming
+		.replace("{type}", ccTypeOf(store, task.id))
+		.replace("{scope}", scopeOf(task.path_scope) || task.id)
+		.replace("{ref}", task.id)
+		.replace("{title}", task.title);
 	return { ref: task.id, title, body, labels };
 }
 
@@ -707,8 +712,7 @@ export function registerSpecdTools(pi: ExtensionAPI): void {
 			const store = await openSpecd(ctx);
 			const task = getItem(store, params.item);
 			if (!task) return text(`Unknown item: ${params.item}.`);
-			const slug = slugify(task.title);
-			const branch = `specd/${task.id}-${slug}`.slice(0, 96);
+			const branch = branchName(task, ccTypeOf(store, task.id)).slice(0, 96);
 			const parent = path.dirname(ctx.cwd);
 			const leaf = path.basename(ctx.cwd);
 			const worktreePath = path.join(
