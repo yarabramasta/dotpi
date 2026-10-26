@@ -25,6 +25,7 @@ import {
 	assertSpecCreationAllowed,
 	checklistState,
 } from "./pipeline/gates.js";
+import { childItems } from "./store/store.js";
 import { planWaves } from "./pipeline/schedule.js";
 import {
 	EVENT_TYPES,
@@ -392,8 +393,11 @@ export function registerSpecdTools(pi: ExtensionAPI): void {
 			if (params.spec) {
 				const spec = getItem(store, params.spec);
 				if (!spec) return text(`Unknown item: ${params.spec}.`);
+				// Directional: tasks point at their spec (task part-of
+				// spec) — a bidirectional read would match whatever the
+				// spec links OUT to as well (plans, constitutions).
 				const ids = new Set(
-					linkedItems(store, params.spec, "part-of").map((i) => i.id),
+					childItems(store, params.spec, "part-of").map((i) => i.id),
 				);
 				tasks = tasks.filter((t) => ids.has(t.id));
 			}
@@ -481,6 +485,37 @@ export function registerSpecdTools(pi: ExtensionAPI): void {
 			return text(
 				`Reverted batch ${report.batch}: removed ${report.itemsRemoved.length} item(s) and ${report.linksRemoved} link(s). Pre-import projection restored.`,
 				{ ...report },
+			);
+		},
+	});
+
+	pi.registerTool({
+		name: "specd_remove_link",
+		label: "Remove a specd link",
+		description:
+			"Remove one typed relation between two items (e.g. to exercise a consistency negative probe, or correct a mistyped link). Destructive but surgical: only this edge is deleted; items and events are untouched. Note: links are not event-sourced — the removal is not recorded in any item's history.",
+		promptSnippet: "Remove a link between items",
+		parameters: Type.Object({
+			from: Type.String({ description: "Source item id." }),
+			to: Type.String({ description: "Target item id." }),
+			kind: Type.String({
+				description: `Relation kind (${LINK_KINDS.join("|")}).`,
+			}),
+		}),
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const store = await openSpecd(ctx);
+			const result = store.db
+				.prepare(
+					"DELETE FROM links WHERE from_item = ? AND to_item = ? AND kind = ?",
+				)
+				.run(params.from, params.to, params.kind);
+			if (result.changes === 0) {
+				return text(
+					`No ${params.kind} link from ${params.from} to ${params.to} — nothing removed.`,
+				);
+			}
+			return text(
+				`Removed ${params.kind} link ${params.from} → ${params.to}.`,
 			);
 		},
 	});
