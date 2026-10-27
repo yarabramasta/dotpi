@@ -704,7 +704,7 @@ export function registerSpecdTools(pi: ExtensionAPI): void {
 			workspace: Type.Optional(
 				Type.Record(Type.String(), Type.Unknown(), {
 					description:
-						"Non-github sinks: workspace coords — linear {teamId}; jira {projectKey, issueTypeName?}; notion {databaseId}; trello {boardId, listId?}; clickup {teamId, spaceId, listId}. Persisted and reused.",
+						"Non-github sinks: workspace coords — linear {teamId, projectId?}; jira {projectKey, issueTypeName?}; notion {databaseId}; trello {boardId, listId?}; clickup {teamId, spaceId, listId}. Persisted and reused.",
 				}),
 			),
 			lanes: Type.Optional(

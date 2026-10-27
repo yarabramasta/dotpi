@@ -21,6 +21,8 @@ export interface LinearSinkConfig {
 	/** specd item status → the sink's workflow state name (D15);
 	 * updateStatus maps through it; unmapped states pass through. */
 	statusMap?: Record<string, string>;
+	/** Optional: the Linear project to assign created issues to. */
+	projectId?: string;
 }
 
 const ENDPOINT = "https://api.linear.app/graphql";
@@ -158,6 +160,7 @@ export function createLinearAdapter(
 						title: task.title,
 						description: task.body,
 						...(labelIds.length > 0 ? { labelIds } : {}),
+						...(config.projectId ? { projectId: config.projectId } : {}),
 					},
 				},
 			);
@@ -252,7 +255,7 @@ export function createLinearAdapter(
 					await gql(
 						`mutation($input: WorkflowStateCreateInput!) { workflowStateCreate(input: $input) { success } }`,
 						{
-							input: { name: lane, teamId: config?.teamId, type: "unstarted" },
+							input: { name: lane, teamId: config?.teamId, type: "unstarted", color: "#5e6ad2" },
 						},
 					);
 					changes.push(`created workflow state "${lane}"`);
@@ -269,5 +272,8 @@ export function linearConfigFrom(
 ): LinearSinkConfig | undefined {
 	const raw = readSinkConfig(store, "sink.linear");
 	if (!raw?.teamId) return undefined;
-	return { teamId: String(raw.teamId) };
+	return {
+		teamId: String(raw.teamId),
+		projectId: typeof raw.projectId === "string" ? raw.projectId : undefined,
+	};
 }
