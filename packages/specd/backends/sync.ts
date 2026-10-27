@@ -56,32 +56,32 @@ export async function syncExportedTasks(store: SpecdStore): Promise<number> {
 
 
 /** Push-side status flow: when a task's status changes in the store,
- * push the mapped workflow option to the sink (D15). Best-effort —
- * an unreachable sink must never break the calling flow. Returns a
- * short description of what was pushed, or undefined if skipped. */
+ * push the mapped workflow option to the sink (D15). Throws on sink
+ * failure — the caller wraps it best-effort and surfaces the error.
+ * Returns undefined when there is nothing to push: the task has no
+ * sink export, or exported to the store-native null sink. Must be
+ * called AFTER the status-changing event is appended: it reads the
+ * item's new status. */
 export async function pushStatusToSink(
 	store: SpecdStore,
 	itemId: string,
 ): Promise<string | undefined> {
-	try {
-		const item = getItem(store, itemId);
-		if (!item) return undefined;
-		const exported = history(store, itemId).find(
-			(e) => e.type === "task.exported",
-		);
-		if (!exported) return undefined;
-		const payload = parseJsonLoose<{
-			sink?: string;
-			externalRef?: string;
-		}>(exported.payload);
-		if (!payload?.sink || !payload.externalRef) return undefined;
-		const adapter = tryResolveAdapter(store, payload.sink);
-		if (!adapter?.updateStatus) return undefined;
-		const statusMap = readSinkSetup(store)?.statusMap;
-		const mapped = statusMap?.[item.status] ?? item.status;
-		await adapter.updateStatus(payload.externalRef, mapped);
-		return `${payload.sink}: ${item.status} → ${mapped}`;
-	} catch {
-		return undefined;
-	}
+	const item = getItem(store, itemId);
+	if (!item) throw new Error(`unknown item ${itemId}`);
+	const exported = history(store, itemId).find(
+		(e) => e.type === "task.exported",
+	);
+	if (!exported) return undefined; // not exported to any sink — nothing to push
+	const payload = parseJsonLoose<{
+		sink?: string;
+		externalRef?: string;
+	}>(exported.payload);
+	if (!payload?.sink || payload.sink === "null") return undefined;
+	if (!payload.externalRef) return undefined; // malformed export record — skip
+	const adapter = tryResolveAdapter(store, payload.sink);
+	if (!adapter?.updateStatus) return undefined; // misconfig — skip, contract-optional
+	const statusMap = readSinkSetup(store)?.statusMap;
+	const mapped = statusMap?.[item.status] ?? item.status;
+	await adapter.updateStatus(payload.externalRef, mapped);
+	return `${payload.sink}: ${item.status} → ${mapped}`;
 }

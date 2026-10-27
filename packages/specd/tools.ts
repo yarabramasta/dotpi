@@ -271,18 +271,6 @@ export function registerSpecdTools(pi: ExtensionAPI): void {
 				// with passed=true) — failing review blocks completion.
 				assertCanCompleteWork(store, params.item);
 			}
-			// Push-side status flow (D15): after a status-changing event,
-			// push the mapped workflow option to the sink. Best-effort —
-			// sink failure doesn't block the store event.
-			let sinkPush: string | undefined;
-			if (type === "work.started" || type === "work.completed") {
-				try {
-					const { pushStatusToSink } = await import("./backends/sync.js");
-					sinkPush = await pushStatusToSink(store, params.item);
-				} catch {
-					// best-effort
-				}
-			}
 			const event = appendEvent(store, {
 				item: params.item,
 				type,
@@ -290,9 +278,23 @@ export function registerSpecdTools(pi: ExtensionAPI): void {
 				actor: "agent",
 				batch: params.batch,
 			});
+			// Push-side status flow (D15): after a status-changing event,
+			// push the mapped workflow option to the sink. Must run AFTER
+			// appendEvent — pushStatusToSink reads the item's new status.
+			// Best-effort — sink failure doesn't block the store event, but
+			// it is surfaced so pushes can't fail silently.
+			let sinkPush: string | undefined;
+			if (type === "work.started" || type === "work.completed") {
+				try {
+					const { pushStatusToSink } = await import("./backends/sync.js");
+					sinkPush = await pushStatusToSink(store, params.item);
+				} catch (e) {
+					sinkPush = `push failed: ${e instanceof Error ? e.message : String(e)}`;
+				}
+			}
 			const item = getItem(store, params.item);
 			return text(
-				`Appended ${event.type} to ${event.item}. Current state: ${item?.status ?? "?"}.`,
+				`Appended ${event.type} to ${event.item}. Current state: ${item?.status ?? "?"}.${sinkPush ? ` Sink: ${sinkPush}.` : ""}`,
 			);
 		},
 	});
@@ -695,7 +697,7 @@ export function registerSpecdTools(pi: ExtensionAPI): void {
 		parameters: Type.Object({
 			sink: Type.String({
 				description:
-					'Sink id ("null", "github", "linear", "jira", "notion", "trello", or "clickup").',
+					'Sink id ("null" or "github").',
 			}),
 			apply: Type.Optional(
 				Type.Boolean({
@@ -716,7 +718,7 @@ export function registerSpecdTools(pi: ExtensionAPI): void {
 			workspace: Type.Optional(
 				Type.Record(Type.String(), Type.Unknown(), {
 					description:
-						"Non-github sinks: workspace coords — linear {teamId, projectId?}; jira {projectKey, issueTypeName?}; notion {databaseId}; trello {boardId, listId?}; clickup {teamId, spaceId, listId}. Persisted and reused.",
+						"Non-github sinks: workspace coords — null needs no coords. Persisted and reused.",
 				}),
 			),
 			lanes: Type.Optional(

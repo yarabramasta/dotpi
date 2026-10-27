@@ -1,13 +1,8 @@
 import type { SpecdStore } from "../store/store.js";
-import { clickupConfigFrom, createClickUpAdapter } from "./clickup.js";
 import { readSinkSetup, readSinkConfig } from "./config.js";
 import type { SinkAdapter } from "./contract.js";
 import { createGithubAdapter } from "./github.js";
-import { createJiraAdapter, jiraConfigFrom } from "./jira.js";
-import { createLinearAdapter, linearConfigFrom } from "./linear.js";
-import { createNotionAdapter, notionConfigFrom } from "./notion.js";
 import { createNullSink } from "./null.js";
-import { createTrelloAdapter, trelloConfigFrom } from "./trello.js";
 
 /** Adapter resolution: the single place that maps a vendor-neutral sink id
  * to its adapter, using the stored per-sink config (meta `sink.<id>`) and
@@ -30,52 +25,7 @@ export function tryResolveAdapter(
 				statusMap: readSinkSetup(store)?.statusMap,
 			});
 		}
-		case "linear": {
-			const config = linearConfigFrom(store);
-			return config
-				? createLinearAdapter({
-						...config,
-						statusMap: readSinkSetup(store)?.statusMap,
-					})
-				: undefined;
-		}
-		case "jira": {
-			const config = jiraConfigFrom(store);
-			return config
-				? createJiraAdapter({
-						...config,
-						statusMap: readSinkSetup(store)?.statusMap,
-					})
-				: undefined;
-		}
-		case "notion": {
-			const config = notionConfigFrom(store);
-			return config
-				? createNotionAdapter({
-						...config,
-						statusMap: readSinkSetup(store)?.statusMap,
-					})
-				: undefined;
-		}
-		case "trello": {
-			const config = trelloConfigFrom(store);
-			return config
-				? createTrelloAdapter({
-						...config,
-						statusMap: readSinkSetup(store)?.statusMap,
-					})
-				: undefined;
-		}
-		case "clickup": {
-			const config = clickupConfigFrom(store);
-			return config
-				? createClickUpAdapter({
-						...config,
-						statusMap: readSinkSetup(store)?.statusMap,
-					})
-				: undefined;
-		}
-		default:
+							default:
 			return undefined;
 	}
 }
@@ -92,12 +42,7 @@ export function resolveAdapter(store: SpecdStore, sink: string): SinkAdapter {
 	const known = [
 		"null",
 		"github",
-		"linear",
-		"jira",
-		"notion",
-		"trello",
-		"clickup",
-	];
+											];
 	if (!known.includes(sink)) {
 		throw new Error(
 			`Unknown sink: ${sink}. Ported sinks: ${known.join(", ")}. Guided setup: /spec connect <sink>.`,
