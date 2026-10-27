@@ -1,6 +1,7 @@
 import {
 	existsSync,
 	mkdirSync,
+	readdirSync,
 	readFileSync,
 	rmSync,
 	writeFileSync,
@@ -137,7 +138,9 @@ export function promoteItem(store: SpecdStore, itemId: string): string {
 	return path;
 }
 
-/** Remove an item's md mirror and its promotion record. Returns true if a
+/** Remove an item's md mirror and its promotion record. If the parent
+ * directory is left empty, remove it too so specd does not leave
+ * `docs/specd/` or external target directories behind. Returns true if a
  * file was removed. */
 export function demoteItem(store: SpecdStore, itemId: string): boolean {
 	const row = store.db
@@ -145,6 +148,10 @@ export function demoteItem(store: SpecdStore, itemId: string): boolean {
 		.get(itemId) as { path: string } | undefined;
 	if (!row) return false;
 	if (existsSync(row.path)) rmSync(row.path);
+	const dir = dirname(row.path);
+	if (existsSync(dir) && readdirSync(dir).length === 0) {
+		rmSync(dir, { recursive: true });
+	}
 	store.db.prepare("DELETE FROM promotions WHERE item_id = ?").run(itemId);
 	return true;
 }

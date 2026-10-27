@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { runDoctor } from "../store/doctor.js";
 import {
@@ -51,9 +51,10 @@ describe("storage modes", () => {
 		expect(promoteItem(store, itemId)).toBe(path);
 		// doctor is clean right after promotion
 		expect(mdDriftFindings(store)).toEqual([]);
-		// demote removes file + record
+		// demote removes file + record (and the now-empty parent dir)
 		expect(demoteItem(store, itemId)).toBe(true);
 		expect(existsSync(path)).toBe(false);
+		expect(existsSync(dirname(path))).toBe(false);
 		expect(demoteItem(store, itemId)).toBe(false);
 	});
 

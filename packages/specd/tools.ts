@@ -7,16 +7,16 @@ import { Type } from "typebox";
 import {
 	DEFAULT_LANES,
 	DEFAULT_NAMING,
-	readSinkSetup,
 	readSinkConfig,
-	saveSinkSetup,
+	readSinkSetup,
 	saveSinkConfig,
+	saveSinkSetup,
 } from "./backends/config.js";
 import type { PlanWorkspace, TaskExport } from "./backends/contract.js";
 import { resolveAdapter } from "./backends/resolve.js";
 import { syncExportedTasks } from "./backends/sync.js";
-import { branchName, ccTitle, ccTypeOf, scopeOf } from "./naming.js";
 import { renderDashboard } from "./dashboard.js";
+import { branchName, ccTypeOf, scopeOf } from "./naming.js";
 import { checkConsistency, formatFindings } from "./pipeline/consistency.js";
 import {
 	assertCanCompleteWork,
@@ -25,9 +25,8 @@ import {
 	assertSpecCreationAllowed,
 	checklistState,
 } from "./pipeline/gates.js";
-import { childItems } from "./store/store.js";
-import { insightLine, queryItems, renderInsight } from "./query.js";
 import { planWaves } from "./pipeline/schedule.js";
+import { insightLine, queryItems, renderInsight } from "./query.js";
 import {
 	EVENT_TYPES,
 	type EventType,
@@ -40,6 +39,7 @@ import { demoteItem, promoteItem } from "./store/storage.js";
 import {
 	addLink,
 	appendEvent,
+	childItems,
 	counts,
 	createItem,
 	getItem,
@@ -136,9 +136,12 @@ export async function dashboardContent(store: SpecdStore): Promise<string> {
 }
 
 export function buildTaskExport(store: SpecdStore, task: ItemRow): TaskExport {
-	const specs = linkedItems(store, task.id, "part-of").filter(
-		(i) => i.kind === "spec",
-	);
+	// Sort by id so spec selection is deterministic even when SQLite
+	// returns rows in an undefined order or a task is linked to more
+	// than one spec.
+	const specs = linkedItems(store, task.id, "part-of")
+		.filter((i) => i.kind === "spec")
+		.sort((a, b) => a.id.localeCompare(b.id));
 	const spec = specs[0];
 	const specSection = spec
 		? `## Spec reference\n\n${spec.id} — ${spec.title}\n\n${spec.body.slice(0, 1500)}${spec.body.length > 1500 ? "\n…" : ""}`
@@ -515,11 +518,14 @@ export function registerSpecdTools(pi: ExtensionAPI): void {
 				Type.String({ description: "Filter by item kind (e.g. task, spec)." }),
 			),
 			status: Type.Optional(
-				Type.String({ description: "Filter by projected status (e.g. exported, done)." }),
+				Type.String({
+					description: "Filter by projected status (e.g. exported, done).",
+				}),
 			),
 			q: Type.Optional(
 				Type.String({
-					description: "Case-insensitive substring search over titles and bodies.",
+					description:
+						"Case-insensitive substring search over titles and bodies.",
 				}),
 			),
 			of: Type.Optional(
@@ -553,16 +559,11 @@ export function registerSpecdTools(pi: ExtensionAPI): void {
 			if (params.insight) {
 				const lines = rows.map((r) => insightLine(store, r.id)).join("\n");
 				const deep =
-					rows.length === 1
-						? `\n\n${renderInsight(store, rows[0].id)}`
-						: "";
+					rows.length === 1 ? `\n\n${renderInsight(store, rows[0].id)}` : "";
 				return text(lines + deep);
 			}
 			const table = rows
-				.map(
-					(r) =>
-						`- **${r.id}** (${r.kind}, ${r.status}) ${r.title}`,
-				)
+				.map((r) => `- **${r.id}** (${r.kind}, ${r.status}) ${r.title}`)
 				.join("\n");
 			return text(`${rows.length} match(es):\n${table}`);
 		},
@@ -593,9 +594,7 @@ export function registerSpecdTools(pi: ExtensionAPI): void {
 					`No ${params.kind} link from ${params.from} to ${params.to} — nothing removed.`,
 				);
 			}
-			return text(
-				`Removed ${params.kind} link ${params.from} → ${params.to}.`,
-			);
+			return text(`Removed ${params.kind} link ${params.from} → ${params.to}.`);
 		},
 	});
 
@@ -696,8 +695,7 @@ export function registerSpecdTools(pi: ExtensionAPI): void {
 		promptSnippet: "Preview/apply the sink setup",
 		parameters: Type.Object({
 			sink: Type.String({
-				description:
-					'Sink id ("null" or "github").',
+				description: 'Sink id ("null" or "github").',
 			}),
 			apply: Type.Optional(
 				Type.Boolean({
@@ -740,7 +738,7 @@ export function registerSpecdTools(pi: ExtensionAPI): void {
 			statusMap: Type.Optional(
 				Type.Record(Type.String(), Type.String(), {
 					description:
-						"specd item status → the board's own workflow option (D15), e.g. { exported: \"Ready\", \"in-progress\": \"In progress\", done: \"Done\" }. updateStatus writes exactly the mapped option.",
+						'specd item status → the board\'s own workflow option (D15), e.g. { exported: "Ready", "in-progress": "In progress", done: "Done" }. updateStatus writes exactly the mapped option.',
 				}),
 			),
 		}),
