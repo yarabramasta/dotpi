@@ -63,7 +63,7 @@ export function createLinearAdapter(
 		const data = await gql<{
 			workflowStates?: { nodes?: Array<{ id: string; name: string }> };
 		}>(
-			"query($team: String!) { workflowStates(filter: { team: { id: { eq: $team } } }) { nodes { id name } } }",
+			"query($team: ID!) { workflowStates(filter: { team: { id: { eq: $team } } }) { nodes { id name } } }",
 			{ team: config?.teamId ?? "" },
 		);
 		const state = data?.workflowStates?.nodes?.find(
@@ -212,7 +212,7 @@ export function createLinearAdapter(
 					"query { issueLabels(first: 250) { nodes { name } } }",
 				),
 				gql<{ workflowStates?: { nodes?: Array<{ name: string }> } }>(
-					"query($team: String!) { workflowStates(filter: { team: { id: { eq: $team } } }) { nodes { name } } }",
+					"query($team: ID!) { workflowStates(filter: { team: { id: { eq: $team } } }) { nodes { name } } }",
 					{ team: config.teamId },
 				),
 			]);
