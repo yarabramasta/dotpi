@@ -56,13 +56,13 @@ describe("grill→specd import", () => {
 	it("maps each grill type to the correct specd kind", () => {
 		const cases = [
 			{ type: "plan", expected: "plan" },
-			{ type: "decision", expected: "knowledge" },
-			{ type: "research", expected: "knowledge" },
-			{ type: "spike", expected: "knowledge" },
-			{ type: "validation", expected: "knowledge" },
-			{ type: "concept", expected: "knowledge" },
-			{ type: "content", expected: "knowledge" },
-			{ type: "requirement", expected: "knowledge" },
+			{ type: "decision", expected: "application" },
+			{ type: "research", expected: "application" },
+			{ type: "spike", expected: "application" },
+			{ type: "validation", expected: "application" },
+			{ type: "concept", expected: "domain" },
+			{ type: "content", expected: "product" },
+			{ type: "requirement", expected: "domain" },
 		];
 		for (const c of cases) {
 			const mapped = mapAtom({
@@ -342,7 +342,7 @@ describe("import batch revert", () => {
 	it("refuses when a batch item carries post-import work", () => {
 		importTwoAtoms();
 		appendEvent(store.store, {
-			item: "knowledge-0001",
+			item: "domain-0001",
 			type: "body.updated",
 			payload: { body: "edited after import" },
 			actor: "test",
@@ -360,7 +360,7 @@ describe("import batch revert", () => {
 			body: "",
 			actor: "test",
 		});
-		addLink(store.store, "knowledge-0001", native.id, "cited");
+		addLink(store.store, "domain-0001", native.id, "cited");
 		expect(() => revertImport(store.store, "revert-batch")).toThrow(
 			/native items/,
 		);

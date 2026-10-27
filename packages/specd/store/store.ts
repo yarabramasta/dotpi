@@ -169,10 +169,13 @@ export function projectItem(
 	} catch {
 		return undefined;
 	}
-	const kind = payload.kind;
+	// The created payload's kind is the starting point; kind.reclassified
+	// events in the history can change it (dec-0014). Mutable for that.
+	let kind: string = typeof payload.kind === "string" ? payload.kind : "";
 	const title = payload.title;
-	if (typeof kind !== "string" || typeof title !== "string") return undefined;
-	if (!(ITEM_KINDS as readonly string[]).includes(kind)) return undefined;
+	if (!kind || typeof title !== "string") return undefined;
+	if (!(ITEM_KINDS as readonly string[]).includes(kind) && kind !== "knowledge")
+		return undefined; // legacy knowledge rows still project
 	let body = typeof payload.body === "string" ? payload.body : "";
 	const pathScope =
 		typeof payload.pathScope === "string" ? payload.pathScope : null;
@@ -197,6 +200,20 @@ export function projectItem(
 				if (parsed?.decision === "stop") status = "stopped";
 			} catch {
 				// malformed payload — keep prior status; doctor flags drift via replay
+			}
+		}
+		if (event.type === "kind.reclassified") {
+			try {
+				const parsed = JSON.parse(event.payload) as { kind?: string };
+				if (
+					parsed?.kind &&
+					(ITEM_KINDS as readonly string[]).includes(parsed.kind)
+				) {
+					kind = parsed.kind;
+				}
+				// invalid target kind — keep prior kind; doctor flags via replay
+			} catch {
+				// malformed payload — keep prior kind
 			}
 		}
 		if (event.type === "body.updated") {
@@ -339,6 +356,17 @@ export function appendEvent(
 		.get(input.item);
 	if (!exists) {
 		throw new Error(`Unknown item: ${input.item}.`);
+	}
+	if (input.type === "kind.reclassified") {
+		const target = (input.payload as Record<string, unknown> | undefined)?.kind;
+		if (
+			typeof target !== "string" ||
+			!(ITEM_KINDS as readonly string[]).includes(target)
+		) {
+			throw new Error(
+				`Unknown or retired item kind: ${String(target)}. Valid: ${ITEM_KINDS.join(", ")}.`,
+			);
+		}
 	}
 	const at = nowIso();
 	const payload = JSON.stringify(input.payload ?? {});

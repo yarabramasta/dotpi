@@ -2,10 +2,12 @@
  *
  * Identity stable: same input → same output. No I/O. The runner writes
  * whatever this module returns. The mapping is conservative on purpose —
- * any grill type that lacks a direct specd equivalent becomes `knowledge`
- * with a `type=<original>` marker in the body so the original taxonomy
- * survives the migration. Promoted-to pointers become provenance events,
- * not edges (acceptance criterion #9). */
+ * grill types map heuristically to layer kinds (dec/ADR → application,
+ * req/con → domain, content → product); anything else falls back to
+ * `application` with a `type=<original>` body marker so the original
+ * taxonomy survives the migration. Mis-guesses are re-classifiable via
+ * kind.reclassified (dec-0014). Promoted-to pointers become provenance
+ * events, not edges. */
 
 import type { GrillAtom, GrillEdge, GrillSnapshot } from "./grill-source.js";
 
@@ -18,7 +20,9 @@ export type MappedItemKind =
 	| "roadmap"
 	| "constitution"
 	| "checklist"
-	| "knowledge";
+	| "product"
+	| "domain"
+	| "application";
 
 export type MappedItemStatus =
 	| "draft"
@@ -54,11 +58,20 @@ export interface MappedLink {
 		| "part-of";
 }
 
-/** grill type → specd kind. Anything not in this map becomes knowledge
- * with a `type=<original>` body marker. Update this map deliberately —
- * adding a new direct mapping is a contract change. */
+/** grill type → specd layer kind (dec-0014 heuristic mapping).
+ * dec/ADR → application, req/con → domain, content → product,
+ * spike → application (technical exploration). Unknown types map to
+ * application (the safest technical default) with a `type=<original>`
+ * body marker. Mis-guesses are re-classifiable via kind.reclassified. */
 const TYPE_TO_KIND: Readonly<Record<string, MappedItemKind>> = {
 	plan: "plan",
+	decision: "application",
+	research: "application",
+	spike: "application",
+	validation: "application",
+	concept: "domain",
+	requirement: "domain",
+	content: "product",
 };
 
 /** grill status → specd status. Superseded → stopped is the closest
@@ -100,7 +113,7 @@ function bodyWithMarker(atom: GrillAtom, body: string): string {
 }
 
 export function mapAtom(atom: GrillAtom): MappedItem {
-	const kind: MappedItemKind = TYPE_TO_KIND[atom.type] ?? "knowledge";
+	const kind: MappedItemKind = TYPE_TO_KIND[atom.type] ?? "application";
 	const status: MappedItemStatus = STATUS_TO_SPEC[atom.status] ?? "draft";
 	return {
 		originId: atom.id,

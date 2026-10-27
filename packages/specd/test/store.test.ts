@@ -70,9 +70,89 @@ describe("specd store", () => {
 				actor: "test",
 			}),
 		).toThrow(/Unknown item kind/);
+		// knowledge is retired — refused for new captures (dec-0014)
+		expect(() =>
+			createItem(t.store, {
+				kind: "knowledge" as never,
+				title: "x",
+				actor: "test",
+			}),
+		).toThrow(/Unknown item kind/);
 		expect(() =>
 			createItem(t.store, { kind: "spec", title: "  ", actor: "test" }),
 		).toThrow(/title/);
+	});
+
+	it("accepts the layer kinds (product, domain, application)", async () => {
+		t = await makeStore();
+		const product = createItem(t.store, {
+			kind: "product",
+			title: "Pricing model — open-core",
+			body: "Free tier + paid tiers.",
+			actor: "test",
+		});
+		const domain = createItem(t.store, {
+			kind: "domain",
+			title: "Tenant translates a string",
+			body: "Change a string in the dashboard → OTA delta reaches devices.",
+			actor: "test",
+		});
+		const application = createItem(t.store, {
+			kind: "application",
+			title: "MF2 engine in Rust behind FFI",
+			body: "Strict MF2 subset parser.",
+			actor: "test",
+		});
+		expect(product.kind).toBe("product");
+		expect(domain.kind).toBe("domain");
+		expect(application.kind).toBe("application");
+	});
+
+	it("kind.reclassified changes the kind via the projection", async () => {
+		t = await makeStore();
+		const item = createItem(t.store, {
+			kind: "application",
+			title: "Originally application",
+			body: "",
+			actor: "test",
+		});
+		appendEvent(t.store, {
+			item: item.id,
+			type: "kind.reclassified",
+			payload: { kind: "domain" },
+			actor: "test",
+		});
+		const updated = getItem(t.store, item.id);
+		expect(updated?.kind).toBe("domain");
+		// doctor stays clean — the event replays correctly
+		const { runDoctor } = await import("../store/doctor.js");
+		expect(runDoctor(t.store)).toEqual([]);
+	});
+
+	it("kind.reclassified refuses retired and unknown target kinds", async () => {
+		t = await makeStore();
+		const item = createItem(t.store, {
+			kind: "domain",
+			title: "Test",
+			body: "",
+			actor: "test",
+		});
+		expect(() =>
+			appendEvent(t.store, {
+				item: item.id,
+				type: "kind.reclassified",
+				payload: { kind: "knowledge" },
+				actor: "test",
+			}),
+		).toThrow(/Unknown or retired item kind/);
+		expect(() =>
+			appendEvent(t.store, {
+				item: item.id,
+				type: "kind.reclassified",
+				payload: { kind: "banana" },
+				actor: "test",
+			}),
+		).toThrow(/Unknown or retired item kind/);
 	});
 
 	it("events move status through the projection rules", async () => {

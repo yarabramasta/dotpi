@@ -2,7 +2,11 @@ import type { DatabaseSync } from "node:sqlite";
 
 export const SCHEMA_VERSION = "4";
 
-/** Vendor-neutral item kinds. Contract test bans sink names here. */
+/** Vendor-neutral item kinds. Contract test bans sink names here.
+ * Layer kinds (product/domain/application) organize KNOWLEDGE; the
+ * pipeline kinds (spec/plan/task/…) are application-execution artifacts.
+ * `knowledge` is retired — legacy stores still read it, but createItem
+ * refuses it for new captures (dec-0014). */
 export const ITEM_KINDS = [
 	"spec",
 	"plan",
@@ -12,7 +16,9 @@ export const ITEM_KINDS = [
 	"roadmap",
 	"constitution",
 	"checklist",
-	"knowledge",
+	"product",
+	"domain",
+	"application",
 ] as const;
 export type ItemKind = (typeof ITEM_KINDS)[number];
 
@@ -46,6 +52,7 @@ export const EVENT_TYPES = [
 	"work.completed",
 	"convergence.assessed",
 	"checklist.item.checked",
+	"kind.reclassified",
 	"imported",
 	"import.reverted",
 ] as const;
