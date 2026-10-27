@@ -284,9 +284,9 @@ export function registerCommands(pi: ExtensionAPI): void {
 				pi.sendUserMessage(CLARIFY_PROMPT(rest));
 				return;
 			}
-			if (sub === "planned") {
+			if (sub === "plan") {
 				if (!rest) {
-					ctx.ui.notify("Usage: /spec planned <spec-id>", "warning");
+					ctx.ui.notify("Usage: /spec plan <spec-id>", "warning");
 					return;
 				}
 				pi.sendUserMessage(PLAN_ENTRY_PROMPT(rest));

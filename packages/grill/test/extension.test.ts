@@ -1,6 +1,9 @@
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { parseAssignments } from "../commands.ts";
-import grillMeExtension from "../index.ts";
+import grillMeExtension, { grillStoreExists } from "../index.ts";
 import { buildSystemPrompt } from "../prompts.ts";
 import { cloneState, DEFAULT_STATE, type GrillState } from "../state.ts";
 
@@ -56,8 +59,10 @@ function stubPi(): { pi: unknown; stub: StubPi } {
 
 describe("grill extension wiring", () => {
 	test("registers the full tool, command, and event surface", () => {
+		const dir = mkdtempSync(join(tmpdir(), "grill-test-"));
+		mkdirSync(join(dir, ".pi", "knowledge"), { recursive: true });
 		const { pi, stub } = stubPi();
-		grillMeExtension(pi as never);
+		grillMeExtension(pi as never, { cwd: dir });
 
 		expect(stub.tools.map((t) => t.name)).toEqual(TOOL_NAMES);
 		expect(stub.commands.map((c) => c.name)).toEqual([
@@ -70,6 +75,24 @@ describe("grill extension wiring", () => {
 			before_agent_start: 1,
 			session_start: 1,
 		});
+		rmSync(dir, { recursive: true, force: true });
+	});
+
+	test("registers nothing when the repo has no grill store", () => {
+		const dir = mkdtempSync(join(tmpdir(), "grill-no-kb-"));
+		const { pi, stub } = stubPi();
+		grillMeExtension(pi as never, { cwd: dir });
+		expect(stub.tools).toEqual([]);
+		expect(stub.commands).toEqual([]);
+		rmSync(dir, { recursive: true, force: true });
+	});
+
+	test("grillStoreExists: true with .pi/knowledge, false without", () => {
+		const dir = mkdtempSync(join(tmpdir(), "grill-scope-"));
+		expect(grillStoreExists(dir)).toBe(false);
+		mkdirSync(join(dir, ".pi", "knowledge"), { recursive: true });
+		expect(grillStoreExists(dir)).toBe(true);
+		rmSync(dir, { recursive: true, force: true });
 	});
 });
 
