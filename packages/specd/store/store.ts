@@ -111,6 +111,8 @@ export function parseJsonLoose<T>(raw: string): T | undefined {
 	}
 }
 
+import { resolveStoreDir } from "./registry.js";
+
 export async function openStore(cwd: string): Promise<SpecdStore> {
 	const sqlite = await import("node:sqlite").catch(() => undefined);
 	if (!sqlite) {
@@ -119,7 +121,8 @@ export async function openStore(cwd: string): Promise<SpecdStore> {
 				process.version,
 		);
 	}
-	const dir = join(cwd, ".spec");
+	// D11: the registry resolves external stores; the default is in-repo.
+	const dir = resolveStoreDir(cwd);
 	const path = join(dir, "store.db");
 	mkdirSync(dir, { recursive: true });
 	try {
