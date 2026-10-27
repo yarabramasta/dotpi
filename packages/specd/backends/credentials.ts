@@ -35,6 +35,9 @@ export interface CredentialResolution {
 	present: Record<string, string>;
 	/** env var names with no value anywhere. */
 	missing: string[];
+	/** auth.json fields holding unexpanded $VAR references whose env var
+	 * is not set — set-but-invalid, distinct from not-set. */
+	unresolved: string[];
 }
 
 export interface CredentialSpec {
@@ -92,5 +95,17 @@ export function resolveSinkCredentials(
 		}
 		missing.push(envName);
 	}
-	return { present, missing };
+	// Detect auth.json values that are unexpanded $VAR references
+	const unresolved: string[] = [];
+	for (const [envName, field] of Object.entries(spec.envVars)) {
+		const raw = section?.[field];
+		if (
+			typeof raw === "string" &&
+			raw.startsWith("$") &&
+			!process.env[raw.slice(1)]
+		) {
+			unresolved.push(`${field} (${raw})`);
+		}
+	}
+	return { present, missing, unresolved };
 }

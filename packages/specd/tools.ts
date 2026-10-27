@@ -271,6 +271,18 @@ export function registerSpecdTools(pi: ExtensionAPI): void {
 				// with passed=true) — failing review blocks completion.
 				assertCanCompleteWork(store, params.item);
 			}
+			// Push-side status flow (D15): after a status-changing event,
+			// push the mapped workflow option to the sink. Best-effort —
+			// sink failure doesn't block the store event.
+			let sinkPush: string | undefined;
+			if (type === "work.started" || type === "work.completed") {
+				try {
+					const { pushStatusToSink } = await import("./backends/sync.js");
+					sinkPush = await pushStatusToSink(store, params.item);
+				} catch {
+					// best-effort
+				}
+			}
 			const event = appendEvent(store, {
 				item: params.item,
 				type,

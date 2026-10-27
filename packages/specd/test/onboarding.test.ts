@@ -142,6 +142,7 @@ describe("credential resolution (env first, then ~/.pi/agent/auth.json)", () => 
 		expect(sinkCredentials("asana")).toEqual({
 			present: {},
 			missing: [],
+			unresolved: [],
 		});
 	});
 
