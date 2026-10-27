@@ -33,6 +33,10 @@ Spec-driven development for this repo. Knowledge lives in .spec/store.db (SQLite
 - /spec review <checklist-id> — reviewer pass over a requirements checklist
 - /spec analyze [cycle-or-spec-id] — cross-artifact consistency review
 - /spec sink — configure the sink: workspace coords, lanes, statusMap (preview then apply)
+- /spec constitution — create/review/update the constitution standalone
+- /spec clarify <spec-id> — targeted clarification loop on an existing spec
+- /spec plan <spec-id> — plan an approved spec (interview → plan item → decisions)
+- /spec tasks <spec-id> — break an approved+planned spec into tasks
 - /spec storage [mode [path]] — show or set the storage mode (db-only | md-inrepo | md-external <path>); specd_promote writes md mirrors per mode
 - /spec connect <sink> — guided onboarding for a sink (github, linear, jira, notion, trello, clickup)
 - /spec doctor — store integrity audit + sink readiness matrix
@@ -63,6 +67,51 @@ Follow the fast-path flow. The specd tools enforce the gates — never work arou
 8. TASKS — break the spec into 1–3 tasks: specd_create_item(kind=task, title=…, body=<acceptance criteria>, path_scope=<file paths this task owns>, extra={type:'feat'|'fix'|'chore'|'docs'|'test'|'refactor'|'perf'}) each — the conventional type drives branch/issue/PR/commit naming — linked with specd_add_link(from=<task id>, to=<spec id>, kind=part-of). If the spec has meaningful ambiguity, also generate a requirements checklist: specd_create_item(kind=checklist, title=…, extra={items:[…]}), linked part-of the spec — I review it via /spec review before implementation runs.
 9. EXPORT — ask me whether to export the tasks now. If yes: specd_export(item=<task id>, sink=<sink id>). Ported sinks: null, github, linear, jira, notion, trello, clickup. For github the first export needs the project owner and project number — ask me, then pass github_owner + github_project_number once; they persist. The other sinks take their workspace coords from the sink setup (step 7). The sink setup (if applied) drives the export title, labels, and lane placement.
 10. RUN — when I want a task implemented: /spec run <task id>.`;
+
+const CONSTITUTION_PROMPT = `Create/review/update the constitution (the product layer's anchor):
+
+1. specd_query(kind="constitution") — check if one exists.
+2. If none: interview me for the product purpose + principles, then specd_create_item(kind="constitution", title=…, body=…).
+3. If one exists: show it, ask what to change (principles, purpose, scope), record specd_append_event(item=<id>, type="body.updated", payload={body: <revised>}).
+4. Re-check: specd_consistency() — every plan should anchor to the constitution.
+
+The constitution IS the product layer's anchor — product-layer knowledge items (kind=product) inform it; it governs all plans.`;
+
+const CLARIFY_PROMPT = (
+	specId: string,
+) => `Targeted clarification loop on the spec ${specId}:
+
+1. specd_show(item=${specId}) — read the current spec body and its event history.
+2. Ask me which focus area to clarify (scope boundary, acceptance criteria, requirements, out of scope) or accept free-form questions.
+3. For each answer: specd_append_event(item=${specId}, type="body.updated", payload={body: <revised spec body>}) — the spec body evolves in place.
+4. Record significant answers as evidence: specd_append_event(item=${specId}, type="evidence.added", payload={finding: "…"}).
+5. Re-run specd_consistency(item=${specId}) to verify alignment.
+6. If the spec was already approved and the meaning changed materially: specd_append_event(item=${specId}, type="spec.reopened"), revise, then re-approve.
+
+The spec stays the source of truth — clarify sharpens it, never overwrites it.`;
+
+const PLAN_ENTRY_PROMPT = (
+	specId: string,
+) => `Plan the approved spec ${specId} (standalone re-entry):
+
+1. specd_show(item=${specId}) — verify it is approved (the gates require it before tasks can export).
+2. Interview me for the technical approach: core language/framework, data model, architecture constraints, dependencies.
+3. specd_create_item(kind="plan", title=…, body=<technical approach>) linked part-of ${specId}.
+4. Record each technical decision: specd_append_event(item=<plan id>, type="decision.made", payload={decision}).
+5. If no constitution exists yet, ask me whether to create one — specd_create_item(kind="constitution", …) — and link it part-of the plan.
+6. Offer the next step: /spec tasks <plan-id> or /spec run <task-id>.`;
+
+const TASKS_ENTRY_PROMPT = (
+	specId: string,
+) => `Break the approved+planned spec ${specId} into tasks:
+
+1. specd_show(item=${specId}) — verify it is approved and has a linked plan.
+2. Interview me for the task breakdown: what are the 1–3 work items, their conventional types (feat/fix/chore/docs), path scopes, and [P] parallel markers?
+3. specd_create_item(kind="task", title=…, body=<acceptance criteria>, path_scope=…, extra={type:"feat"}) each, linked part-of ${specId}.
+4. Verify with specd_schedule(spec=${specId}) — waves, parallelism, serialization.
+5. Offer export: specd_export(item=<task id>, sink=…) for each task.
+
+The gates enforce ordering: no export before approval, no run before review. The tasks carry the conventional type for naming.`;
 
 const RUN_PROMPT = (
 	task: string,
@@ -221,6 +270,34 @@ export function registerCommands(pi: ExtensionAPI): void {
 			}
 			if (sub === "analyze") {
 				pi.sendUserMessage(ANALYZE_PROMPT(rest));
+				return;
+			}
+			if (sub === "constitution") {
+				pi.sendUserMessage(CONSTITUTION_PROMPT);
+				return;
+			}
+			if (sub === "clarify") {
+				if (!rest) {
+					ctx.ui.notify("Usage: /spec clarify <spec-id>", "warning");
+					return;
+				}
+				pi.sendUserMessage(CLARIFY_PROMPT(rest));
+				return;
+			}
+			if (sub === "planned") {
+				if (!rest) {
+					ctx.ui.notify("Usage: /spec planned <spec-id>", "warning");
+					return;
+				}
+				pi.sendUserMessage(PLAN_ENTRY_PROMPT(rest));
+				return;
+			}
+			if (sub === "tasks") {
+				if (!rest) {
+					ctx.ui.notify("Usage: /spec tasks <spec-id>", "warning");
+					return;
+				}
+				pi.sendUserMessage(TASKS_ENTRY_PROMPT(rest));
 				return;
 			}
 			if (sub === "sink") {
