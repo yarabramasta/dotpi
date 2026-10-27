@@ -177,7 +177,7 @@ export function projectItem(
 	if (!(ITEM_KINDS as readonly string[]).includes(kind) && kind !== "knowledge")
 		return undefined; // legacy knowledge rows still project
 	let body = typeof payload.body === "string" ? payload.body : "";
-	const pathScope =
+	let pathScope =
 		typeof payload.pathScope === "string" ? payload.pathScope : null;
 	const phase = typeof payload.phase === "string" ? payload.phase : null;
 	const parallel = payload.parallel === true ? 1 : 0;
@@ -220,6 +220,7 @@ export function projectItem(
 			try {
 				const parsed = JSON.parse(event.payload) as Record<string, unknown>;
 				if (typeof parsed.body === "string") body = parsed.body;
+				if (typeof parsed.path_scope === "string") pathScope = parsed.path_scope;
 			} catch {
 				// malformed payload — keep prior body; doctor flags drift via replay
 			}

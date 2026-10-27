@@ -31,6 +31,7 @@ export function queryItems(store: SpecdStore, opts: QueryOptions): ItemRow[] {
 		const needle = opts.q.toLowerCase();
 		rows = rows.filter(
 			(r) =>
+				r.id.toLowerCase().includes(needle) ||
 				r.title.toLowerCase().includes(needle) ||
 				r.body.toLowerCase().includes(needle),
 		);
