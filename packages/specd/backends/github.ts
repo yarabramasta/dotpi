@@ -175,6 +175,94 @@ const DEFAULT_OPTION = { color: "GRAY", description: "" } as const;
  * contract (M1). Everything runs through the gh CLI: issues via the REST
  * surface, Projects v2 placement via gh's project commands, read-back via
  * issue state. The runner is injectable so contract tests run offline. */
+/** The template gate: a project created from a github template has
+ * these fields and views. ensurePlan refuses if any are missing —
+ * the owner should create the project from a template in the UI first
+ * (dec-0016). */
+const TEMPLATE_FIELDS = new Set([
+	"Estimate",
+	"Priority",
+	"Size",
+	"Start date",
+	"Target date",
+]);
+const TEMPLATE_VIEWS = new Set([
+	"Backlog",
+	"Priority board",
+	"Team items",
+	"Roadmap",
+	"My items",
+]);
+
+/** The 6 layer status options (dec-0016) — matching the platform board. */
+const LAYER_STATUS_OPTIONS = [
+	{ name: "Backlog", color: "GREEN", description: "This item hasn't been started" },
+	{ name: "Ready", color: "BLUE", description: "This is ready to be picked up" },
+	{ name: "In progress", color: "YELLOW", description: "This is actively being worked on" },
+	{ name: "In review", color: "PURPLE", description: "This item is in review" },
+	{ name: "Done", color: "ORANGE", description: "This has been completed" },
+	{ name: "Blocked", color: "GRAY", description: "" },
+] as const;
+
+/** Validate the template gate: query the project's fields and views and
+ * report any missing template pieces. Returns a list of missing items
+ * (empty = the gate passes). */
+async function templateGate(
+	gh: Gh,
+	owner: string,
+	number: string,
+): Promise<string[]> {
+	const data = parseJsonLoose<{
+		data?: {
+			organization?: {
+				projectV2?: {
+					fields?: { nodes?: Array<{ name?: string; __typename?: string }> };
+					views?: { nodes?: Array<{ name?: string }> };
+				};
+			};
+		};
+	}>(
+		(
+			await gh([
+				"api",
+				"graphql",
+				"-f",
+				`query=${QUERY_PROJECT_STRUCTURE}`,
+				"-f",
+				`login=${owner}`,
+				"-F",
+				`number=${number}`,
+			])
+		).stdout,
+	);
+	const project = data?.data?.organization?.projectV2;
+	const fieldNames = new Set(
+		(project?.fields?.nodes ?? [])
+			.filter((f) => f?.name)
+			.map((f) => f.name as string),
+	);
+	const viewNames = new Set(
+		(project?.views?.nodes ?? []).filter((v) => v?.name).map((v) => v.name as string),
+	);
+	const missing: string[] = [];
+	for (const f of TEMPLATE_FIELDS) {
+		if (!fieldNames.has(f)) missing.push(`field "${f}"`);
+	}
+	for (const v of TEMPLATE_VIEWS) {
+		if (!viewNames.has(v)) missing.push(`view "${v}"`);
+	}
+	return missing;
+}
+
+const QUERY_PROJECT_STRUCTURE = `query($login: String!, $number: Int!) {
+	organization(login: $login) {
+		projectV2(number: $number) {
+			fields(first: 30) { nodes { ... on ProjectV2FieldCommon { name __typename } ... on ProjectV2SingleSelectField { name __typename } ... on ProjectV2Field { name __typename } } }
+			views(first: 10) { nodes { name } }
+		}
+	}
+}`;
+
 export function createGithubAdapter(
 	cwd: string,
 	config: GithubSinkConfig | undefined,
@@ -369,6 +457,13 @@ export function createGithubAdapter(
 					"The sink setup needs a workspace (owner + project number) to preview against.",
 				);
 			}
+			// Template gate (dec-0016): refuse non-template projects.
+			const gateMisses = await templateGate(gh, owner, number);
+			if (gateMisses.length > 0) {
+				throw new Error(
+					`This project doesn't look like it was created from a github template — missing: ${gateMisses.join(", ")}. Create it from the GitHub UI first (New project → Choose the Kanban template), then re-run /spec sink.`,
+				);
+			}
 			const changes: string[] = [];
 			const listed = parseJsonLoose<Array<{ name?: string }>>(
 				(await gh(["label", "list", "--json", "name", "--limit", "500"]))
@@ -410,6 +505,13 @@ export function createGithubAdapter(
 					"The sink setup needs a workspace (owner + project number) to apply against.",
 				);
 			}
+			// Template gate (dec-0016): refuse non-template projects.
+			const gateMisses = await templateGate(gh, owner, number);
+			if (gateMisses.length > 0) {
+				throw new Error(
+					`This project doesn't look like it was created from a github template — missing: ${gateMisses.join(", ")}. Create it from the GitHub UI first (New project → Choose the Kanban template), then re-run /spec sink.`,
+				);
+			}
 			const changes: string[] = [];
 			// Labels: list once, create only the missing ones.
 			const listed = parseJsonLoose<Array<{ name?: string }>>(
@@ -440,26 +542,38 @@ export function createGithubAdapter(
 				);
 				return changes;
 			}
-			const existing = (status.options ?? []).map((o) => ({
-				id: o.id,
-				name: o.name,
-				color: o.color ?? DEFAULT_OPTION.color,
-				description: o.description ?? DEFAULT_OPTION.description,
-			}));
-			const names = new Set(existing.map((o) => o.name));
-			const missing = plan.lanes
-				.filter((lane) => !names.has(lane))
-				.map((name) => ({ name, ...DEFAULT_OPTION }));
-			const options = [...existing, ...missing];
-			if (missing.length > 0) {
+			// Status customization (dec-0016): converge the 6 layer options
+			// with the platform board's colors and descriptions.
+			const options = LAYER_STATUS_OPTIONS.map((opt) => {
+				const existingOpt = (status.options ?? []).find(
+					(o) => o.name?.toLowerCase() === opt.name.toLowerCase(),
+				);
+				return {
+					id: existingOpt?.id ?? "",
+					name: opt.name,
+					color: opt.color,
+					description: opt.description,
+				};
+			});
+			const needsUpdate = options.some(
+				(opt) =>
+					!(status.options ?? []).some(
+						(o) =>
+							o.name?.toLowerCase() === opt.name.toLowerCase() &&
+							o.color === opt.color &&
+							o.description === opt.description,
+					),
+				);
+			if (needsUpdate) {
 				await gh([
 					"api",
 					"graphql",
 					"-f",
 					`query=${updateOptionsMutation(status.id, options)}`,
 				]);
-				for (const { name } of missing)
-					changes.push(`added Status option "${name}"`);
+				changes.push(
+					`customized Status field options to the 6 layer options (colors + descriptions)`,
+				);
 			}
 			return changes;
 		},
