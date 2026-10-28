@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { TaskExport } from "../src/sinks/contract.js";
-import type { GhRunner } from "../src/sinks/github/runner.js";
 import { createGithubAdapter } from "../src/sinks/github/adapter.js";
+import type { GhRunner } from "../src/sinks/github/runner.js";
 import { createNullSink } from "../src/sinks/null.js";
 
 const TASK: TaskExport = {

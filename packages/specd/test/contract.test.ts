@@ -45,9 +45,7 @@ describe("vendor-neutral core contract", () => {
 					term,
 				);
 			}
-			expect(src, `${file} imports the sinks layer`).not.toContain(
-				"sinks",
-			);
+			expect(src, `${file} imports the sinks layer`).not.toContain("sinks");
 		}
 	});
 

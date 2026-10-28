@@ -93,7 +93,7 @@ describe("storage modes", () => {
 			.get(itemId) as { body: string };
 		store.db
 			.prepare("UPDATE items SET body = ? WHERE id = ?")
-			.run(item.body + "\nUpdated.", itemId);
+			.run(`${item.body}\nUpdated.`, itemId);
 		let findings = mdDriftFindings(store);
 		expect(findings).toHaveLength(1);
 		expect(findings[0].detail).toContain("stale");

@@ -5,6 +5,21 @@ import type {
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import { renderDashboard } from "./dashboard.js";
+import { branchName, ccTypeOf, scopeOf } from "./naming.js";
+import { insightLine, queryItems, renderInsight } from "./query.js";
+import {
+	checkConsistency,
+	formatFindings,
+} from "./src/pipeline/consistency.js";
+import {
+	assertCanCompleteWork,
+	assertCanExport,
+	assertCanStartWork,
+	assertSpecCreationAllowed,
+	checklistState,
+} from "./src/pipeline/gates.js";
+import { planWaves } from "./src/pipeline/schedule.js";
 import {
 	DEFAULT_LANES,
 	DEFAULT_NAMING,
@@ -16,18 +31,6 @@ import {
 import type { PlanWorkspace, TaskExport } from "./src/sinks/contract.js";
 import { resolveAdapter } from "./src/sinks/resolve.js";
 import { syncExportedTasks } from "./src/sinks/sync.js";
-import { renderDashboard } from "./dashboard.js";
-import { branchName, ccTypeOf, scopeOf } from "./naming.js";
-import { checkConsistency, formatFindings } from "./src/pipeline/consistency.js";
-import {
-	assertCanCompleteWork,
-	assertCanExport,
-	assertCanStartWork,
-	assertSpecCreationAllowed,
-	checklistState,
-} from "./src/pipeline/gates.js";
-import { planWaves } from "./src/pipeline/schedule.js";
-import { insightLine, queryItems, renderInsight } from "./query.js";
 import {
 	addStoreReference,
 	isSpecdStore,

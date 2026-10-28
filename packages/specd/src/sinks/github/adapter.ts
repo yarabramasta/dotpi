@@ -6,7 +6,11 @@ import type {
 	TaskCreated,
 	TaskExport,
 } from "../contract.js";
-import { type GhRunner, type GithubSinkConfig, realGhRunner } from "./runner.js";
+import {
+	type GhRunner,
+	type GithubSinkConfig,
+	realGhRunner,
+} from "./runner.js";
 
 interface StatusFieldRow {
 	id?: string;
