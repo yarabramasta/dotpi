@@ -6,7 +6,7 @@ import {
 	parseJsonLoose,
 	relatedItems,
 	type SpecdStore,
-} from "./src/store/store.js";
+} from "./store/store.js";
 
 /** Item querying + short insight for the command flows. Pure: filters,
  * link traversal, and digest rendering — the tool layer just calls these

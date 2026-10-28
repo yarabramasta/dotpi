@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { branchName, ccTitle, scopeOf } from "../naming.js";
+import { branchName, ccTitle, scopeOf } from "../src/naming.js";
 import { createItem } from "../src/store/store.js";
 import { makeStore, type TestStore } from "./helpers.js";
 

@@ -8,7 +8,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { queryItems } from "../query.js";
+import { queryItems } from "../src/query.js";
 import {
 	addStoreReference,
 	resolveReferenceStores,

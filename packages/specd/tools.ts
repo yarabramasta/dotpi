@@ -5,9 +5,9 @@ import type {
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { renderDashboard } from "./dashboard.js";
-import { branchName, ccTypeOf, scopeOf } from "./naming.js";
-import { insightLine, queryItems, renderInsight } from "./query.js";
+import { renderDashboard } from "./src/report.js";
+import { branchName, ccTypeOf, scopeOf } from "./src/naming.js";
+import { insightLine, queryItems, renderInsight } from "./src/query.js";
 import {
 	checkConsistency,
 	formatFindings,

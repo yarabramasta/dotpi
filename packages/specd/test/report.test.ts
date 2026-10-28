@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { renderSessionReport, sessionReportFilename } from "../report.js";
+import { renderSessionReport, sessionReportFilename } from "../src/report.js";
 import { addLink, appendEvent, createItem } from "../src/store/store.js";
 import { makeStore, type TestStore } from "./helpers.js";
 

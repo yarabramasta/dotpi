@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { renderDashboard } from "../dashboard.js";
+import { renderDashboard } from "../src/report.js";
 
 describe("renderDashboard", () => {
 	it("shows a plain empty state", () => {

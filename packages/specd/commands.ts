@@ -4,7 +4,7 @@ import type {
 	ExtensionAPI,
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import { renderSessionReport, sessionReportFilename } from "./report.js";
+import { renderSessionReport, sessionReportFilename } from "./src/report.js";
 import {
 	ONBOARDING,
 	readinessMatrix,

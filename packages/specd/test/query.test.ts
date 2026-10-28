@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { insightLine, queryItems, renderInsight } from "../query.js";
+import { insightLine, queryItems, renderInsight } from "../src/query.js";
 import { addLink, appendEvent, createItem } from "../src/store/store.js";
 import { makeStore } from "./helpers.js";
 
