@@ -53,6 +53,8 @@ ${idea}
 
 Follow the fast-path flow. The specd tools enforce the gates — never work around them.
 
+0. STORE CHECK — call specd_store_status. If a store exists, continue. If not, ask me where it should live (ask-user-question): External specd-managed (zero footprint, register with specd_register_store type=external storePath=~/.pi/agent/stores/{repo-name}) · External git repo (shareable, type=external-git) · In this repo (.spec/ gitignored, the default) · In this repo (.spec/ committed, type=in-repo). Then add .spec/ to .gitignore if in-repo and gitignored.
+
 1. CYCLE — create it: specd_create_item(kind=cycle, title=<short idea>).
 2. EXPLORE — ask me once: "any unknowns worth researching first?" If yes, run one web research query and record findings on the cycle: specd_append_event(item=<cycle id>, type=evidence.added, payload={finding}). Then record my decision: specd_append_event(item=<cycle id>, type=explore.decided, payload={decision:"go"|"needs-clarification"|"stop", reason}). A documented "stop" is a valid outcome and ends the cycle; "needs-clarification" loops through more research; only "go" reaches the next step — the tools refuse otherwise.
 3. INTERVIEW — first ask me how deep this cycle should go: fast-path (default: one spec → plan → 1–3 tasks) or the epic/roadmap ladder (for big multi-slice efforts: specd_create_item kind=epic → kind=roadmap linked part-of it → ordered per-slice specs linked part-of the roadmap — record slice order with specd_add_link kind=depends-on → then plan+tasks per slice; /spec analyze will check the ladder). Then ask me targeted questions (use the ask-user-question tool) to fill this template:

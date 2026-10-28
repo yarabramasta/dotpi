@@ -28,6 +28,13 @@ import {
 import { planWaves } from "./pipeline/schedule.js";
 import { insightLine, queryItems, renderInsight } from "./query.js";
 import {
+	lookupStore,
+	registerStore,
+	type StoreRegistryEntry,
+} from "./store/registry.js";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import {
 	EVENT_TYPES,
 	type EventType,
 	ITEM_KINDS,
@@ -595,6 +602,73 @@ export function registerSpecdTools(pi: ExtensionAPI): void {
 				);
 			}
 			return text(`Removed ${params.kind} link ${params.from} → ${params.to}.`);
+		},
+	});
+
+	pi.registerTool({
+		name: "specd_store_status",
+		label: "Check specd store status",
+		description:
+			"Check whether a specd store exists for the current repo — checks the registry and the default in-repo path. Returns the store location or guidance for setting one up.",
+		promptSnippet: "Check store status",
+		parameters: Type.Object({}),
+		async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
+			const cwd = ctx.cwd;
+			const entry = lookupStore(cwd);
+			const inRepo = existsSync(join(cwd, ".spec", "store.db"));
+			if (entry) {
+				return text(
+					`Store registered: type=${entry.type}, path=${entry.storePath ?? "(in-repo)"}${entry.remote ? `, remote=${entry.remote}` : ""}`,
+				);
+			}
+			if (inRepo) {
+				return text("Store found at .spec/store.db (in-repo, not registered).");
+			}
+			return text(
+				"No specd store found for this repo. Ask the user where it should live:\n" +
+					"1. External — specd-managed (zero footprint)\n" +
+					"2. External — git repo (shareable, versioned)\n" +
+					"3. In this repo (.spec/, gitignored)\n" +
+					"4. In this repo (.spec/, committed)\n" +
+					"Then register it with specd_register_store.",
+			);
+		},
+	});
+
+	pi.registerTool({
+		name: "specd_register_store",
+		label: "Register a specd store location",
+		description:
+			"Register the store location for the current repo in the specd store registry. For external stores, the directory must already exist (use specd_create_external_store to create one).",
+		promptSnippet: "Register store location",
+		parameters: Type.Object({
+			type: Type.String({
+				description:
+					'Store location type: "in-repo" (default .spec/), "external" (managed by specd), or "external-git" (a standalone git repo).',
+			}),
+			storePath: Type.Optional(
+				Type.String({
+					description:
+						"Absolute path to the store directory (required for external types).",
+				}),
+			),
+			remote: Type.Optional(
+				Type.String({
+					description: "Git remote URL for external-git stores.",
+				}),
+			),
+		}),
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const entry: StoreRegistryEntry = { type: params.type as StoreRegistryEntry["type"] };
+			if (params.storePath) entry.storePath = params.storePath;
+			if (params.remote) entry.remote = params.remote;
+			if (params.type !== "in-repo" && !params.storePath) {
+				return text(`External stores need a storePath. Got type=${params.type} without a path.`);
+			}
+			registerStore(ctx.cwd, entry);
+			return text(
+				`Registered: ${ctx.cwd} → ${params.type}${params.storePath ? ` (${params.storePath})` : ""}`,
+			);
 		},
 	});
 
