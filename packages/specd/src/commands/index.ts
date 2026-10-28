@@ -16,6 +16,7 @@ import {
 import { openStore } from "../store/store.js";
 import { dashboardContent } from "../tools/store-tools.js";
 import {
+	ADOPT_SNIPPET,
 	ANALYZE_PROMPT,
 	CLARIFY_PROMPT,
 	CONSTITUTION_PROMPT,
@@ -183,6 +184,14 @@ export function registerCommands(pi: ExtensionAPI): void {
 						"warning",
 					);
 				}
+				return;
+			}
+			if (sub === "adopt") {
+				pi.sendMessage({
+					customType: "specd-adopt",
+					content: ADOPT_SNIPPET,
+					display: true,
+				});
 				return;
 			}
 			try {

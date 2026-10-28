@@ -70,6 +70,7 @@ they're enforced by the store, not by the agent.
 | `/spec sink` | Configure your project board |
 | `/spec export` | Generate a session report |
 | `/spec query` | Search items with filters and insights |
+| `/spec adopt` | Print the AGENTS.md paragraph for ambient specd awareness |
 
 ## The board
 

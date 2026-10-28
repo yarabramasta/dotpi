@@ -19,11 +19,27 @@ Spec-driven development for this repo. Knowledge lives in .spec/store.db (SQLite
 - /spec tasks <spec-id> — break an approved+planned spec into tasks
 - /spec storage [mode [path]] — show or set the storage mode (db-only | md-inrepo | md-external <path>); specd_promote writes md mirrors per mode
 - /spec connect github — guided onboarding for the github sink
+- /spec adopt — print the AGENTS.md paragraph for ambient specd awareness (you paste it yourself)
 - /spec doctor — store integrity audit + sink readiness matrix
 - /spec export [path] — write a self-contained HTML report of the store (items, event timelines, links, doctor) for handoff
 - /spec help — this text
 
 The pipeline is agent-sequenced and code-gated: I (the agent) drive the stages, and the specd tools refuse anything the store state doesn't allow — like exporting tasks from an unapproved spec.`;
+
+export const ADOPT_SNIPPET = `# /spec adopt
+
+Paste this into your project's AGENTS.md (create the file if missing) so
+sessions that never run /spec commands still know the specd conventions:
+
+\`\`\`markdown
+## specd
+- Run specd_store_status before non-trivial work; check for a spec or task covering it.
+- Never hand-edit the store (.spec/store.db or the registered external store) — specd tools only; refusals are correct.
+- Conventional commits type(scope): subject; the specd/ branch prefix is the tool namespace.
+- Ad-hoc work outside specd is fine — /spec converge will fold it into the store later.
+\`\`\`
+
+Keep the wording short: this loads in every session in the repo.`;
 
 export const START_PROMPT = (
 	idea: string,
