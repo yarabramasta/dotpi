@@ -135,3 +135,13 @@ export function readSchemaVersion(db: DatabaseSync): string | undefined {
 		.get() as { value: string } | undefined;
 	return row?.value;
 }
+
+/** Tolerant JSON parse for stored/external payloads — malformed input
+ * becomes undefined and the caller decides the plain-language handling. */
+export function parseJsonLoose<T>(raw: string): T | undefined {
+	try {
+		return JSON.parse(raw) as T;
+	} catch {
+		return undefined;
+	}
+}

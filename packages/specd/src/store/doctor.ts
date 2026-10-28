@@ -1,6 +1,7 @@
+import { verifyProjections } from "./projection.js";
 import { readSchemaVersion, SCHEMA_VERSION } from "./schema.js";
 import { mdDriftFindings } from "./storage.js";
-import { type SpecdStore, verifyProjections } from "./store.js";
+import type { SpecdStore } from "./store.js";
 
 export interface DoctorFinding {
 	kind: string;

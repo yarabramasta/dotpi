@@ -16,10 +16,10 @@
  * Promoted-to pointers (acceptance criterion #9) become provenance
  * entries on the `imported` event payload, not edges. */
 
+import { recomputeProjection } from "../store/projection.js";
 import type { ItemKind } from "../store/schema.js";
 import {
 	appendEventsJsonl,
-	recomputeProjection,
 	type SpecdEvent,
 	type SpecdStore,
 } from "../store/store.js";
