@@ -552,7 +552,7 @@ export function registerSpecdTools(pi: ExtensionAPI): void {
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const { listImportBatches, revertImport } = await import(
-				"./import/run.js"
+				"./src/import/run.js"
 			);
 			const store = await openSpecd(ctx);
 			if (!params.batch) {
@@ -1116,8 +1116,8 @@ export function registerSpecdTools(pi: ExtensionAPI): void {
 			}),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
-			const { snapshotGrill } = await import("./import/grill-source.js");
-			const { mapSnapshot } = await import("./import/map.js");
+			const { snapshotGrill } = await import("./src/import/grill-source.js");
+			const { mapSnapshot } = await import("./src/import/map.js");
 			const snap = snapshotGrill(params.source);
 			const mapped = mapSnapshot(snap);
 			const counts = new Map<string, number>();
@@ -1167,9 +1167,9 @@ export function registerSpecdTools(pi: ExtensionAPI): void {
 					"Import refused: apply=true is required to write. Run specd_import_preview first to inspect the mapping.",
 				);
 			}
-			const { snapshotGrill } = await import("./import/grill-source.js");
-			const { mapSnapshot } = await import("./import/map.js");
-			const { planImport, applyImport } = await import("./import/run.js");
+			const { snapshotGrill } = await import("./src/import/grill-source.js");
+			const { mapSnapshot } = await import("./src/import/map.js");
+			const { planImport, applyImport } = await import("./src/import/run.js");
 			const store = await openSpecd(ctx);
 			const snap = snapshotGrill(params.source);
 			const mapped = mapSnapshot(snap);

@@ -1,8 +1,8 @@
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import type { MappedSnapshot } from "../import/map.js";
-import { applyImport, planImport } from "../import/run.js";
+import type { MappedSnapshot } from "../src/import/map.js";
+import { applyImport, planImport } from "../src/import/run.js";
 import {
 	appendEvent,
 	createItem,

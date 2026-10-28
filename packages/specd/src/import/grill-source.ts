@@ -4,7 +4,7 @@
  * through these typed helpers. */
 
 import { DatabaseSync } from "node:sqlite";
-import { atomPaths } from "../../grill/atom/store.js";
+import { atomPaths } from "../../../grill/atom/store.js";
 
 /** grill atom row, lifted from packages/grill/atom/store.ts and trimmed
  * to the columns the importer actually reads. */

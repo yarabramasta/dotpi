@@ -16,13 +16,13 @@
  * Promoted-to pointers (acceptance criterion #9) become provenance
  * entries on the `imported` event payload, not edges. */
 
-import type { ItemKind } from "../src/store/schema.js";
+import type { ItemKind } from "../store/schema.js";
 import {
 	appendEventsJsonl,
 	recomputeProjection,
 	type SpecdEvent,
 	type SpecdStore,
-} from "../src/store/store.js";
+} from "../store/store.js";
 import type { MappedItem, MappedLink, MappedSnapshot } from "./map.js";
 
 export interface ImportReport {

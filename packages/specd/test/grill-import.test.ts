@@ -6,14 +6,14 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createAtom, addEdge as grillAddEdge } from "../../grill/atom/atoms.js";
 import type { AtomStore } from "../../grill/atom/store.js";
 import { applySchema, atomPaths } from "../../grill/atom/store.js";
-import { snapshotGrill } from "../import/grill-source.js";
-import { mapAtom, mapEdge, mapSnapshot } from "../import/map.js";
+import { snapshotGrill } from "../src/import/grill-source.js";
+import { mapAtom, mapEdge, mapSnapshot } from "../src/import/map.js";
 import {
 	applyImport,
 	listImportBatches,
 	planImport,
 	revertImport,
-} from "../import/run.js";
+} from "../src/import/run.js";
 import { runDoctor } from "../src/store/doctor.js";
 import { addLink, appendEvent, createItem } from "../src/store/store.js";
 import { makeStore } from "./helpers.js";
