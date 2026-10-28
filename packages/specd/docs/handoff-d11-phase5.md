@@ -64,6 +64,39 @@ the shared knowledge alongside its own local items.
   read-only.
 - Do NOT create circular references.
 
+### The events.jsonl companion (critical context)
+
+Every `appendEvent` also appends the event as a JSON line to
+`events.jsonl` (same directory as store.db). This is the write-ahead-log
+pattern:
+
+- `events.jsonl` = the source of truth (text, mergeable, committed to git)
+- `store.db` = the derived projection (binary, gitignored, rebuilt by replay)
+
+`openStore` checks: if `store.db` is missing but `events.jsonl` exists,
+replay the events to rebuild the store. This means the event history
+survives a Mac wipe + fresh clone (the JSONL travels with the repo or
+the store's own git repo).
+
+**For the "senior won't allow it" scenario**: the store lives as an
+external git repo. The `events.jsonl` is committed to the STORE repo,
+not the code repo. The code repo stays completely clean (zero footprint).
+After a Mac wipe: clone the code repo, clone the store repo (you need
+to know its URL), register, and the store is rebuilt from events.
+
+### The storage scenarios (context for design decisions)
+
+| Scenario | Store location | events.jsonl | Code repo |
+|---|---|---|---|
+| Fresh project, solo | In-repo (`.spec/`) | Committed to the code repo | Clean GitHub (store.db gitignored) |
+| Existing, has permission | In-repo (`.spec/`) | Committed or gitignored | Same |
+| Senior says no | External git repo | Committed to the store repo | Zero footprint |
+| Multi-repo product | One shared external git repo | Committed to the store repo | All code repos clean |
+
+Phase 5 references MUST respect this: the referenced store has its own
+events.jsonl and its own git history. The referencing repo reads from it
+but never writes to it.
+
 ### The boundary
 
 The referencing repo sees:
@@ -103,7 +136,10 @@ The referencing repo sees:
 4. Extend `specd_store_status` to show references.
 5. Extend `specd_show`: if the item is not found locally, search referenced
    stores (read-only).
-6. Tests: registry references, query across stores, show from referenced
+6. Events.jsonl awareness: when reading from a referenced store, its
+   events.jsonl is the source (the store.db may or may not exist — replay
+   if needed). Do NOT write to the referenced store's events.jsonl.
+7. Tests: registry references, query across stores, show from referenced
    store, read-only enforcement.
 
 ## Acceptance criteria

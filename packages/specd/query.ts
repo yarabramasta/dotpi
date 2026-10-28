@@ -12,6 +12,8 @@ import {
  * link traversal, and digest rendering — the tool layer just calls these
  * and returns the text. */
 
+export type QueryRow = ItemRow & { source?: string };
+
 export interface QueryOptions {
 	kind?: string;
 	status?: string;
@@ -23,36 +25,78 @@ export interface QueryOptions {
 	limit?: number;
 }
 
-export function queryItems(store: SpecdStore, opts: QueryOptions): ItemRow[] {
-	let rows = listItems(store, { limit: 10000 });
-	if (opts.kind) rows = rows.filter((r) => r.kind === opts.kind);
-	if (opts.status) rows = rows.filter((r) => r.status === opts.status);
-	if (opts.q) {
-		const needle = opts.q.toLowerCase();
-		rows = rows.filter(
-			(r) =>
-				r.id.toLowerCase().includes(needle) ||
-				r.title.toLowerCase().includes(needle) ||
-				r.body.toLowerCase().includes(needle),
-		);
-	}
+export function queryItems(
+	store: SpecdStore,
+	opts: QueryOptions,
+	referenced?: SpecdStore[],
+): QueryRow[] {
+	const filter = (rows: QueryRow[]) => {
+		if (opts.kind) rows = rows.filter((r) => r.kind === opts.kind);
+		if (opts.status) rows = rows.filter((r) => r.status === opts.status);
+		if (opts.q) {
+			const needle = opts.q.toLowerCase();
+			rows = rows.filter(
+				(r) =>
+					r.id.toLowerCase().includes(needle) ||
+					r.title.toLowerCase().includes(needle) ||
+					r.body.toLowerCase().includes(needle),
+			);
+		}
+		return rows;
+	};
+	let local: QueryRow[] = filter(
+		listItems(store, { limit: 10000 }).map((r) => ({ ...r })),
+	);
 	if (opts.of) {
+		// ponytail: of-scoping is local-only; links live in the local store,
+		// so referenced stores are not searched when the query is link-scoped.
 		const related = relatedItems(store, opts.of, "part-of");
 		const ids = new Set(related.map((r) => r.id));
-		rows = rows.filter((r) => ids.has(r.id) && r.id !== opts.of);
+		local = local.filter((r) => ids.has(r.id) && r.id !== opts.of);
+		return local.slice(0, opts.limit ?? 20);
+	}
+	let rows = local;
+	for (const ref of referenced ?? []) {
+		rows = rows.concat(
+			filter(
+				listItems(ref, { limit: 10000 }).map((r) => ({
+					...r,
+					source: ref.dir,
+				})),
+			),
+		);
 	}
 	return rows.slice(0, opts.limit ?? 20);
 }
 
-/** One-line digest: state, last event, link counts, task particulars. */
-export function insightLine(store: SpecdStore, itemId: string): string {
+/** One-line digest: state, last event, link counts, task particulars.
+ * If the item is missing locally, looks it up in the referenced stores
+ * and annotates the hit with `(from: {dir})`. */
+export function insightLine(
+	store: SpecdStore,
+	itemId: string,
+	referenced?: SpecdStore[],
+): string {
 	// Read the row fresh — a captured ItemRow can be stale the moment an
 	// event lands (the projection moves under it).
-	const item = getItem(store, itemId);
+	let item = getItem(store, itemId);
+	let sourceStore = store;
+	let fromNote = "";
+	if (!item && referenced) {
+		for (const ref of referenced) {
+			const found = getItem(ref, itemId);
+			if (found) {
+				item = found;
+				sourceStore = ref;
+				fromNote = ` (from: ${ref.dir})`;
+				break;
+			}
+		}
+	}
 	if (!item) return `- **${itemId}** unknown item`;
-	const events = history(store, itemId);
+	const events = history(sourceStore, itemId);
 	const last = events.at(-1);
-	const links = relatedItems(store, itemId, "part-of");
+	const links = relatedItems(sourceStore, itemId, "part-of");
 	const bits = [
 		`${item.kind} · ${item.status}`,
 		last ? `last: ${last.type}` : "no events",
@@ -64,15 +108,34 @@ export function insightLine(store: SpecdStore, itemId: string): string {
 		if (item.parallel === 1) bits.push("[P]");
 	}
 	if (item.kind === "spec" && item.status === "approved") bits.push("approved ✓");
-	return `- **${item.id}** ${item.title} — ${bits.join(" · ")}`;
+	return `- **${item.id}** ${item.title}${fromNote} — ${bits.join(" · ")}`;
 }
 
 /** Short summary for ONE item: state digest + the events that mattered
- * (status-changing / latest), not the full history. */
-export function renderInsight(store: SpecdStore, itemId: string): string {
-	const item = getItem(store, itemId);
+ * (status-changing / latest), not the full history. If the item is only
+ * present in a referenced store, renders that store's history and notes
+ * `(from: {dir})` under the title. */
+export function renderInsight(
+	store: SpecdStore,
+	itemId: string,
+	referenced?: SpecdStore[],
+): string {
+	let item = getItem(store, itemId);
+	let sourceStore = store;
+	let fromLine = "";
+	if (!item && referenced) {
+		for (const ref of referenced) {
+			const found = getItem(ref, itemId);
+			if (found) {
+				item = found;
+				sourceStore = ref;
+				fromLine = `(from: ${ref.dir})`;
+				break;
+			}
+		}
+	}
 	if (!item) return `Unknown item: ${itemId}.`;
-	const events = history(store, itemId);
+	const events = history(sourceStore, itemId);
 	const noteworthy = events
 		.filter((e) =>
 			[
@@ -102,11 +165,13 @@ export function renderInsight(store: SpecdStore, itemId: string): string {
 			return `- ${e.type}${detail ? ` — ${detail.trim()}` : ""}`;
 		})
 		.join("\n");
-	const links = relatedItems(store, itemId, "part-of")
+	const links = relatedItems(sourceStore, itemId, "part-of")
 		.map((l) => `${l.id} (${l.kind})`)
 		.join(", ");
+	const head: string[] = [`**${item.id}** — ${item.title}`];
+	if (fromLine) head.push(fromLine);
 	return [
-		`**${item.id}** — ${item.title}`,
+		...head,
 		`${item.kind} · ${item.status} · ${events.length} events · updated ${item.updated_at}`,
 		links ? `links: ${links}` : "links: none",
 		noteworthy.length

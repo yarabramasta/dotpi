@@ -62,17 +62,49 @@ These aren't suggestions. The store **refuses** the action and returns a
 plain-language reason. The agent cannot bypass them because the refusal
 happens in the tool's execute function, not in the prompt.
 
-## Zero repo footprint
+## Store location and footprint
 
-The store lives in `.spec/store.db`, which is gitignored by default.
-Nothing is committed to your repo unless you explicitly promote items to
-markdown (optional, via the storage system).
+specd supports two store locations, and the "zero footprint" claim depends
+on which one you use:
 
-This means:
-- The "senior won't allow it" scenario is solved — your repo stays clean
-- No `.specify/` or `.kiro/` directories polluting the working tree
-- The store is per-machine and per-repo (private by default)
-- The repo's git history contains code, not planning artifacts
+### In-repo store (`.spec/` inside the repo)
+
+```
+.spec/
+├── .gitignore          ← committed (tells git to ignore store.db)
+├── events.jsonl        ← committed (the audit trail, text, mergeable)
+└── store.db            ← gitignored (rebuilt from events)
+```
+
+The senior reviewing the repo **sees** `.spec/` with a `.gitignore` and an
+`events.jsonl`. This is visible footprint — fine for your own repos, not
+for the "senior won't allow it" scenario.
+
+### External store (the zero-footprint option)
+
+The store lives OUTSIDE the repo as its own git repository:
+
+```
+your-repo/                                ← zero specd files
+~/.pi/agent/stores/{repo-name}/           ← the store (its own git repo)
+├── .gitignore                            ← in the store repo, not yours
+├── .specd-store.yaml                     ← in the store repo
+├── events.jsonl                          ← in the store repo
+└── store.db                              ← gitignored
+```
+
+The senior reviewing your repo sees **nothing**. The store, its git
+history, its events — all live in a separate repository. This is the
+"senior won't allow it" solution.
+
+### Choosing
+
+| Scenario | Use |
+|---|---|
+| Your own repo, team shares specs | In-repo (committed) |
+| Your own repo, private planning | In-repo (gitignore events too) |
+| Someone else's repo, "senior says no" | **External** |
+| Multi-repo product (shared knowledge) | **External** (one store, multiple repos) |
 
 ## The execution seam
 

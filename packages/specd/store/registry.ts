@@ -1,6 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
-import type { SpecdStore } from "./store.js";
+import { dirname, join, resolve } from "node:path";
 
 /** The store registry maps repository paths to specd store locations.
  * Stored at ~/.pi/agent/specd-stores.json — machine-local, not committed.
@@ -11,10 +10,21 @@ import type { SpecdStore } from "./store.js";
  *   external-git: { type: "external-git", storePath: "…", remote?: "…" } → git repo
  */
 
-const REGISTRY_PATH = join(
-	process.env.PI_CODING_AGENT_DIR ?? join(process.env.HOME ?? process.env["HOME"] ?? "", ".pi", "agent"),
-	"specd-stores.json",
-);
+/** Return the absolute path to the specd store registry file. Evaluated
+ * at call time so tests can point it at a temporary directory. */
+export function registryPath(): string {
+	return join(
+		process.env.PI_CODING_AGENT_DIR ??
+			join(process.env.HOME ?? "", ".pi", "agent"),
+		"specd-stores.json",
+	);
+}
+
+/** Return the directory under which cloned reference stores live.
+ * (e.g. ~/.pi/agent/stores). The directory is not created here. */
+export function storesRoot(): string {
+	return join(dirname(registryPath()), "stores");
+}
 
 export type StoreLocationType = "in-repo" | "external" | "external-git";
 
@@ -24,6 +34,8 @@ export interface StoreRegistryEntry {
 	storePath?: string;
 	/** external-git: the git remote (for connect/push) */
 	remote?: string;
+	/** absolute paths to other stores this repo can read */
+	references?: string[];
 }
 
 export interface StoreRegistry {
@@ -31,23 +43,28 @@ export interface StoreRegistry {
 }
 
 export function readRegistry(): StoreRegistry {
-	if (!existsSync(REGISTRY_PATH)) return {};
+	const path = registryPath();
+	if (!existsSync(path)) return {};
 	try {
-		return JSON.parse(readFileSync(REGISTRY_PATH, "utf-8")) as StoreRegistry;
+		return JSON.parse(readFileSync(path, "utf-8")) as StoreRegistry;
 	} catch {
 		return {};
 	}
 }
 
 export function writeRegistry(registry: StoreRegistry): void {
-	const dir = join(REGISTRY_PATH, "..");
+	const path = registryPath();
+	const dir = join(path, "..");
 	if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-	writeFileSync(REGISTRY_PATH, JSON.stringify(registry, null, 2) + "\n");
+	writeFileSync(path, `${JSON.stringify(registry, null, 2)}\n`);
 }
 
 /** Register a repo → store mapping. The repo path is resolved to an
  * absolute path for stable lookup. */
-export function registerStore(repoPath: string, entry: StoreRegistryEntry): void {
+export function registerStore(
+	repoPath: string,
+	entry: StoreRegistryEntry,
+): void {
 	const registry = readRegistry();
 	registry[resolve(repoPath)] = entry;
 	writeRegistry(registry);
@@ -76,6 +93,53 @@ export function resolveStoreDir(repoPath: string): string {
 	}
 	// Default: in-repo
 	return join(resolve(repoPath), ".spec");
+}
+
+/** Resolve the referenced store directories for a repo. Returns absolute
+ * paths; empty when the repo is unregistered or has no references. */
+export function resolveReferenceStores(repoPath: string): string[] {
+	const entry = lookupStore(repoPath);
+	if (!entry?.references) return [];
+	return entry.references.map((ref) => resolve(ref));
+}
+
+/** Add a reference store to a repo's registry entry. Returns the updated
+ * references list on success, or a reason on rejection. */
+export function addStoreReference(
+	repoPath: string,
+	refPath: string,
+): { ok: true; refs: string[] } | { ok: false; reason: string } {
+	const absRepo = resolve(repoPath);
+	const absRef = resolve(refPath);
+	const selfDir = resolveStoreDir(absRepo);
+
+	if (absRef === selfDir) {
+		return { ok: false, reason: "cannot reference the repo's own store" };
+	}
+
+	const registry = readRegistry();
+	const entry = registry[absRepo] ?? { type: "in-repo" };
+	const refs = entry.references ?? [];
+
+	if (refs.some((r) => resolve(r) === absRef)) {
+		return { ok: false, reason: "reference already exists" };
+	}
+
+	const circular = Object.keys(registry).some((key) => {
+		if (key === absRepo) return false;
+		const otherDir = resolveStoreDir(key);
+		const otherRefs = resolveReferenceStores(key);
+		return otherRefs.includes(selfDir) && otherDir === absRef;
+	});
+	if (circular) {
+		return { ok: false, reason: "circular reference" };
+	}
+
+	entry.references = [...refs, absRef];
+	registry[absRepo] = entry;
+	writeRegistry(registry);
+
+	return { ok: true, refs: entry.references };
 }
 
 /** Check if a directory is a specd store (has store.db + the marker). */
