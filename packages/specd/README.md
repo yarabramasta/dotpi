@@ -128,4 +128,5 @@ external directory. Your repo stays clean.
 | [Best practices](docs/best-practices.md) | SDD practices: depth choice, spec quality, gates, naming |
 | [Prompt guide](docs/prompt-guide.md) | How to prompt effectively: commands, gates, querying |
 | [Architecture](docs/architecture.md) | How specd works: event-sourced store, gates, zero footprint |
+| [Agent guide](docs/agent-guide.md) | For AI agents operating specd: gates, naming, error handling |
 | [Storage guide](docs/storage-guide.md) | Scenarios, setup, and disaster recovery for the store |
