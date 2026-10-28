@@ -8,9 +8,6 @@
 	"pi": {
 		"extensions": [
 			"packages/*/index.ts"
-		],
-		"skills": [
-			"agent/skills"
 		]
 	},
 	"engines": {

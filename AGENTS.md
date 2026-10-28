@@ -11,8 +11,8 @@ manager — it is a reproducible dotfiles-style setup with guardrails. Two halve
 - `packages/` — TypeScript Pi extensions: `specd`, `grill`, `jina`, `android-cli`
 
 `agent/` holds the mirrored Pi config (`settings.json`, `models.json`, example
-`auth.json`, `agent/skills/`). Root `package.json` wires extensions via
-`pi.extensions: ["packages/*/index.ts"]` and skills via `agent/skills`.
+`auth.json`). Root `package.json` wires extensions via
+`pi.extensions: ["packages/*/index.ts"]`.
 
 ## Commands
 

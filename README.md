@@ -38,7 +38,7 @@ Full flag reference, install modes, and online-install recipes:
 ./dotpi backup | list | restore | delete | prune   # backup management
 ```
 
-Extensions and skills are selectable (`-e`/`-n`, `-S`/`-N`); without filters,
+Extensions are selectable (`-e`/`-n`); without filters,
 interactive mode shows menus. Extensions: `specd`, `grill`, `jina`,
 `android-cli` — see each package's README for what it does.
 
@@ -46,7 +46,7 @@ interactive mode shows menus. Extensions: `specd`, `grill`, `jina`,
 
 `agent/` mirrors `~/.pi/agent` and is the installer's source of truth. Tracked
 direct JSON under `agent/` is copied except `auth.json`; extensions come from
-`packages/*`, skills from `agent/skills/`. Tracked JSON can carry
+`packages/*`. Tracked JSON can carry
 machine-specific state — review before installing.
 
 ## API keys and auth
@@ -71,7 +71,6 @@ packages/               extensions (pnpm workspace; real sources)
   jina/                 Jina web tools (pi-jina-web)
   android-cli/          Android tooling extension (pi-android-cli)
 agent/                  mirrors ~/.pi/agent (installer source)
-  skills/               skills (installed by dotpi)
   settings.json models.json auth.json
 dotpi                   POSIX sh bootstrap for the Python CLI
 src/dotpi               installer/backup/sync CLI (Python)
@@ -102,7 +101,7 @@ python3 -m unittest discover -s src -t src   # dotpi CLI tests
 ```sh
 ref=PINNED_COMMIT   # review the ref first; never pipe unreviewed shell
 curl -fsSL "https://raw.githubusercontent.com/yarabramasta/dotpi/${ref}/dotpi" | \
-  DOTPI_REF="$ref" sh -s -- install --mode=safe --extension jina --no-skills --yes
+  DOTPI_REF="$ref" sh -s -- install --mode=safe --extension jina --yes
 ```
 
 `--yes` is required because piped input is non-interactive. The safer

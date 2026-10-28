@@ -35,16 +35,7 @@ def extension_sources(root: Path) -> dict[str, Path]:
     }
 
 
-def skill_sources(root: Path) -> dict[str, Path]:
-    skills = root / "agent" / "skills"
-    if not skills.is_dir():
-        return {}
-    return {path.name: path for path in sorted(skills.iterdir()) if path.is_dir()}
-
-
-def validate_source(
-    root: Path, include_extensions: bool = True, include_skills: bool = True
-) -> None:
+def validate_source(root: Path, include_extensions: bool = True) -> None:
     if not (root / "agent").is_dir():
         die("repository has no agent directory")
     for path in direct_json_sources(root):
@@ -69,11 +60,6 @@ def validate_source(
                 entry_path = extension / str(entry)
                 if not entry_path.is_file():
                     die(f"extension {name} entrypoint is missing: {entry}")
-    if not include_skills:
-        return
-    for name, skill in skill_sources(root).items():
-        if not (skill / "SKILL.md").is_file():
-            die(f"skill {name} has no SKILL.md")
 
 
 def json_preview(source: Path, destination: Path) -> str | None:

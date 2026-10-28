@@ -26,7 +26,6 @@ from .jsonio import (
     extension_sources,
     json_preview,
     parse_json,
-    skill_sources,
     validate_source,
 )
 from .runtime import rebuild_dependencies, smoke
@@ -101,30 +100,12 @@ def select_extensions(
     )
 
 
-def select_skills(
-    args: argparse.Namespace, sources: dict[str, Path], required: bool = True
-) -> list[str]:
-    return select_entries(
-        args,
-        sources,
-        "skill",
-        "--skill (-S)",
-        args.skill,
-        args.no_skills,
-        required,
-    )
-
-
 def entry_conflicts(target: Path, selected: list[str], kind: str) -> list[str]:
     return [name for name in selected if (target / "agent" / kind / name).exists()]
 
 
 def extension_conflicts(target: Path, selected: list[str]) -> list[str]:
     return entry_conflicts(target, selected, "extensions")
-
-
-def skill_conflicts(target: Path, selected: list[str]) -> list[str]:
-    return entry_conflicts(target, selected, "skills")
 
 
 def rollback_partial_install(
@@ -147,21 +128,13 @@ def rollback_partial_install(
 
 def cherry_pick_install(args: argparse.Namespace, root: Path, target: Path) -> None:
     sources = extension_sources(root)
-    skill_map = skill_sources(root)
     selected = select_extensions(args, sources, required=False)
-    selected_skills = select_skills(args, skill_map, required=False)
-    if not selected and not selected_skills:
-        die("cherry-pick requires --extension (-e) and/or --skill (-S) filters")
+    if not selected:
+        die("cherry-pick requires --extension (-e) filters")
     conflicts = extension_conflicts(target, selected)
-    skill_clashes = skill_conflicts(target, selected_skills)
     if conflicts and not args.force:
         die(
             f"extension already exists: {', '.join(conflicts)}; "
-            "use --force (-f) to overwrite"
-        )
-    if skill_clashes and not args.force:
-        die(
-            f"skill already exists: {', '.join(skill_clashes)}; "
             "use --force (-f) to overwrite"
         )
     if conflicts and args.force:
@@ -169,20 +142,11 @@ def cherry_pick_install(args: argparse.Namespace, root: Path, target: Path) -> N
             "--force (-f) will overwrite extensions without a recoverable backup: "
             + ", ".join(conflicts)
         )
-    if skill_clashes and args.force:
-        warn(
-            "--force (-f) will overwrite skills without a recoverable backup: "
-            + ", ".join(skill_clashes)
-        )
     if args.dry_run:
         print("Dry run: no files changed.")
         print("Would copy extensions: " + (", ".join(selected) if selected else "none"))
-        print(
-            "Would copy skills: "
-            + (", ".join(selected_skills) if selected_skills else "none")
-        )
         return
-    require_confirmation(args, f"Install extensions and skills to {target}")
+    require_confirmation(args, f"Install extensions to {target}")
     created: list[Path] = []
     try:
         for name in selected:
@@ -190,54 +154,29 @@ def cherry_pick_install(args: argparse.Namespace, root: Path, target: Path) -> N
             if not destination.exists():
                 created.append(destination)
             copy_entry(sources[name], destination, overwrite=args.force)
-        for name in selected_skills:
-            destination = target / "agent" / "skills" / name
-            if not destination.exists():
-                created.append(destination)
-            copy_entry(skill_map[name], destination, overwrite=args.force)
-        validate_target(target, [], selected, selected_skills)
+        validate_target(target, [], selected)
     except DotpiError:
-        rollback_partial_install(
-            target, {}, created, (conflicts + skill_clashes) if args.force else []
-        )
+        rollback_partial_install(target, {}, created, conflicts if args.force else [])
         raise
     except OSError as error:
-        rollback_partial_install(
-            target, {}, created, (conflicts + skill_clashes) if args.force else []
-        )
+        rollback_partial_install(target, {}, created, conflicts if args.force else [])
         die(f"install failed: {error}")
-    print(
-        f"Installed {len(selected)} extensions and {len(selected_skills)} skills; "
-        "configuration untouched"
-    )
+    print(f"Installed {len(selected)} extensions; configuration untouched")
 
 
 def safe_or_cherry_install(args: argparse.Namespace, root: Path, target: Path) -> None:
     sources = extension_sources(root)
-    skill_map = skill_sources(root)
     selected = select_extensions(args, sources)
-    selected_skills = select_skills(args, skill_map)
     conflicts = extension_conflicts(target, selected)
-    skill_clashes = skill_conflicts(target, selected_skills)
     if conflicts and not args.force:
         die(
             f"extension already exists: {', '.join(conflicts)}; "
-            "use --force (-f) to overwrite"
-        )
-    if skill_clashes and not args.force:
-        die(
-            f"skill already exists: {', '.join(skill_clashes)}; "
             "use --force (-f) to overwrite"
         )
     if conflicts and args.force:
         warn(
             "--force (-f) will overwrite extensions without a recoverable "
             "extension backup: " + ", ".join(conflicts)
-        )
-    if skill_clashes and args.force:
-        warn(
-            "--force (-f) will overwrite skills without a recoverable "
-            "skill backup: " + ", ".join(skill_clashes)
         )
 
     json_sources = direct_json_sources(root)
@@ -257,10 +196,6 @@ def safe_or_cherry_install(args: argparse.Namespace, root: Path, target: Path) -
         print("Dry run: no files changed.")
         print(f"Would back up {len(config_paths)} existing JSON files.")
         print("Would copy extensions: " + (", ".join(selected) if selected else "none"))
-        print(
-            "Would copy skills: "
-            + (", ".join(selected_skills) if selected_skills else "none")
-        )
         return
     require_confirmation(args, f"Install mode={args.mode} to {target}")
     if config_paths:
@@ -284,19 +219,11 @@ def safe_or_cherry_install(args: argparse.Namespace, root: Path, target: Path) -
             else:
                 created_dirs.append(destination)
             copy_entry(sources[name], destination, overwrite=args.force)
-        for name in selected_skills:
-            destination = target / "agent" / "skills" / name
-            if destination.exists():
-                overwritten_names.append(name)
-            else:
-                created_dirs.append(destination)
-            copy_entry(skill_map[name], destination, overwrite=args.force)
         rebuild_dependencies(target)
         validate_target(
             target,
             [source.relative_to(root) for source in json_sources],
             selected,
-            selected_skills,
         )
         smoke(target)
     except DotpiError:
@@ -305,17 +232,13 @@ def safe_or_cherry_install(args: argparse.Namespace, root: Path, target: Path) -
     except OSError as error:
         rollback_partial_install(target, snapshots, created_dirs, overwritten_names)
         die(f"install failed: {error}")
-    print(
-        f"Installed {len(json_sources)} JSON files, {len(selected)} extensions, "
-        f"and {len(selected_skills)} skills"
-    )
+    print(f"Installed {len(json_sources)} JSON files and {len(selected)} extensions")
 
 
 def validate_target(
     target: Path,
     json_paths: list[Path],
     extension_names: list[str],
-    skill_names: list[str],
 ) -> None:
     # Validate only dotpi-owned files; target may contain unrelated extensions.
     for relative in json_paths:
@@ -334,10 +257,6 @@ def validate_target(
         for entry in entries:
             if not (extension / str(entry)).is_file():
                 die(f"installed extension {name} entrypoint missing: {entry}")
-    for name in skill_names:
-        skill = target / "agent" / "skills" / name
-        if not (skill / "SKILL.md").is_file():
-            die(f"installed skill {name} has no SKILL.md")
 
 
 def clean_install(args: argparse.Namespace, root: Path, target: Path) -> None:
@@ -374,7 +293,6 @@ def clean_install(args: argparse.Namespace, root: Path, target: Path) -> None:
             if args.no_extensions
             else "Would copy every extension."
         )
-        print("Would copy no skills." if args.no_skills else "Would copy every skill.")
         print("Validation plus Pi smoke run after copying.")
         return
     require_confirmation(args, f"Clean install to {target}")
@@ -391,8 +309,6 @@ def clean_install(args: argparse.Namespace, root: Path, target: Path) -> None:
         for entry in sorted(source_agent.iterdir()):
             if entry.name == "auth.json" and not include_auth:
                 continue
-            if entry.name == "skills" and args.no_skills:
-                continue
             copy_entry(entry, target / "agent" / entry.name)
         if not args.no_extensions:
             extensions_target = target / "agent" / "extensions"
@@ -405,7 +321,6 @@ def clean_install(args: argparse.Namespace, root: Path, target: Path) -> None:
             target,
             [path.relative_to(root) for path in direct_json_sources(root)],
             [] if args.no_extensions else list(extension_sources(root)),
-            [] if args.no_skills else list(skill_sources(root)),
         )
         smoke(target)
     except DotpiError:
@@ -435,11 +350,7 @@ def install_command(args: argparse.Namespace) -> None:
     root = repo_root()
     target = target_path(args.target)
     ensure_target_safe(target)
-    validate_source(
-        root,
-        include_extensions=not args.no_extensions,
-        include_skills=not args.no_skills,
-    )
+    validate_source(root, include_extensions=not args.no_extensions)
     if args.include_auth and args.mode != "clean":
         die("--include-auth (-a) is valid only with --mode=clean")
     if args.mode == "clean":

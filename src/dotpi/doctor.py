@@ -113,34 +113,6 @@ def doctor_extension_result(extension: Path) -> dict[str, str]:
     return doctor_result(name, "PASS", f"{extension}: valid manifest and entrypoints")
 
 
-def doctor_skill_result(skill: Path) -> dict[str, str]:
-    name = f"skill:{skill.name}"
-    if skill.is_symlink():
-        return doctor_result(name, "FAIL", f"{skill}: symlink not followed")
-    if not skill.is_dir():
-        return doctor_result(
-            name,
-            "FAIL",
-            f"{skill}: wrong type; expected directory",
-        )
-    try:
-        readable = os.access(skill, os.R_OK | os.X_OK)
-    except OSError as error:
-        return doctor_result(name, "FAIL", f"{skill}: not readable: {error}")
-    if not readable:
-        return doctor_result(name, "FAIL", f"{skill}: not readable")
-    skill_path = skill / "SKILL.md"
-    if skill_path.is_symlink() or not skill_path.is_file():
-        return doctor_result(name, "FAIL", f"{skill_path}: missing readable file")
-    try:
-        skill_readable = os.access(skill_path, os.R_OK)
-    except OSError as error:
-        return doctor_result(name, "FAIL", f"{skill_path}: not readable: {error}")
-    if not skill_readable:
-        return doctor_result(name, "FAIL", f"{skill_path}: not readable")
-    return doctor_result(name, "PASS", f"{skill}: valid SKILL.md")
-
-
 def doctor_component_dir(root: Path, label: str, entry_check) -> list[dict[str, str]]:
     if not root.exists() and not root.is_symlink():
         return [doctor_result(label, "PASS", f"no installed {label}")]
@@ -176,7 +148,6 @@ def doctor_command(args: argparse.Namespace) -> None:
         checks.append(doctor_result("auth", "SKIP", "agent prerequisite failed"))
         checks.append(doctor_result("config", "SKIP", "agent prerequisite failed"))
         checks.append(doctor_result("extensions", "SKIP", "agent prerequisite failed"))
-        checks.append(doctor_result("skills", "SKIP", "agent prerequisite failed"))
     else:
         agent_ok, agent_message = doctor_readable_directory(agent)
         checks.append(
@@ -190,7 +161,6 @@ def doctor_command(args: argparse.Namespace) -> None:
             checks.append(
                 doctor_result("extensions", "SKIP", "agent prerequisite failed")
             )
-            checks.append(doctor_result("skills", "SKIP", "agent prerequisite failed"))
         else:
             auth = agent / AUTH.name
             checks.append(
@@ -222,10 +192,6 @@ def doctor_command(args: argparse.Namespace) -> None:
                 doctor_component_dir(
                     extensions_root, "extensions", doctor_extension_result
                 )
-            )
-            skills_root = agent / "skills"
-            checks.extend(
-                doctor_component_dir(skills_root, "skills", doctor_skill_result)
             )
     overall = (
         "FAIL"
