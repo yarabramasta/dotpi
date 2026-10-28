@@ -54,7 +54,6 @@ export async function syncExportedTasks(store: SpecdStore): Promise<number> {
 	return synced;
 }
 
-
 /** Push-side status flow: when a task's status changes in the store,
  * push the mapped workflow option to the sink (D15). Throws on sink
  * failure — the caller wraps it best-effort and surfaces the error.

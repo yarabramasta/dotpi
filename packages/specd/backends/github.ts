@@ -1,7 +1,7 @@
 import { parseJsonLoose } from "../store/store.js";
 import type {
-	SinkSetup,
 	SinkAdapter,
+	SinkSetup,
 	SinkVerify,
 	TaskCreated,
 	TaskExport,
@@ -196,9 +196,21 @@ const TEMPLATE_VIEWS = new Set([
 
 /** The 6 layer status options (dec-0016) — matching the platform board. */
 const LAYER_STATUS_OPTIONS = [
-	{ name: "Backlog", color: "GREEN", description: "This item hasn't been started" },
-	{ name: "Ready", color: "BLUE", description: "This is ready to be picked up" },
-	{ name: "In progress", color: "YELLOW", description: "This is actively being worked on" },
+	{
+		name: "Backlog",
+		color: "GREEN",
+		description: "This item hasn't been started",
+	},
+	{
+		name: "Ready",
+		color: "BLUE",
+		description: "This is ready to be picked up",
+	},
+	{
+		name: "In progress",
+		color: "YELLOW",
+		description: "This is actively being worked on",
+	},
 	{ name: "In review", color: "PURPLE", description: "This item is in review" },
 	{ name: "Done", color: "ORANGE", description: "This has been completed" },
 	{ name: "Blocked", color: "GRAY", description: "" },
@@ -242,7 +254,9 @@ async function templateGate(
 			.map((f) => f.name as string),
 	);
 	const viewNames = new Set(
-		(project?.views?.nodes ?? []).filter((v) => v?.name).map((v) => v.name as string),
+		(project?.views?.nodes ?? [])
+			.filter((v) => v?.name)
+			.map((v) => v.name as string),
 	);
 	const missing: string[] = [];
 	for (const f of TEMPLATE_FIELDS) {
@@ -289,7 +303,6 @@ export function createGithubAdapter(
 			);
 		}
 		const number = String(config.projectNumber);
-		const projectId = await projectIdFor(gh, config.owner, number);
 		const issueView = parseJsonLoose<{ url?: string }>(
 			(await gh(["issue", "view", externalRef, "--json", "url"])).stdout,
 		);
@@ -314,9 +327,7 @@ export function createGithubAdapter(
 		);
 		const itemId = added?.id ?? "";
 		if (!itemId) {
-			throw new Error(
-				`Could not attach ${externalRef} to project #${number}.`,
-			);
+			throw new Error(`Could not attach ${externalRef} to project #${number}.`);
 		}
 		return itemId;
 	}
@@ -563,7 +574,7 @@ export function createGithubAdapter(
 							o.color === opt.color &&
 							o.description === opt.description,
 					),
-				);
+			);
 			if (needsUpdate) {
 				await gh([
 					"api",

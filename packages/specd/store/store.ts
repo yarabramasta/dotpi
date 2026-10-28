@@ -1,6 +1,12 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import {
+	appendFileSync,
+	existsSync,
+	mkdirSync,
+	readFileSync,
+	writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
-import type { DatabaseSync } from "node:sqlite";
+import { DatabaseSync } from "node:sqlite";
 import { migrateStore } from "./migrate.js";
 import {
 	applySchema,
@@ -44,6 +50,9 @@ export interface SpecdStore {
 	cwd: string;
 	dir: string;
 	path: string;
+	/** If true, the store may not be mutated locally (referenced stores and
+	 * explicit read-only opens). Mutating functions must throw. */
+	readOnly?: boolean;
 }
 
 export interface AppendEventInput {
@@ -126,8 +135,10 @@ export async function openStore(cwd: string): Promise<SpecdStore> {
 	const path = join(dir, "store.db");
 	mkdirSync(dir, { recursive: true });
 	try {
-		// db mode (default): the store is per-machine and repo-quiet.
-		writeFileSync(join(dir, ".gitignore"), "*\n!.gitignore\n", { flag: "wx" });
+		// db mode (default): store.db is rebuilt from events.jsonl on demand.
+		writeFileSync(join(dir, ".gitignore"), "*\n!.gitignore\n!events.jsonl\n", {
+			flag: "wx",
+		});
 	} catch (err) {
 		if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
 	}
@@ -135,7 +146,26 @@ export async function openStore(cwd: string): Promise<SpecdStore> {
 	// Legacy/corrupt stores without a version stamp are never auto-migrated
 	// (fail loudly). KNOWN older versions migrate forward in place through
 	// store/migrate.ts; unknown/newer versions still fail loudly.
-	const db = new sqlite.DatabaseSync(path);
+	if (!existsSync(path)) {
+		const jsonlPath = join(dir, "events.jsonl");
+		if (existsSync(jsonlPath)) {
+			const db = new sqlite.DatabaseSync(path);
+			applySchema(db);
+			replayEventsJsonl(db, jsonlPath);
+			db.prepare("INSERT OR IGNORE INTO meta (key, value) VALUES (?, ?)").run(
+				"schema_version",
+				SCHEMA_VERSION,
+			);
+			return { db, cwd, dir, path };
+		}
+	}
+
+	let db: DatabaseSync;
+	try {
+		db = new sqlite.DatabaseSync(path);
+	} catch (error) {
+		throw new Error(`Could not create specd store at ${path}: ${error}`);
+	}
 	const version = readSchemaVersion(db);
 	if (version === undefined) {
 		if (tableExists(db, "items") || tableExists(db, "events")) {
@@ -156,6 +186,185 @@ export async function openStore(cwd: string): Promise<SpecdStore> {
 		SCHEMA_VERSION,
 	);
 	return { db, cwd, dir, path };
+}
+
+/** Open a store read-only. Three cases:
+ * - store.db exists → open it read-only.
+ * - store.db missing, events.jsonl exists → replay into an in-memory DB
+ *   so the referenced directory is untouched.
+ * - neither exists → undefined. */
+export function openStoreReadOnly(dir: string): SpecdStore | undefined {
+	const dbPath = join(dir, "store.db");
+	const jsonlPath = join(dir, "events.jsonl");
+	if (existsSync(dbPath)) {
+		const db = new DatabaseSync(dbPath, { readOnly: true });
+		if (!tableExists(db, "items")) {
+			db.close();
+			return undefined;
+		}
+		return { db, cwd: dir, dir, path: dbPath };
+	}
+	if (!existsSync(jsonlPath)) return undefined;
+	const db = new DatabaseSync(":memory:");
+	applySchema(db);
+	replayEventsJsonl(db, jsonlPath);
+	db.prepare("INSERT OR IGNORE INTO meta (key, value) VALUES (?, ?)").run(
+		"schema_version",
+		SCHEMA_VERSION,
+	);
+	return { db, cwd: dir, dir, path: dbPath, readOnly: true };
+}
+
+function eventsJsonlPath(dir: string): string {
+	return join(dir, "events.jsonl");
+}
+
+export function appendEventsJsonl(
+	store: SpecdStore,
+	events: ReadonlyArray<SpecdEvent>,
+): void {
+	const path = eventsJsonlPath(store.dir);
+	for (const event of events) {
+		const line = `${JSON.stringify({
+			id: event.id,
+			item: event.item,
+			type: event.type,
+			payload: event.payload,
+			at: event.at,
+			actor: event.actor,
+			batch: event.batch,
+		})}\n`;
+		appendFileSync(path, line);
+	}
+}
+
+function persistEventJsonl(store: SpecdStore, event: SpecdEvent): void {
+	appendEventsJsonl(store, [event]);
+}
+
+function assertWritable(store: SpecdStore): void {
+	if (store.readOnly) {
+		throw new Error("Referenced stores are read-only.");
+	}
+}
+
+// ponytail: links are not event-sourced — they live in the links table,
+// not the events.jsonl WAL. A replay rebuilds items and events but does
+// not restore hand-created links. Upgrade path: event-source links
+// (link.added/link.removed events) or persist links to a sidecar jsonl.
+function replayEventsJsonl(db: DatabaseSync, jsonlPath: string): void {
+	const raw = readFileSync(jsonlPath, "utf-8");
+	const lines = raw.split("\n").filter((line) => line.trim() !== "");
+	type Seed = {
+		id: string;
+		kind: string;
+		title: string;
+		body: string;
+		pathScope: string | null;
+		phase: string | null;
+		parallel: number;
+		createdAt: string;
+		updatedAt: string;
+	};
+	const seeds = new Map<string, Seed>();
+	const events: SpecdEvent[] = [];
+
+	for (let i = 0; i < lines.length; i++) {
+		const parsed = parseJsonLoose<Record<string, unknown>>(lines[i]);
+		if (!parsed) {
+			throw new Error(
+				`events.jsonl line ${i + 1} is not valid JSON: ${lines[i].slice(0, 200)}`,
+			);
+		}
+		for (const key of [
+			"id",
+			"item",
+			"type",
+			"payload",
+			"at",
+			"actor",
+			"batch",
+		]) {
+			if (!(key in parsed)) {
+				throw new Error(
+					`events.jsonl line ${i + 1} is missing field '${key}': ${lines[i].slice(0, 200)}`,
+				);
+			}
+		}
+		// SAFETY: required fields were just checked above; EVENT_TYPES validates
+		// the type value. The cast avoids impossible precise typing here.
+		const event = parsed as unknown as SpecdEvent;
+		if (!(EVENT_TYPES as readonly string[]).includes(event.type)) {
+			throw new Error(
+				`events.jsonl line ${i + 1} has unknown event type: ${event.type}`,
+			);
+		}
+		events.push(event);
+	}
+
+	for (const event of events) {
+		if (event.type === "created") {
+			if (seeds.has(event.item)) continue;
+			const payload = parseJsonLoose<Record<string, unknown>>(event.payload);
+			if (
+				!payload ||
+				typeof payload.kind !== "string" ||
+				typeof payload.title !== "string"
+			) {
+				throw new Error(
+					`events.jsonl created event for ${event.item} has invalid payload`,
+				);
+			}
+			seeds.set(event.item, {
+				id: event.item,
+				kind: payload.kind,
+				title: payload.title,
+				body: typeof payload.body === "string" ? payload.body : "",
+				pathScope:
+					typeof payload.pathScope === "string" ? payload.pathScope : null,
+				phase: typeof payload.phase === "string" ? payload.phase : null,
+				parallel: payload.parallel === true ? 1 : 0,
+				createdAt: event.at,
+				updatedAt: event.at,
+			});
+		}
+	}
+
+	for (const [itemId, seed] of seeds) {
+		db.prepare(
+			"INSERT OR IGNORE INTO items (id, kind, title, status, body, path_scope, phase, parallel, created_at, updated_at) VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?)",
+		).run(
+			itemId,
+			seed.kind,
+			seed.title,
+			seed.body,
+			seed.pathScope,
+			seed.phase,
+			seed.parallel,
+			seed.createdAt,
+			seed.updatedAt,
+		);
+	}
+
+	for (const event of events) {
+		if (!seeds.has(event.item)) {
+			throw new Error(
+				`events.jsonl references unknown item ${event.item} before its created event`,
+			);
+		}
+		db.prepare(
+			"INSERT INTO events (id, item, type, payload, at, actor, batch) VALUES (?, ?, ?, ?, ?, ?, ?)",
+		).run(
+			event.id,
+			event.item,
+			event.type,
+			event.payload,
+			event.at,
+			event.actor,
+			event.batch,
+		);
+		recomputeProjection(db, event.item);
+	}
 }
 
 /** Pure projection: the item's current row derived from its full event
@@ -223,7 +432,8 @@ export function projectItem(
 			try {
 				const parsed = JSON.parse(event.payload) as Record<string, unknown>;
 				if (typeof parsed.body === "string") body = parsed.body;
-				if (typeof parsed.path_scope === "string") pathScope = parsed.path_scope;
+				if (typeof parsed.path_scope === "string")
+					pathScope = parsed.path_scope;
 			} catch {
 				// malformed payload — keep prior body; doctor flags drift via replay
 			}
@@ -290,6 +500,7 @@ function nextId(db: DatabaseSync, kind: ItemKind): string {
 }
 
 export function createItem(store: SpecdStore, input: CreateItemInput): ItemRow {
+	assertWritable(store);
 	if (!(ITEM_KINDS as readonly string[]).includes(input.kind)) {
 		throw new Error(
 			`Unknown item kind: ${input.kind}. Valid: ${ITEM_KINDS.join(", ")}.`,
@@ -341,6 +552,14 @@ export function createItem(store: SpecdStore, input: CreateItemInput): ItemRow {
 			);
 		recomputeProjection(store.db, id);
 	});
+	// SAFETY: column list matches SpecdEvent exactly; row is known to exist
+	// because the created event was inserted in the transaction above.
+	const createdEvent = store.db
+		.prepare(
+			"SELECT id, item, type, payload, at, actor, batch FROM events WHERE item = ? ORDER BY id ASC LIMIT 1",
+		)
+		.get(id) as unknown as SpecdEvent;
+	persistEventJsonl(store, createdEvent);
 	const created = getItem(store, id);
 	if (!created) throw new Error(`Failed to create item ${id}.`);
 	return created;
@@ -350,6 +569,7 @@ export function appendEvent(
 	store: SpecdStore,
 	input: AppendEventInput,
 ): SpecdEvent {
+	assertWritable(store);
 	if (!(EVENT_TYPES as readonly string[]).includes(input.type)) {
 		throw new Error(
 			`Unknown event type: ${input.type}. Valid: ${EVENT_TYPES.join(", ")}.`,
@@ -391,11 +611,13 @@ export function appendEvent(
 	});
 	// SAFETY: this SELECT reads back the row just inserted (same WHERE and
 	// ordering as the INSERT above); shape matches SpecdEvent by construction.
-	return store.db
+	const event = store.db
 		.prepare(
 			"SELECT id, item, type, payload, at, actor, batch FROM events WHERE item = ? ORDER BY id DESC LIMIT 1",
 		)
 		.get(input.item) as unknown as SpecdEvent;
+	persistEventJsonl(store, event);
+	return event;
 }
 
 export function addLink(
@@ -404,6 +626,7 @@ export function addLink(
 	toItem: string,
 	kind: LinkKind,
 ): void {
+	assertWritable(store);
 	if (!getItem(store, fromItem)) throw new Error(`Unknown item: ${fromItem}.`);
 	if (!getItem(store, toItem)) throw new Error(`Unknown item: ${toItem}.`);
 	store.db

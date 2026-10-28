@@ -1,16 +1,9 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
-import { readSinkConfig, saveSinkConfig } from "../backends/config.js";
+import { describe, expect, it } from "vitest";
 import {
 	ONBOARDING,
-	probeSink,
-	readinessMatrix,
 	SINK_IDS,
 	type SinkOnboarding,
 } from "../backends/onboarding.js";
-import { makeStore, type TestStore } from "./helpers.js";
 
 describe("sink onboarding registry", () => {
 	it("covers the supported sinks with complete, plain-language data", () => {
@@ -31,4 +24,3 @@ describe("sink onboarding registry", () => {
 		}
 	});
 });
-

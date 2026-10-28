@@ -1,3 +1,5 @@
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
 import type {
 	ExtensionAPI,
 	ExtensionContext,
@@ -7,10 +9,8 @@ import {
 	readinessMatrix,
 	SINK_IDS,
 } from "./backends/onboarding.js";
-import { writeFileSync } from "node:fs";
-import { join } from "node:path";
-import { runDoctor } from "./store/doctor.js";
 import { renderSessionReport, sessionReportFilename } from "./report.js";
+import { runDoctor } from "./store/doctor.js";
 import {
 	readStorageConfig,
 	STORAGE_MODES,

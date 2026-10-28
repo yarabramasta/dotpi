@@ -76,12 +76,24 @@ export function insightLine(
 	store: SpecdStore,
 	itemId: string,
 	referenced?: SpecdStore[],
+	sourceDir?: string,
 ): string {
 	// Read the row fresh — a captured ItemRow can be stale the moment an
 	// event lands (the projection moves under it).
 	let item = getItem(store, itemId);
-	let sourceStore = store;
+	let sourceStore: SpecdStore = store;
 	let fromNote = "";
+	if (sourceDir && referenced) {
+		const ref = referenced.find((r) => r.dir === sourceDir);
+		if (ref) {
+			const found = getItem(ref, itemId);
+			if (found) {
+				item = found;
+				sourceStore = ref;
+				fromNote = ` (from: ${ref.dir})`;
+			}
+		}
+	}
 	if (!item && referenced) {
 		for (const ref of referenced) {
 			const found = getItem(ref, itemId);
@@ -107,7 +119,8 @@ export function insightLine(
 		if (item.phase) bits.push(`phase: ${item.phase}`);
 		if (item.parallel === 1) bits.push("[P]");
 	}
-	if (item.kind === "spec" && item.status === "approved") bits.push("approved ✓");
+	if (item.kind === "spec" && item.status === "approved")
+		bits.push("approved ✓");
 	return `- **${item.id}** ${item.title}${fromNote} — ${bits.join(" · ")}`;
 }
 
@@ -119,10 +132,22 @@ export function renderInsight(
 	store: SpecdStore,
 	itemId: string,
 	referenced?: SpecdStore[],
+	sourceDir?: string,
 ): string {
 	let item = getItem(store, itemId);
-	let sourceStore = store;
+	let sourceStore: SpecdStore = store;
 	let fromLine = "";
+	if (sourceDir && referenced) {
+		const ref = referenced.find((r) => r.dir === sourceDir);
+		if (ref) {
+			const found = getItem(ref, itemId);
+			if (found) {
+				item = found;
+				sourceStore = ref;
+				fromLine = `(from: ${ref.dir})`;
+			}
+		}
+	}
 	if (!item && referenced) {
 		for (const ref of referenced) {
 			const found = getItem(ref, itemId);

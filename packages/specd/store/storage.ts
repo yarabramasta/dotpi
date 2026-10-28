@@ -52,6 +52,9 @@ export function saveStorageConfig(
 	store: SpecdStore,
 	config: StorageConfig,
 ): void {
+	if (store.readOnly) {
+		throw new Error("Referenced stores are read-only.");
+	}
 	store.db
 		.prepare(
 			"INSERT INTO meta (key, value) VALUES ('storage_mode', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",

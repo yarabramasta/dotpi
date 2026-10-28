@@ -127,4 +127,28 @@ describe("store registry references", () => {
 		expect(result).toEqual({ ok: false, reason: "circular reference" });
 		expect(resolveReferenceStores(repoA)).toEqual([]);
 	});
+
+	it("rejects transitive circular references", () => {
+		const repoA = mkdtempSync(join(tmpdir(), "specd-repo-a-"));
+		const repoB = mkdtempSync(join(tmpdir(), "specd-repo-b-"));
+		const repoC = mkdtempSync(join(tmpdir(), "specd-repo-c-"));
+		const storeA = mkdtempSync(join(tmpdir(), "specd-store-a-"));
+		const storeB = mkdtempSync(join(tmpdir(), "specd-store-b-"));
+		const storeC = mkdtempSync(join(tmpdir(), "specd-store-c-"));
+		dirs.push(repoA, repoB, repoC, storeA, storeB, storeC);
+
+		registerStore(repoA, { type: "external", storePath: storeA });
+		registerStore(repoB, { type: "external", storePath: storeB });
+		registerStore(repoC, { type: "external", storePath: storeC });
+
+		// A → B → C.
+		addStoreReference(repoA, storeB);
+		addStoreReference(repoB, storeC);
+
+		// C → A would close the cycle.
+		const result = addStoreReference(repoC, storeA);
+
+		expect(result).toEqual({ ok: false, reason: "circular reference" });
+		expect(resolveReferenceStores(repoC)).toEqual([]);
+	});
 });

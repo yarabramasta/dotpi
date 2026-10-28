@@ -17,7 +17,12 @@
  * entries on the `imported` event payload, not edges. */
 
 import type { ItemKind } from "../store/schema.js";
-import { recomputeProjection, type SpecdStore } from "../store/store.js";
+import {
+	appendEventsJsonl,
+	recomputeProjection,
+	type SpecdEvent,
+	type SpecdStore,
+} from "../store/store.js";
 import type { MappedItem, MappedLink, MappedSnapshot } from "./map.js";
 
 export interface ImportReport {
@@ -245,6 +250,25 @@ export function applyImport(
 		store.db.exec("ROLLBACK");
 		throw error;
 	}
+
+	// Persist every inserted event to the WAL so the store can be rebuilt
+	// from events.jsonl alone.
+	const insertedEvents: SpecdEvent[] = [];
+	for (const step of steps) {
+		const id = idMap.get(step.originId);
+		if (!id) continue;
+		// SAFETY: SELECT names SpecdEvent columns in order; the rows were
+		// inserted above and match the interface by construction.
+		const events = store.db
+			.prepare(
+				"SELECT id, item, type, payload, at, actor, batch FROM events WHERE item = ? ORDER BY id ASC",
+			)
+			.all(id) as unknown as SpecdEvent[];
+		insertedEvents.push(...events);
+	}
+	insertedEvents.sort((a, b) => a.id - b.id);
+	appendEventsJsonl(store, insertedEvents);
+
 	return {
 		created,
 		linksAdded,

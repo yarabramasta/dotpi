@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-	renderSessionReport,
-	sessionReportFilename,
-} from "../report.js";
+import { renderSessionReport, sessionReportFilename } from "../report.js";
 import { addLink, appendEvent, createItem } from "../store/store.js";
 import { makeStore, type TestStore } from "./helpers.js";
 
@@ -73,8 +70,16 @@ describe("session report", () => {
 			// normally prevents this, so suspend it for the insert only.
 			t.store.db.exec("PRAGMA foreign_keys = OFF");
 			t.store.db
-				.prepare("INSERT INTO events (item, type, payload, at, actor) VALUES (?, ?, ?, ?, ?)")
-				.run("task-9999", "body.updated", "{}", new Date().toISOString(), "test");
+				.prepare(
+					"INSERT INTO events (item, type, payload, at, actor) VALUES (?, ?, ?, ?, ?)",
+				)
+				.run(
+					"task-9999",
+					"body.updated",
+					"{}",
+					new Date().toISOString(),
+					"test",
+				);
 			t.store.db.exec("PRAGMA foreign_keys = ON");
 			const html = renderSessionReport(t.store);
 			expect(html).toContain("orphan-event");

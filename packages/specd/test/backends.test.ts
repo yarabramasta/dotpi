@@ -166,7 +166,9 @@ describe("github reference adapter (contract freeze)", () => {
 		);
 		const created = await sink.createTask(TASK);
 		expect(created.externalRef).toBe("42");
-		expect(log.find((a) => a[0] === "project" && a[1] === "item-add")).toBeDefined();
+		expect(
+			log.find((a) => a[0] === "project" && a[1] === "item-add"),
+		).toBeDefined();
 		const edit = log.find((a) => a[0] === "project" && a[1] === "item-edit");
 		expect(edit?.join(" ")).toContain("OPT_MVP");
 	});
@@ -246,11 +248,20 @@ describe("github sink setup (preview + idempotent apply)", () => {
 									fields: {
 										nodes: [
 											{ name: "Estimate", __typename: "ProjectV2Field" },
-											{ name: "Priority", __typename: "ProjectV2SingleSelectField" },
-											{ name: "Size", __typename: "ProjectV2SingleSelectField" },
+											{
+												name: "Priority",
+												__typename: "ProjectV2SingleSelectField",
+											},
+											{
+												name: "Size",
+												__typename: "ProjectV2SingleSelectField",
+											},
 											{ name: "Start date", __typename: "ProjectV2Field" },
 											{ name: "Target date", __typename: "ProjectV2Field" },
-											{ name: "Status", __typename: "ProjectV2SingleSelectField" },
+											{
+												name: "Status",
+												__typename: "ProjectV2SingleSelectField",
+											},
 										],
 									},
 									views: {
@@ -408,8 +419,10 @@ describe("github sink setup (preview + idempotent apply)", () => {
 		const sink = createGithubAdapter("/repo", undefined, planRunner(state));
 		const first = await requireEnsure(sink)(PLAN);
 		expect(first).toContain('created label "priority:high"');
-		expect(first).toContain('customized Status field options to the 6 layer options (colors + descriptions)');
-		
+		expect(first).toContain(
+			"customized Status field options to the 6 layer options (colors + descriptions)",
+		);
+
 		expect(state.labelList).toContain("priority:high");
 		expect(state.options.map((o) => o.name)).toContain("Backlog");
 		expect(state.graphqlCalls.length).toBeGreaterThan(0); // option parser persists names but not colors — known fake limitation
@@ -433,7 +446,7 @@ describe("github sink setup (preview + idempotent apply)", () => {
 		expect(changes).not.toContain("create Status field");
 		expect(changes).toContain('add Status option "V1"');
 		expect(await requireEnsure(sink)(PLAN)).toContain(
-			'customized Status field options to the 6 layer options (colors + descriptions)',
+			"customized Status field options to the 6 layer options (colors + descriptions)",
 		);
 	});
 
@@ -443,9 +456,7 @@ describe("github sink setup (preview + idempotent apply)", () => {
 		// stdout. The runner rejects; statusField must still parse stdout.
 		const state = {
 			labelList: ["specd"],
-			options: [
-				{ id: "OPT_MVP", name: "MVP", color: "GRAY", description: "" },
-			],
+			options: [{ id: "OPT_MVP", name: "MVP", color: "GRAY", description: "" }],
 			ownerType: "organization" as const,
 			graphqlCalls: [] as string[],
 		};
@@ -456,7 +467,10 @@ describe("github sink setup (preview + idempotent apply)", () => {
 			if (joined.startsWith("api graphql") && joined.includes("views")) {
 				return base(args, cwd);
 			}
-			if (joined.startsWith("api graphql") && joined.includes("query($login:")) {
+			if (
+				joined.startsWith("api graphql") &&
+				joined.includes("query($login:")
+			) {
 				const res = await base(args, cwd);
 				const err = Object.assign(
 					new Error(
@@ -489,18 +503,24 @@ describe("github sink setup (preview + idempotent apply)", () => {
 			if (joined.startsWith("api graphql") && joined.includes("views")) {
 				return base(args, cwd);
 			}
-			if (joined.startsWith("api graphql") && joined.includes("query($login:")) {
-				const err = Object.assign(
-					new Error("Command failed: gh api graphql"),
-					{ stdout: '{"data":{"organization":null,"user":null},"errors":[{"message":"NOT_FOUND"}]}', code: 1 },
-				);
+			if (
+				joined.startsWith("api graphql") &&
+				joined.includes("query($login:")
+			) {
+				const err = Object.assign(new Error("Command failed: gh api graphql"), {
+					stdout:
+						'{"data":{"organization":null,"user":null},"errors":[{"message":"NOT_FOUND"}]}',
+					code: 1,
+				});
 				throw err;
 			}
 			return base(args, cwd);
 		};
 		const sink = createGithubAdapter("/repo", undefined, exitOneRunner);
 		const changes = await requirePreview(sink)(PLAN);
-		expect(changes).toContain("create Status field with lanes: MVP, V1, maintenance");
+		expect(changes).toContain(
+			"create Status field with lanes: MVP, V1, maintenance",
+		);
 	});
 
 	it.skip("empty workspace test (fake runner limitation)", async () => {

@@ -88,10 +88,13 @@ function itemRowPathScope(store: SpecdStore, itemId: string): string | null {
 
 /** Branch name for the execution seam: the tool namespace (specd/* —
  * what the reset sweep prunes) + conventional type + ref + slug. */
-export function branchName(item: {
-	id: string;
-	title: string;
-}, type: string): string {
+export function branchName(
+	item: {
+		id: string;
+		title: string;
+	},
+	type: string,
+): string {
 	const slug = item.title
 		.toLowerCase()
 		.replace(/[^a-z0-9]+/g, "-")

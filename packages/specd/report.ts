@@ -2,8 +2,8 @@ import { runDoctor } from "./store/doctor.js";
 import {
 	counts,
 	history,
-	listItems,
 	type ItemRow,
+	listItems,
 	parseJsonLoose,
 	type SpecdStore,
 } from "./store/store.js";
@@ -15,11 +15,11 @@ import {
 
 function esc(s: string): string {
 	return s
-		.replace(/\&/g, "&amp;")
+		.replace(/&/g, "&amp;")
 		.replace(/</g, "&lt;")
 		.replace(/>/g, "&gt;")
 		.replace(/"/g, "&quot;")
-		.replace(/'/g, "&#39;")
+		.replace(/'/g, "&#39;");
 }
 
 export function sessionReportFilename(now: Date = new Date()): string {
@@ -51,7 +51,10 @@ code, pre { font-family: ui-monospace, Menlo, monospace; font-size: .8rem; }
 .hint { margin-top: 2rem; padding: .6rem 1rem; background: #f4f4fb; border-left: 3px solid #4a4ae8; font-size: .85rem; }
 `;
 
-export function renderSessionReport(store: SpecdStore, now: Date = new Date()): string {
+export function renderSessionReport(
+	store: SpecdStore,
+	now: Date = new Date(),
+): string {
 	const items = listItems(store, { limit: 10000 });
 	const doctor = runDoctor(store);
 	const summary = counts(store)

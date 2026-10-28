@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { branchName, ccTitle, scopeOf } from "../naming.js";import { appendEvent, createItem } from "../store/store.js";
+import { branchName, ccTitle, scopeOf } from "../naming.js";
+import { createItem } from "../store/store.js";
 import { makeStore, type TestStore } from "./helpers.js";
 
 describe("naming conventions (conventional commits)", () => {
@@ -37,9 +38,9 @@ describe("naming conventions (conventional commits)", () => {
 			expect(scopeOf("src/auth/login.ts")).toBe("auth");
 			expect(scopeOf("README.md")).toBe("");
 			expect(scopeOf("src/**/*.ts")).toBe("");
-			expect(
-				branchName({ id, title: "Add login route" }, "feat"),
-			).toBe("specd/feat/task-0001-add-login-route");
+			expect(branchName({ id, title: "Add login route" }, "feat")).toBe(
+				"specd/feat/task-0001-add-login-route",
+			);
 		} finally {
 			t.cleanup();
 		}
@@ -84,9 +85,7 @@ describe("naming conventions (conventional commits)", () => {
 				pathScope: "src/thing/**",
 				type: "bananas",
 			});
-			expect(ccTitle(t.store, id, "Add thing")).toBe(
-				"feat(thing): add thing",
-			);
+			expect(ccTitle(t.store, id, "Add thing")).toBe("feat(thing): add thing");
 		} finally {
 			t.cleanup();
 		}

@@ -51,7 +51,8 @@ export function readSinkSetup(store: SpecdStore): SinkSetup | undefined {
 	// "sink_setup" since the plan→sink rename; fall back to the legacy
 	// "project_plan" key so existing stores keep working.
 	const raw =
-		readSinkConfig(store, "sink_setup") ?? readSinkConfig(store, "project_plan");
+		readSinkConfig(store, "sink_setup") ??
+		readSinkConfig(store, "project_plan");
 	if (!raw) return undefined;
 	const ws = (raw.workspace ?? {}) as Record<string, unknown>;
 	const workspace: PlanWorkspace = {

@@ -259,12 +259,27 @@ describe("consistency check", () => {
 			actor: "t",
 		});
 		addLink(t.store, roadmap.id, epic.id, "part-of"); // roadmap is the epic's child
-		const s1 = createItem(t.store, { kind: "spec", title: "Slice 1", body: "", actor: "t" });
-		const s2 = createItem(t.store, { kind: "spec", title: "Slice 2", body: "", actor: "t" });
+		const s1 = createItem(t.store, {
+			kind: "spec",
+			title: "Slice 1",
+			body: "",
+			actor: "t",
+		});
+		const s2 = createItem(t.store, {
+			kind: "spec",
+			title: "Slice 2",
+			body: "",
+			actor: "t",
+		});
 		addLink(t.store, s1.id, roadmap.id, "part-of");
 		addLink(t.store, s2.id, roadmap.id, "part-of");
 		addLink(t.store, s2.id, s1.id, "depends-on");
-		const plan = createItem(t.store, { kind: "plan", title: "Plan", body: "", actor: "t" });
+		const plan = createItem(t.store, {
+			kind: "plan",
+			title: "Plan",
+			body: "",
+			actor: "t",
+		});
 		const constitution = createItem(t.store, {
 			kind: "constitution",
 			title: "Principles",

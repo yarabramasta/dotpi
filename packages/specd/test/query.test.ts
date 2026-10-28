@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { insightLine, queryItems, renderInsight } from "../query.js";
 import { addLink, appendEvent, createItem } from "../store/store.js";
-import { makeStore, type TestStore } from "./helpers.js";
+import { makeStore } from "./helpers.js";
 
 describe("item query + insight", () => {
 	it("filters by kind, status, and text", async () => {
@@ -243,9 +243,7 @@ describe("item query + insight", () => {
 					actor: "t",
 				});
 				addLink(local.store, localTask.id, localSpec.id, "part-of");
-				const rows = queryItems(local.store, { of: localSpec.id }, [
-					ref.store,
-				]);
+				const rows = queryItems(local.store, { of: localSpec.id }, [ref.store]);
 				expect(rows.map((r) => r.id).sort()).toEqual([localTask.id].sort());
 			} finally {
 				local.cleanup();

@@ -1,4 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
 /** The store registry maps repository paths to specd store locations.
@@ -95,12 +96,38 @@ export function resolveStoreDir(repoPath: string): string {
 	return join(resolve(repoPath), ".spec");
 }
 
+function expandHome(input: string): string {
+	if (input.startsWith("~/")) return join(homedir(), input.slice(2));
+	if (input === "~") return homedir();
+	return input;
+}
+
 /** Resolve the referenced store directories for a repo. Returns absolute
  * paths; empty when the repo is unregistered or has no references. */
 export function resolveReferenceStores(repoPath: string): string[] {
 	const entry = lookupStore(repoPath);
 	if (!entry?.references) return [];
-	return entry.references.map((ref) => resolve(ref));
+	return entry.references.map((ref) => resolve(expandHome(ref)));
+}
+
+/** Walk the reference graph starting from a store directory and return
+ * every store directory reachable through references. */
+function reachableStoreDirs(
+	registry: StoreRegistry,
+	startDir: string,
+	visited = new Set<string>(),
+): string[] {
+	if (visited.has(startDir)) return [];
+	visited.add(startDir);
+	const dirs: string[] = [];
+	for (const key of Object.keys(registry)) {
+		if (resolveStoreDir(key) !== startDir) continue;
+		for (const ref of resolveReferenceStores(key)) {
+			dirs.push(ref);
+			dirs.push(...reachableStoreDirs(registry, ref, visited));
+		}
+	}
+	return dirs;
 }
 
 /** Add a reference store to a repo's registry entry. Returns the updated
@@ -110,7 +137,7 @@ export function addStoreReference(
 	refPath: string,
 ): { ok: true; refs: string[] } | { ok: false; reason: string } {
 	const absRepo = resolve(repoPath);
-	const absRef = resolve(refPath);
+	const absRef = resolve(expandHome(refPath));
 	const selfDir = resolveStoreDir(absRepo);
 
 	if (absRef === selfDir) {
@@ -121,17 +148,11 @@ export function addStoreReference(
 	const entry = registry[absRepo] ?? { type: "in-repo" };
 	const refs = entry.references ?? [];
 
-	if (refs.some((r) => resolve(r) === absRef)) {
+	if (refs.some((r) => resolve(expandHome(r)) === absRef)) {
 		return { ok: false, reason: "reference already exists" };
 	}
 
-	const circular = Object.keys(registry).some((key) => {
-		if (key === absRepo) return false;
-		const otherDir = resolveStoreDir(key);
-		const otherRefs = resolveReferenceStores(key);
-		return otherRefs.includes(selfDir) && otherDir === absRef;
-	});
-	if (circular) {
+	if (reachableStoreDirs(registry, absRef).includes(selfDir)) {
 		return { ok: false, reason: "circular reference" };
 	}
 
@@ -142,7 +163,13 @@ export function addStoreReference(
 	return { ok: true, refs: entry.references };
 }
 
-/** Check if a directory is a specd store (has store.db + the marker). */
+/** Check if a directory is a specd store (has store.db, the marker, or an
+ * events.jsonl WAL). Read-only referenced stores may ship without store.db
+ * because it is gitignored; the marker or WAL is enough to identify them. */
 export function isSpecdStore(dir: string): boolean {
-	return existsSync(join(dir, "store.db"));
+	return (
+		existsSync(join(dir, "store.db")) ||
+		existsSync(join(dir, ".specd-store.yaml")) ||
+		existsSync(join(dir, "events.jsonl"))
+	);
 }

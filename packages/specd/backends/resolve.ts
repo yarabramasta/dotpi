@@ -1,5 +1,5 @@
 import type { SpecdStore } from "../store/store.js";
-import { readSinkSetup, readSinkConfig } from "./config.js";
+import { readSinkConfig, readSinkSetup } from "./config.js";
 import type { SinkAdapter } from "./contract.js";
 import { createGithubAdapter } from "./github.js";
 import { createNullSink } from "./null.js";
@@ -25,7 +25,7 @@ export function tryResolveAdapter(
 				statusMap: readSinkSetup(store)?.statusMap,
 			});
 		}
-							default:
+		default:
 			return undefined;
 	}
 }
@@ -39,10 +39,7 @@ export function resolveAdapter(store: SpecdStore, sink: string): SinkAdapter {
 			"GitHub sink is not configured yet. Tell me the project owner and project number (and optionally a lane) so I can store them — e.g. pass github_owner + github_project_number to specd_export once, and they persist for every later export. For guided setup run /spec connect github.",
 		);
 	}
-	const known = [
-		"null",
-		"github",
-											];
+	const known = ["null", "github"];
 	if (!known.includes(sink)) {
 		throw new Error(
 			`Unknown sink: ${sink}. Ported sinks: ${known.join(", ")}. Guided setup: /spec connect <sink>.`,

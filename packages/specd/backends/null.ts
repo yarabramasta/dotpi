@@ -1,6 +1,6 @@
 import type {
-	SinkSetup,
 	SinkAdapter,
+	SinkSetup,
 	SinkVerify,
 	TaskCreated,
 	TaskExport,

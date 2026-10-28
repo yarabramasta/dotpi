@@ -1,4 +1,5 @@
-import path from "node:path";
+import { existsSync, mkdirSync } from "node:fs";
+import path, { join } from "node:path";
 import type {
 	ExtensionAPI,
 	ExtensionContext,
@@ -28,12 +29,14 @@ import {
 import { planWaves } from "./pipeline/schedule.js";
 import { insightLine, queryItems, renderInsight } from "./query.js";
 import {
+	addStoreReference,
+	isSpecdStore,
 	lookupStore,
 	registerStore,
+	resolveReferenceStores,
 	type StoreRegistryEntry,
+	storesRoot,
 } from "./store/registry.js";
-import { existsSync } from "node:fs";
-import { join } from "node:path";
 import {
 	EVENT_TYPES,
 	type EventType,
@@ -55,6 +58,7 @@ import {
 	linkedItems,
 	listItems,
 	openStore,
+	openStoreReadOnly,
 	parseJsonLoose,
 	type SpecdStore,
 } from "./store/store.js";
@@ -124,6 +128,25 @@ function slugify(title: string): string {
 		.replace(/[^a-z0-9]+/g, "-")
 		.replace(/^-+|-+$/g, "")
 		.slice(0, 40);
+}
+
+export function parseReferenceTarget(
+	input: string,
+):
+	| { kind: "git"; url: string; slug: string }
+	| { kind: "path"; target: string } {
+	const url = input.trim();
+	if (
+		url.startsWith("https://") ||
+		url.startsWith("http://") ||
+		url.startsWith("ssh://") ||
+		url.startsWith("git@") ||
+		url.endsWith(".git")
+	) {
+		const slug = path.basename(url.replace(/\.git$/, ""));
+		return { kind: "git", url, slug };
+	}
+	return { kind: "path", target: url };
 }
 
 /** Dashboard content shared by the /spec command and the specd_dashboard
@@ -340,25 +363,60 @@ export function registerSpecdTools(pi: ExtensionAPI): void {
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const store = await openSpecd(ctx);
-			const item = getItem(store, params.item);
-			if (!item) return text(`Unknown item: ${params.item}.`);
-			const events = history(store, params.item);
-			const capsule = events.findLast((e) => e.type === "work.paused");
-			const capsuleSection = capsule
-				? renderCapsule(
-						parseJsonLoose<Record<string, unknown>>(capsule.payload),
-					)
-				: "";
-			const checklistSection =
-				item.kind === "checklist"
-					? renderChecklist(checklistState(store, params.item))
+			let item = getItem(store, params.item);
+			let itemStore: SpecdStore = store;
+			let from: string | undefined;
+			const opened: SpecdStore[] = [];
+			try {
+				if (!item) {
+					for (const dir of resolveReferenceStores(ctx.cwd)) {
+						const ref = openStoreReadOnly(dir);
+						if (!ref) continue;
+						opened.push(ref);
+						const found = getItem(ref, params.item);
+						if (found) {
+							item = found;
+							itemStore = ref;
+							from = dir;
+							break;
+						}
+					}
+				}
+				if (!item) {
+					const refNote =
+						resolveReferenceStores(ctx.cwd).length > 0
+							? " (searched referenced stores too)"
+							: "";
+					return text(`Unknown item: ${params.item}.${refNote}`);
+				}
+				const events = history(itemStore, params.item);
+				const capsule = events.findLast((e) => e.type === "work.paused");
+				const capsuleSection = capsule
+					? renderCapsule(
+							parseJsonLoose<Record<string, unknown>>(capsule.payload),
+						)
 					: "";
-			const historySection = events
-				.map((e) => `- ${e.at} ${e.actor}: ${e.type}`)
-				.join("\n");
-			return text(
-				`# ${item.id}\n\n- kind: ${item.kind}\n- status: ${item.status}\n- path scope: ${item.path_scope ?? "—"}\n\n${item.body}${capsuleSection}${checklistSection}\n\n## History\n\n${historySection}`,
-			);
+				const checklistSection =
+					item.kind === "checklist"
+						? renderChecklist(checklistState(itemStore, params.item))
+						: "";
+				const historySection = events
+					.map((e) => `- ${e.at} ${e.actor}: ${e.type}`)
+					.join("\n");
+				const fromLine = from ? `- from: ${from}\n` : "";
+				return text(
+					`# ${item.id}\n\n- kind: ${item.kind}\n- status: ${item.status}\n- path scope: ${item.path_scope ?? "—"}\n${fromLine}\n${item.body}${capsuleSection}${checklistSection}\n\n## History\n\n${historySection}`,
+				);
+			} finally {
+				for (const ref of opened) {
+					if (ref !== itemStore) {
+						ref.db.close();
+					}
+				}
+				if (itemStore !== store) {
+					itemStore.db.close();
+				}
+			}
 		},
 	});
 
@@ -550,29 +608,86 @@ export function registerSpecdTools(pi: ExtensionAPI): void {
 			limit: Type.Optional(
 				Type.Number({ description: "Max matches returned. Defaults to 20." }),
 			),
+			store: Type.Optional(
+				Type.String({
+					description:
+						'Store to query: omit for local only, "all" for local plus referenced stores, or an absolute store directory path.',
+				}),
+			),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-			const store = await openSpecd(ctx);
-			const rows = queryItems(store, {
-				kind: params.kind,
-				status: params.status,
-				q: params.q,
-				of: params.of,
-				limit: params.limit,
-			});
-			if (rows.length === 0) {
-				return text("No items match the query.", { matches: [] });
+			const scope = params.store;
+			let primary: SpecdStore;
+			let referenced: SpecdStore[] = [];
+			let primaryIsLocal = false;
+			let specificHandle: SpecdStore | undefined;
+			const openRefs = (): SpecdStore[] =>
+				resolveReferenceStores(ctx.cwd)
+					.map((dir) => openStoreReadOnly(dir))
+					.filter((s): s is SpecdStore => s !== undefined);
+			try {
+				if (!scope) {
+					primary = await openSpecd(ctx);
+					primaryIsLocal = true;
+				} else if (scope === "all") {
+					primary = await openSpecd(ctx);
+					primaryIsLocal = true;
+					referenced = openRefs();
+				} else {
+					const dir = path.resolve(scope);
+					if (!isSpecdStore(dir)) {
+						return text(
+							`Not a specd store: ${dir}\n\nProvide an absolute path to a store directory containing store.db.`,
+						);
+					}
+					const ref = openStoreReadOnly(dir);
+					if (!ref) {
+						return text(
+							`Could not open specd store read-only: ${dir}\n\nThe store.db may be missing or uninitialized.`,
+						);
+					}
+					specificHandle = ref;
+					primary = ref;
+				}
+				const rows = queryItems(
+					primary,
+					{
+						kind: params.kind,
+						status: params.status,
+						q: params.q,
+						of: params.of,
+						limit: params.limit,
+					},
+					referenced,
+				);
+				if (rows.length === 0) {
+					return text("No items match the query.", { matches: [] });
+				}
+				if (params.insight) {
+					const lines = rows
+						.map((r) => insightLine(primary, r.id, referenced, r.source))
+						.join("\n");
+					const deep =
+						rows.length === 1
+							? `\n\n${renderInsight(primary, rows[0].id, referenced, rows[0].source)}`
+							: "";
+					return text(lines + deep);
+				}
+				const table = rows
+					.map(
+						(r) =>
+							`- **${r.id}** (${r.kind}, ${r.status})${r.source ? ` (from: ${r.source})` : ""} ${r.title}`,
+					)
+					.join("\n");
+				return text(`${rows.length} match(es):\n${table}`);
+			} finally {
+				for (const ref of referenced) {
+					ref.db.close();
+				}
+				if (!primaryIsLocal && specificHandle) {
+					specificHandle.db.close();
+				}
 			}
-			if (params.insight) {
-				const lines = rows.map((r) => insightLine(store, r.id)).join("\n");
-				const deep =
-					rows.length === 1 ? `\n\n${renderInsight(store, rows[0].id)}` : "";
-				return text(lines + deep);
-			}
-			const table = rows
-				.map((r) => `- **${r.id}** (${r.kind}, ${r.status}) ${r.title}`)
-				.join("\n");
-			return text(`${rows.length} match(es):\n${table}`);
 		},
 	});
 
@@ -616,9 +731,16 @@ export function registerSpecdTools(pi: ExtensionAPI): void {
 			const cwd = ctx.cwd;
 			const entry = lookupStore(cwd);
 			const inRepo = existsSync(join(cwd, ".spec", "store.db"));
+			const refs = resolveReferenceStores(cwd);
 			if (entry) {
+				const refLines =
+					refs.length === 0
+						? ""
+						: `\n\nReferences:\n${refs
+								.map((r) => `- ${isSpecdStore(r) ? "✓" : "✗ missing"} ${r}`)
+								.join("\n")}`;
 				return text(
-					`Store registered: type=${entry.type}, path=${entry.storePath ?? "(in-repo)"}${entry.remote ? `, remote=${entry.remote}` : ""}`,
+					`Store registered: type=${entry.type}, path=${entry.storePath ?? "(in-repo)"}${entry.remote ? `, remote=${entry.remote}` : ""}${refLines}`,
 				);
 			}
 			if (inRepo) {
@@ -659,15 +781,74 @@ export function registerSpecdTools(pi: ExtensionAPI): void {
 			),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-			const entry: StoreRegistryEntry = { type: params.type as StoreRegistryEntry["type"] };
+			const entry: StoreRegistryEntry = {
+				type: params.type as StoreRegistryEntry["type"],
+			};
 			if (params.storePath) entry.storePath = params.storePath;
 			if (params.remote) entry.remote = params.remote;
 			if (params.type !== "in-repo" && !params.storePath) {
-				return text(`External stores need a storePath. Got type=${params.type} without a path.`);
+				return text(
+					`External stores need a storePath. Got type=${params.type} without a path.`,
+				);
 			}
 			registerStore(ctx.cwd, entry);
 			return text(
 				`Registered: ${ctx.cwd} → ${params.type}${params.storePath ? ` (${params.storePath})` : ""}`,
+			);
+		},
+	});
+
+	pi.registerTool({
+		name: "specd_add_reference",
+		label: "Add a specd store reference",
+		description:
+			"Add a read-only reference to another specd store (local path or git URL). Git URLs are cloned into ~/.pi/agent/stores/{slug} if not already present.",
+		promptSnippet: "Reference another specd store",
+		parameters: Type.Object({
+			store: Type.String({
+				description:
+					"Absolute path to a specd store directory, or a git URL to clone.",
+			}),
+		}),
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const target = parseReferenceTarget(params.store);
+			let dir: string;
+			if (target.kind === "git") {
+				dir = path.join(storesRoot(), target.slug);
+				mkdirSync(storesRoot(), { recursive: true });
+				if (!isSpecdStore(dir)) {
+					const { execFileSync } = await import("node:child_process");
+					try {
+						execFileSync("git", ["clone", target.url, dir], {
+							stdio: "pipe",
+						});
+					} catch (error) {
+						const msg = error instanceof Error ? error.message : String(error);
+						return text(
+							`Failed to clone reference store: ${msg}\n\nHint: ensure the URL is reachable and you have git credentials configured.`,
+						);
+					}
+				}
+				if (!isSpecdStore(dir)) {
+					return text(
+						`Cloned directory is not a specd store: ${dir}\n\nProvide an absolute path to a store directory containing store.db, or a git URL to clone.`,
+					);
+				}
+			} else {
+				dir = path.resolve(target.target);
+				if (!isSpecdStore(dir)) {
+					return text(
+						`Not a specd store: ${dir}\n\nProvide an absolute path to a store directory containing store.db, or a git URL to clone.`,
+					);
+				}
+			}
+			const result = addStoreReference(ctx.cwd, dir);
+			if (!result.ok) {
+				return text(`Cannot add reference: ${result.reason}`);
+			}
+			const refs = resolveReferenceStores(ctx.cwd);
+			return text(
+				`Referenced store added.\n\nReferences (${refs.length}):\n${refs.map((r) => `- ${r}`).join("\n")}`,
 			);
 		},
 	});

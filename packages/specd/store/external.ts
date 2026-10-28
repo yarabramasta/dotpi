@@ -12,7 +12,7 @@ export function createExternalStore(storePath: string, repoPath: string): void {
 
 	execSync("git init", { cwd: storePath, stdio: "ignore" });
 
-	const gitignore = ["store.db-wal", "store.db-shm", ""].join("\n");
+	const gitignore = ["*", "!.gitignore", "!events.jsonl", ""].join("\n");
 	writeFileSync(join(storePath, ".gitignore"), gitignore, "utf8");
 
 	execSync('git add -A && git commit -m "init specd store"', {
