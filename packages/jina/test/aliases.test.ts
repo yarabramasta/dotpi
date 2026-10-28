@@ -8,7 +8,7 @@ import {
 	sliceBounded,
 	sourceCheckTool,
 	webSearchTool,
-} from "../aliases.js";
+} from "../src/aliases.js";
 
 vi.mock("node:fs", () => ({
 	readFileSync: vi.fn(() => {

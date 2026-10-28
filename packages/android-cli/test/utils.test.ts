@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { formatExecResult, tryParseJson } from "../utils.ts";
+import { formatExecResult, tryParseJson } from "../src/utils.ts";
 
 describe("formatExecResult", () => {
 	test("stdout only", () => {

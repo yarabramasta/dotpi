@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { renderInlineInputRow } from "../inline-input.ts";
+import { renderInlineInputRow } from "../src/inline-input.ts";
 
 // Strip styling for width-agnostic assertions.
 const plain = (text: string) => text;

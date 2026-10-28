@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { parsePlanPaths, sliceApprovedPaths } from "../slicer.ts";
+import { parsePlanPaths, sliceApprovedPaths } from "../src/slicer.ts";
 
 describe("parsePlanPaths", () => {
 	test("extracts repo paths and filters noise", () => {

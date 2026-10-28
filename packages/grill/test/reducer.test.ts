@@ -6,7 +6,7 @@ import {
 	type PickerOption,
 	type PickerState,
 	reducePicker,
-} from "../picker-state.ts";
+} from "../src/picker-state.ts";
 
 const OPTIONS: PickerOption[] = [
 	{ value: "a", label: "Alpha" },

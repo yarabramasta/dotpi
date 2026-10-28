@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 import {
 	gitbutlerDelegationText,
 	worktreesDelegationText,
-} from "../tools/phase-tools.js";
+} from "../src/tools/phase-tools.js";
 
 const twoSlices = [{ paths: ["a.ts"] }, { paths: ["b.ts"] }];
 

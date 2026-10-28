@@ -1,13 +1,13 @@
 import { initTheme } from "@earendil-works/pi-coding-agent";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { afterEach, beforeAll, describe, expect, test } from "vitest";
-import { DEFAULT_STATE, type GrillState, runtime } from "../state.ts";
+import { DEFAULT_STATE, type GrillState, runtime } from "../src/state.ts";
 import {
 	renderTabContent,
 	renderTabStrip,
 	TAB_NAMES,
 	tabContent,
-} from "../tabs.ts";
+} from "../src/tabs.ts";
 
 beforeAll(() => {
 	// Markdown rendering needs the theme registry (same as pi's own setup).

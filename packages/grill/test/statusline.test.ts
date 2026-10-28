@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
-import { statusTokens } from "../prompts.ts";
-import { DEFAULT_STATE, type GrillState } from "../state.ts";
+import { statusTokens } from "../src/prompts.ts";
+import { DEFAULT_STATE, type GrillState } from "../src/state.ts";
 
 function state(overrides: Partial<GrillState>): GrillState {
 	return { ...DEFAULT_STATE, active: true, ...overrides };

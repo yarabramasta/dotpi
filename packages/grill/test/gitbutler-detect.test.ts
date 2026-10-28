@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
-import { detectGitbutlerMode } from "./gitbutler-detect.js";
+import { detectGitbutlerMode } from "../src/backends/gitbutler-detect.js";
 
 function makeTempDir(prefix: string): string {
 	return mkdtempSync(join(tmpdir(), prefix));

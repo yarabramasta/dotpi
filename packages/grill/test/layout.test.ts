@@ -6,7 +6,7 @@ import {
 	MIN_LEFT,
 	MIN_PREVIEW_WIDTH,
 	SIDE_BY_SIDE_MIN_WIDTH,
-} from "../layout.ts";
+} from "../src/layout.ts";
 
 describe("decideLayout", () => {
 	test("stacked below the width floor", () => {

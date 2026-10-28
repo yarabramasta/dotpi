@@ -72,9 +72,15 @@ packages/               extensions (pnpm workspace; real sources)
   android-cli/          Android tooling extension (pi-android-cli)
 agent/                  mirrors ~/.pi/agent (installer source)
   settings.json models.json auth.json
+.agents/skills/         vendored agent skills (karpathy-guidelines, write-good-docs, flatten-fake-layers)
 dotpi                   POSIX sh bootstrap for the Python CLI
 src/dotpi               installer/backup/sync CLI (Python)
 ```
+
+`.agents/skills/` carries vendored agent skills — pi discovers project
+`.agents/skills/` natively (no wiring needed). Install more with
+`npx skills add <repo> --skill <name>`; sources are tracked so fresh clones
+get the same skill set.
 
 Workspace wiring: `pnpm-workspace.yaml` globs `packages/*`; root
 `devDependencies` pin the toolchain exactly while extension packages declare

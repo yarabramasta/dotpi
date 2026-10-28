@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { isProbablyReadOnlyBash } from "../read-only.ts";
+import { isProbablyReadOnlyBash } from "../src/read-only.ts";
 
 describe("isProbablyReadOnlyBash — git branch/remote allowlists", () => {
 	const readonly: string[] = [

@@ -7,7 +7,7 @@
 	],
 	"pi": {
 		"extensions": [
-			"packages/*/index.ts"
+			"packages/*/src/index.ts"
 		]
 	},
 	"engines": {

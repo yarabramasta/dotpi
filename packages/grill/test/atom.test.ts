@@ -22,18 +22,18 @@ import {
 	setStatus,
 	supersede,
 	updateAtom,
-} from "../atoms.ts";
-import { renderDigest } from "../digest.ts";
-import { runDoctor } from "../doctor.ts";
-import { renderExport } from "../exports.ts";
-import { initAtom } from "../init.ts";
-import { migrateLegacyStore } from "../migrate.ts";
+} from "../src/atom/atoms.ts";
+import { renderDigest } from "../src/atom/digest.ts";
+import { runDoctor } from "../src/atom/doctor.ts";
+import { renderExport } from "../src/atom/exports.ts";
+import { initAtom } from "../src/atom/init.ts";
+import { migrateLegacyStore } from "../src/atom/migrate.ts";
 import {
 	openAtomStore,
 	openAtomStoreReadOnly,
 	SCHEMA_VERSION,
-} from "../store.ts";
-import { detectWorkspace } from "../workspace.ts";
+} from "../src/atom/store.ts";
+import { detectWorkspace } from "../src/atom/workspace.ts";
 
 type RowWithSources = { sources: string | null };
 

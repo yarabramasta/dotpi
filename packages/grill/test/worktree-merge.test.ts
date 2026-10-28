@@ -3,7 +3,7 @@ import {
 	mergeConflictBlock,
 	mergePlan,
 	parseBranchReports,
-} from "./worktree-merge.js";
+} from "../src/backends/worktree-merge.js";
 
 describe("parseBranchReports", () => {
 	test("extracts BRANCH: lines in first-seen order", () => {

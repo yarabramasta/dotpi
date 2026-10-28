@@ -3,7 +3,7 @@ import {
 	eligibleAuditors,
 	eligibleScouts,
 	eligibleWriters,
-} from "../grounding-policy.ts";
+} from "../src/grounding-policy.ts";
 
 describe("eligibleScouts", () => {
 	test("keeps read-only agents in canonical order", () => {

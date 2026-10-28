@@ -5,7 +5,7 @@ import {
 	type PickerKeybindings,
 	type PickerState,
 	routePickerKey,
-} from "../picker-state.ts";
+} from "../src/picker-state.ts";
 
 const env: PickerEnv = {
 	options: [

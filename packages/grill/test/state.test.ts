@@ -1,8 +1,8 @@
 import { describe, expect, test } from "vitest";
-import { composeDossier, type DossierParts } from "../dossier.ts";
-import { asSubagentsValue, DEFAULT_STATE } from "../state.ts";
-import { shouldRewriteTitle, titleFromTopic } from "../title.ts";
-import { extractRunId } from "../tools/reviewer-tools.ts";
+import { composeDossier, type DossierParts } from "../src/dossier.ts";
+import { asSubagentsValue, DEFAULT_STATE } from "../src/state.ts";
+import { shouldRewriteTitle, titleFromTopic } from "../src/title.ts";
+import { extractRunId } from "../src/tools/reviewer-tools.ts";
 
 describe("composeDossier", () => {
 	test("empty parts produce empty string", () => {

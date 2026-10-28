@@ -7,7 +7,7 @@ import {
 	resolveIsolation,
 	sliceBranches,
 	sliceScope,
-} from "./backend.js";
+} from "../src/backends/backend.js";
 
 describe("resolveIsolation", () => {
 	test("subagents off forces slices", () => {

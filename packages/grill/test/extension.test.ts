@@ -2,10 +2,10 @@ import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
-import { parseAssignments } from "../commands.ts";
-import grillMeExtension, { grillStoreExists } from "../index.ts";
-import { buildSystemPrompt } from "../prompts.ts";
-import { cloneState, DEFAULT_STATE, type GrillState } from "../state.ts";
+import { parseAssignments } from "../src/commands.ts";
+import grillMeExtension, { grillStoreExists } from "../src/index.ts";
+import { buildSystemPrompt } from "../src/prompts.ts";
+import { cloneState, DEFAULT_STATE, type GrillState } from "../src/state.ts";
 
 const TOOL_NAMES = [
 	"grill_update_checkpoint",

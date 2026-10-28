@@ -3,7 +3,7 @@ import {
 	applyScroll,
 	computeScrollStart,
 	decorateOverflow,
-} from "../scroll.ts";
+} from "../src/scroll.ts";
 
 const dim = (t: string) => `~${t}~`;
 
