@@ -19,7 +19,7 @@ import {
 	getItem,
 	openStoreReadOnly,
 } from "../src/store/store.js";
-import { parseReferenceTarget } from "../tools.js";
+import { parseReferenceTarget } from "../src/tools/sink-tools.js";
 import { makeStore } from "./helpers.js";
 
 describe("reference tools", () => {

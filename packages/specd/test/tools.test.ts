@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { addLink, createItem } from "../src/store/store.js";
-import { buildTaskExport } from "../tools.js";
+import { buildTaskExport } from "../src/tools/exec-tools.js";
 import { makeStore } from "./helpers.js";
 
 describe("buildTaskExport labels", () => {

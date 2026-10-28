@@ -18,7 +18,7 @@ import {
 	saveStorageConfig,
 } from "./src/store/storage.js";
 import { openStore } from "./src/store/store.js";
-import { dashboardContent } from "./tools.js";
+import { dashboardContent } from "./src/tools/store-tools.js";
 
 const HELP = `# specd
 
