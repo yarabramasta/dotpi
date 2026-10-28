@@ -1,3 +1,6 @@
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { parseJsonLoose } from "../../store/store.js";
 import type {
 	SinkAdapter,
@@ -24,6 +27,18 @@ interface StatusFieldRow {
 }
 
 type Gh = (args: string[]) => Promise<{ stdout: string; stderr: string }>;
+
+/** octocat practice (plan-0006 F1): `--body-file` over `--body` — the flag
+ * mangles multi-line bodies; the runner cannot pipe stdin, so the body
+ * travels through a real temp file the caller removes in `finally`. */
+export async function writeTempBody(
+	body: string,
+): Promise<{ file: string; cleanup: () => Promise<void> }> {
+	const dir = await mkdtemp(join(tmpdir(), "specd-issue-"));
+	const file = join(dir, "body.md");
+	await writeFile(file, body, "utf8");
+	return { file, cleanup: () => rm(dir, { recursive: true, force: true }) };
+}
 
 async function statusField(
 	gh: Gh,
@@ -409,18 +424,24 @@ export function createGithubAdapter(
 
 		async createTask(task: TaskExport): Promise<TaskCreated> {
 			await ensureLabels(task.labels);
-			const args = [
-				"issue",
-				"create",
-				"--title",
-				task.title,
-				"--body",
-				task.body,
-			];
-			for (const label of task.labels) {
-				args.push("--label", label);
+			const body = await writeTempBody(task.body);
+			let result: { stdout: string; stderr: string };
+			try {
+				const args = [
+					"issue",
+					"create",
+					"--title",
+					task.title,
+					"--body-file",
+					body.file,
+				];
+				for (const label of task.labels) {
+					args.push("--label", label);
+				}
+				result = await gh(args);
+			} finally {
+				await body.cleanup();
 			}
-			const result = await gh(args);
 			const url = result.stdout.trim().split("\n").at(-1) ?? "";
 			if (!url.startsWith("http")) {
 				throw new Error(

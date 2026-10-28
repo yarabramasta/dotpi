@@ -106,7 +106,7 @@ export const TASKS_ENTRY_PROMPT = (
 ) => `Break the approved+planned spec ${specId} into tasks:
 
 1. specd_show(item=${specId}) — verify it is approved and has a linked plan.
-2. Interview me for the task breakdown: what are the 1–3 work items, their conventional types (feat/fix/chore/docs), path scopes, and [P] parallel markers?
+2. Interview me for the task breakdown: what are the 1–3 work items, their conventional types (feat/fix/chore/docs), path scopes, and [P] parallel markers? Phrase every acceptance criterion as a verifiable goal — a test to write, a command to run, an observable outcome — never an imperative like "make it work".
 3. specd_create_item(kind="task", title=…, body=<acceptance criteria>, path_scope=…, extra={type:"feat"}) each, linked part-of ${specId}.
 4. Verify with specd_schedule(spec=${specId}) — waves, parallelism, serialization.
 5. Offer export: specd_export(item=<task id>, sink=…) for each task.
@@ -125,9 +125,10 @@ export const RUN_PROMPT = (
    - the linked spec's intent and acceptance criteria
    - the branch name
    - NAMING (conventional commits, honored everywhere): the task's type (feat/fix/chore/docs/test/refactor/perf — from its created payload, default feat) and scope (from its path scope) drive every name. Commit messages AND the eventual PR title MUST be 'type(scope): subject' with the subject stating the goal and starting lowercase (e.g. 'feat(auth): add login route'); no scope → 'type: subject'.
-   - worker rules: implement only inside the path scope; commit to the branch; push the branch; NEVER touch main; NEVER force-push; do NOT create the PR — report the pushed branch when done.
-5. REVIEW GATE: spawn ONE reviewer subagent (read-only) over the worktree diff (default branch vs the task branch) against the task's acceptance criteria and the spec. Record its verdict: specd_append_event(item=${task}, type=review.completed, payload={passed: true|false, findings: [...]}).
-6. If the review passed: from the worktree run gh pr create (base = default branch) and record specd_append_event(item=${task}, type=pr.created, payload={url, branch}). If it failed: tell me exactly what failed — fix, re-review, and only then PR; completion is blocked until a review passes.
+   - worker rules: implement only inside the path scope; SURGICAL CHANGES — every changed line traces to the task (no drive-by refactors, no reformatting adjacent code, no "improvements" beyond the task; clean up only orphans your own changes created); commit to the branch; push the branch; NEVER touch main; NEVER force-push; do NOT create the PR — report the pushed branch when done.
+   - if the task's type is docs: classify the doc first (Diataxis — tutorial / how-to / reference / explanation; one page, one job), write for a named audience, and strip AI-writing tropes before finishing.
+5. REVIEW GATE: spawn ONE reviewer subagent (read-only) over the worktree diff (default branch vs the task branch) against the task's acceptance criteria and the spec. Beyond correctness, check two dimensions: overcomplication (would a senior engineer call it overbuilt? the simpler version wins) and drive-by changes (any changed line not traceable to the task is a finding). Record its verdict: specd_append_event(item=${task}, type=review.completed, payload={passed: true|false, findings: [...]}).
+6. If the review passed: specd_open_pr(item=${task}) — the tool enforces the review gate in code, derives branch/title/body (gh pr create --body-file; base = default branch unless overridden), records pr.created {url, branch} itself, and returns the existing PR URL if one is already open for the branch. If the review failed: tell me exactly what failed — fix, re-review, and only then PR; the tool refuses until a passing review exists. Poll CI with specd_watch_checks(item=${task}) as needed — a single non-blocking poll per call.
 7. When a PR exists and its review passed: specd_append_event(item=${task}, type=work.completed, payload={pr}) — the tool refuses without a passing review.`;
 
 export const RUN_WAVES_PROMPT = `Run tasks through the execution seam in parallel waves:

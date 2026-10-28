@@ -3,9 +3,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createAtom, addEdge as grillAddEdge } from "../../grill/atom/atoms.js";
-import type { AtomStore } from "../../grill/atom/store.js";
-import { applySchema, atomPaths } from "../../grill/atom/store.js";
+import {
+	createAtom,
+	addEdge as grillAddEdge,
+} from "../../grill/src/atom/atoms.js";
+import type { AtomStore } from "../../grill/src/atom/store.js";
+import { applySchema, atomPaths } from "../../grill/src/atom/store.js";
 import { snapshotGrill } from "../src/import/grill-source.js";
 import { mapAtom, mapEdge, mapSnapshot } from "../src/import/map.js";
 import {

@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import type { TaskExport } from "../src/sinks/contract.js";
 import { createGithubAdapter } from "../src/sinks/github/adapter.js";
@@ -94,19 +95,34 @@ describe("github reference adapter (contract freeze)", () => {
 		};
 	}
 
-	it("creates an issue with title, body, and idempotent labels", async () => {
+	it("creates an issue with title, body via --body-file, and idempotent labels", async () => {
+		let bodyViaFile: string | undefined;
 		const log: string[][] = [];
-		const sink = createGithubAdapter("/repo", undefined, fakeRunner(log));
+		const base = fakeRunner(log);
+		const runner: GhRunner = async (args, cwd) => {
+			if (args[0] === "issue" && args[1] === "create") {
+				const i = args.indexOf("--body-file");
+				bodyViaFile =
+					i >= 0 && typeof args[i + 1] === "string"
+						? await readFile(args[i + 1] as string, "utf8")
+						: undefined;
+			}
+			return base(args, cwd);
+		};
+		const sink = createGithubAdapter("/repo", undefined, runner);
 		const created = await sink.createTask(TASK);
 		expect(created).toEqual({
 			externalRef: "42",
 			url: "https://github.com/acme/app/issues/42",
 		});
+		// octocat practice: the body travels via --body-file, never argv.
+		expect(bodyViaFile).toBe(TASK.body);
 		const labelCalls = log.filter((a) => a[0] === "label");
 		expect(labelCalls.map((a) => a[2])).toEqual(["specd", "spec:auth"]);
 		const createCall = log.find((a) => a[0] === "issue");
 		expect(createCall).toContain("--title");
 		expect(createCall).toContain("Add login route");
+		expect(createCall?.includes(TASK.body)).toBe(false);
 		expect(createCall?.includes("--label")).toBe(true);
 	});
 
