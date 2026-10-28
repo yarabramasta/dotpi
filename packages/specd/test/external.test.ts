@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { createExternalStore, ensureExternalStore } from "../store/external.js";
+import { createExternalStore, ensureExternalStore } from "../src/store/external.js";
 
 describe("external store", () => {
 	const dirs: string[] = [];

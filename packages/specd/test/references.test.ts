@@ -12,13 +12,13 @@ import { queryItems } from "../query.js";
 import {
 	addStoreReference,
 	resolveReferenceStores,
-} from "../store/registry.js";
+} from "../src/store/registry.js";
 import {
 	appendEvent,
 	createItem,
 	getItem,
 	openStoreReadOnly,
-} from "../store/store.js";
+} from "../src/store/store.js";
 import { parseReferenceTarget } from "../tools.js";
 import { makeStore } from "./helpers.js";
 

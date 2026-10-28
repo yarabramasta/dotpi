@@ -8,7 +8,7 @@ import {
 	history,
 	listItems,
 	openStore,
-} from "../store/store.js";
+} from "../src/store/store.js";
 import { makeStore, type TestStore } from "./helpers.js";
 
 let t: TestStore;
@@ -125,7 +125,7 @@ describe("specd store", () => {
 		const updated = getItem(t.store, item.id);
 		expect(updated?.kind).toBe("domain");
 		// doctor stays clean — the event replays correctly
-		const { runDoctor } = await import("../store/doctor.js");
+		const { runDoctor } = await import("../src/store/doctor.js");
 		expect(runDoctor(t.store)).toEqual([]);
 	});
 

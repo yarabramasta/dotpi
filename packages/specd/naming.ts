@@ -1,4 +1,4 @@
-import { history, parseJsonLoose, type SpecdStore } from "./store/store.js";
+import { history, parseJsonLoose, type SpecdStore } from "./src/store/store.js";
 
 /** Naming conventions (conventional-commits aligned, D-naming): every
  * artifact's name states the goal of the operation. Task items carry an

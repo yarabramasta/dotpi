@@ -10,7 +10,7 @@ import {
 	history,
 	openStore,
 	openStoreReadOnly,
-} from "../store/store.js";
+} from "../src/store/store.js";
 import { makeStore, type TestStore } from "./helpers.js";
 
 let t: TestStore;

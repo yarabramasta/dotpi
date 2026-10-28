@@ -10,14 +10,14 @@ import {
 	SINK_IDS,
 } from "./backends/onboarding.js";
 import { renderSessionReport, sessionReportFilename } from "./report.js";
-import { runDoctor } from "./store/doctor.js";
+import { runDoctor } from "./src/store/doctor.js";
 import {
 	readStorageConfig,
 	STORAGE_MODES,
 	type StorageMode,
 	saveStorageConfig,
-} from "./store/storage.js";
-import { openStore } from "./store/store.js";
+} from "./src/store/storage.js";
+import { openStore } from "./src/store/store.js";
 import { dashboardContent } from "./tools.js";
 
 const HELP = `# specd

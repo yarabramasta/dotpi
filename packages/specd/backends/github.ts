@@ -1,4 +1,4 @@
-import { parseJsonLoose } from "../store/store.js";
+import { parseJsonLoose } from "../src/store/store.js";
 import type {
 	SinkAdapter,
 	SinkSetup,

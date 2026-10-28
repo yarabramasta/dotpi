@@ -3,10 +3,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
-import { runDoctor } from "../store/doctor.js";
-import { MIGRATIONS } from "../store/migrate.js";
-import { SCHEMA_VERSION } from "../store/schema.js";
-import { openStore } from "../store/store.js";
+import { runDoctor } from "../src/store/doctor.js";
+import { MIGRATIONS } from "../src/store/migrate.js";
+import { SCHEMA_VERSION } from "../src/store/schema.js";
+import { openStore } from "../src/store/store.js";
 
 /** DDL reproduced from the on-disk v2 store (verified via read-only
  * sqlite3): v3 minus the phase/parallel columns. */

@@ -1,4 +1,4 @@
-import type { ItemRow, KindStatusCount } from "./store/store.js";
+import type { ItemRow, KindStatusCount } from "./src/store/store.js";
 
 /** Pure dashboard rendering so tests cover it without a pi runtime. */
 export function renderDashboard(

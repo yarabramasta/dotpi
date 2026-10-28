@@ -1,4 +1,4 @@
-import { runDoctor } from "./store/doctor.js";
+import { runDoctor } from "./src/store/doctor.js";
 import {
 	counts,
 	history,
@@ -6,7 +6,7 @@ import {
 	listItems,
 	parseJsonLoose,
 	type SpecdStore,
-} from "./store/store.js";
+} from "./src/store/store.js";
 
 /** Self-contained HTML session report: the specd side of a work session —
  * dashboard summary, every item with its full event timeline, links, and

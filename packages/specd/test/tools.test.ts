@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addLink, createItem } from "../store/store.js";
+import { addLink, createItem } from "../src/store/store.js";
 import { buildTaskExport } from "../tools.js";
 import { makeStore } from "./helpers.js";
 

@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { openStore, type SpecdStore } from "../store/store.js";
+import { openStore, type SpecdStore } from "../src/store/store.js";
 
 export interface TestStore {
 	store: SpecdStore;

@@ -1,4 +1,4 @@
-import type { SpecdStore } from "../store/store.js";
+import type { SpecdStore } from "../src/store/store.js";
 import { readSinkConfig, readSinkSetup } from "./config.js";
 import type { SinkAdapter } from "./contract.js";
 import { createGithubAdapter } from "./github.js";

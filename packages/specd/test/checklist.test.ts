@@ -6,7 +6,7 @@ import {
 	createItem,
 	getItem,
 	history,
-} from "../store/store.js";
+} from "../src/store/store.js";
 import { makeStore, type TestStore } from "./helpers.js";
 
 function setupCycleAndSpec(test: TestStore): {

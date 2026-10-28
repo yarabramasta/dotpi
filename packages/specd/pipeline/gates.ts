@@ -6,7 +6,7 @@ import {
 	parseJsonLoose,
 	relatedItems,
 	type SpecdStore,
-} from "../store/store.js";
+} from "../src/store/store.js";
 import { pathScopesOverlap } from "./schedule.js";
 
 export interface GateCheck {

@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { runDoctor } from "../store/doctor.js";
+import { runDoctor } from "../src/store/doctor.js";
 import {
 	demoteItem,
 	mdDriftFindings,
@@ -9,8 +9,8 @@ import {
 	readStorageConfig,
 	renderItemMd,
 	saveStorageConfig,
-} from "../store/storage.js";
-import { createItem } from "../store/store.js";
+} from "../src/store/storage.js";
+import { createItem } from "../src/store/store.js";
 import { makeStore } from "./helpers.js";
 
 describe("storage modes", () => {

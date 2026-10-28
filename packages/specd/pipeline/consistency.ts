@@ -5,7 +5,7 @@ import {
 	listItems,
 	relatedItems,
 	type SpecdStore,
-} from "../store/store.js";
+} from "../src/store/store.js";
 import { checklistState } from "./gates.js";
 
 export type FindingSeverity = "critical" | "warning" | "note";

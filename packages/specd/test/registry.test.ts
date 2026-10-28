@@ -8,7 +8,7 @@ import {
 	resolveReferenceStores,
 	resolveStoreDir,
 	storesRoot,
-} from "../store/registry.js";
+} from "../src/store/registry.js";
 
 describe("store registry references", () => {
 	const dirs: string[] = [];

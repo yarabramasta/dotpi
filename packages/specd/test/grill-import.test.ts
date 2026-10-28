@@ -14,8 +14,8 @@ import {
 	planImport,
 	revertImport,
 } from "../import/run.js";
-import { runDoctor } from "../store/doctor.js";
-import { addLink, appendEvent, createItem } from "../store/store.js";
+import { runDoctor } from "../src/store/doctor.js";
+import { addLink, appendEvent, createItem } from "../src/store/store.js";
 import { makeStore } from "./helpers.js";
 
 function makeGrillFixture(): {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { pathScopesOverlap, planWaves } from "../pipeline/schedule.js";
-import type { ItemRow } from "../store/store.js";
+import type { ItemRow } from "../src/store/store.js";
 
 function task(
 	id: string,

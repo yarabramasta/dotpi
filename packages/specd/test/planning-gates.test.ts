@@ -5,7 +5,7 @@ import {
 	checkChecklistsClear as checklistsClear,
 	checkSpecCreation,
 } from "../pipeline/gates.js";
-import { addLink, appendEvent, createItem } from "../store/store.js";
+import { addLink, appendEvent, createItem } from "../src/store/store.js";
 import { makeStore, type TestStore } from "./helpers.js";
 
 let t: TestStore;

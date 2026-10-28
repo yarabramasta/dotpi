@@ -1,4 +1,4 @@
-import type { SpecdStore } from "../store/store.js";
+import type { SpecdStore } from "../src/store/store.js";
 import type { PlanWorkspace, SinkSetup } from "./contract.js";
 
 /** Canonical lane taxonomy and naming convention — defaults the plan

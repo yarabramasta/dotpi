@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { EVENT_TYPES, ITEM_KINDS, LINK_KINDS } from "../store/schema.js";
+import { EVENT_TYPES, ITEM_KINDS, LINK_KINDS } from "../src/store/schema.js";
 
 const VENDOR_TERMS = [
 	"github",

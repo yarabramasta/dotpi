@@ -36,7 +36,7 @@ import {
 	resolveReferenceStores,
 	type StoreRegistryEntry,
 	storesRoot,
-} from "./store/registry.js";
+} from "./src/store/registry.js";
 import {
 	EVENT_TYPES,
 	type EventType,
@@ -44,8 +44,8 @@ import {
 	type ItemKind,
 	LINK_KINDS,
 	type LinkKind,
-} from "./store/schema.js";
-import { demoteItem, promoteItem } from "./store/storage.js";
+} from "./src/store/schema.js";
+import { demoteItem, promoteItem } from "./src/store/storage.js";
 import {
 	addLink,
 	appendEvent,
@@ -61,7 +61,7 @@ import {
 	openStoreReadOnly,
 	parseJsonLoose,
 	type SpecdStore,
-} from "./store/store.js";
+} from "./src/store/store.js";
 
 /** Render a work.paused capsule payload (decisions / openQuestions /
  * evidence / nextStep) as a readable block above the event timeline.

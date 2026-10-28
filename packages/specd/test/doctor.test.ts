@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { runDoctor } from "../store/doctor.js";
-import { createItem } from "../store/store.js";
+import { runDoctor } from "../src/store/doctor.js";
+import { createItem } from "../src/store/store.js";
 import { makeStore, type TestStore } from "./helpers.js";
 
 let t: TestStore;
