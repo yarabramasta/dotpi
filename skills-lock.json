@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "skills": {
+    "flatten-fake-layers": {
+      "source": "miguelspizza/skills",
+      "sourceType": "github",
+      "skillPath": "skills/flatten-fake-layers/SKILL.md",
+      "computedHash": "ecb3dd78af5be7b7067766758a1df3c754d6301aa63383053ffaa59c0f60f381"
+    },
+    "karpathy-guidelines": {
+      "source": "multica-ai/andrej-karpathy-skills",
+      "sourceType": "github",
+      "skillPath": "skills/karpathy-guidelines/SKILL.md",
+      "computedHash": "41e8ca055bbde13d240776a14a076a59614057200340c243130a76ba4e64cac8"
+    },
+    "maintainable-typescript": {
+      "source": "miguelspizza/skills",
+      "sourceType": "github",
+      "skillPath": "skills/maintainable-typescript/SKILL.md",
+      "computedHash": "62b322e05f851aecd4e73e23e0343510631d70b24793b063de6b498fb6ca501f"
+    },
+    "write-good-docs": {
+      "source": "miguelspizza/skills",
+      "sourceType": "github",
+      "skillPath": "skills/write-good-docs/SKILL.md",
+      "computedHash": "eae491151b215525946770e7fe839560601687ac6e8465dc99fe89b07904aa83"
+    }
+  }
+}
