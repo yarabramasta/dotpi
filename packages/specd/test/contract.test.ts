@@ -17,13 +17,13 @@ const VENDOR_TERMS = [
 ];
 
 // The pure core must never know a sink or vendor by name. Binding layers
-// (commands.ts, tools.ts, backends/*) are the vendor-facing shell and are
+// (commands.ts, tools.ts, src/sinks/*) are the vendor-facing shell and are
 // deliberately outside this scan.
 const PURE_CORE_FILES = [
-	"store/schema.ts",
-	"store/store.ts",
-	"store/doctor.ts",
-	"pipeline/gates.ts",
+	"src/store/schema.ts",
+	"src/store/store.ts",
+	"src/store/doctor.ts",
+	"src/pipeline/gates.ts",
 ];
 
 describe("vendor-neutral core contract", () => {
@@ -36,7 +36,7 @@ describe("vendor-neutral core contract", () => {
 		}
 	});
 
-	it("pure core modules never mention sinks, vendors, or import backends", () => {
+	it("pure core modules never mention sinks, vendors, or import sink layers", () => {
 		const root = join(import.meta.dirname, "..");
 		for (const file of PURE_CORE_FILES) {
 			const src = readFileSync(join(root, file), "utf8").toLowerCase();
@@ -45,8 +45,8 @@ describe("vendor-neutral core contract", () => {
 					term,
 				);
 			}
-			expect(src, `${file} imports the backends layer`).not.toContain(
-				"backends",
+			expect(src, `${file} imports the sinks layer`).not.toContain(
+				"sinks",
 			);
 		}
 	});

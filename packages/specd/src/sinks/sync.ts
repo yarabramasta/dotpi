@@ -4,7 +4,7 @@ import {
 	history,
 	parseJsonLoose,
 	type SpecdStore,
-} from "../src/store/store.js";
+} from "../store/store.js";
 import { readSinkSetup } from "./config.js";
 import { tryResolveAdapter } from "./resolve.js";
 

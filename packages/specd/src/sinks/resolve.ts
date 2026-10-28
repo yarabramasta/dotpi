@@ -1,7 +1,7 @@
-import type { SpecdStore } from "../src/store/store.js";
+import type { SpecdStore } from "../store/store.js";
 import { readSinkConfig, readSinkSetup } from "./config.js";
 import type { SinkAdapter } from "./contract.js";
-import { createGithubAdapter } from "./github.js";
+import { createGithubAdapter } from "./github/adapter.js";
 import { createNullSink } from "./null.js";
 
 /** Adapter resolution: the single place that maps a vendor-neutral sink id

@@ -1,9 +1,9 @@
-import type { SpecdStore } from "../src/store/store.js";
+import type { SpecdStore } from "../store/store.js";
 import { readSinkConfig, readSinkSetup } from "./config.js";
 import type { SinkVerify } from "./contract.js";
-import type { GhRunner } from "./gh.js";
-import { realGhRunner } from "./gh.js";
-import { createGithubAdapter } from "./github.js";
+import type { GhRunner } from "./github/runner.js";
+import { realGhRunner } from "./github/runner.js";
+import { createGithubAdapter } from "./github/adapter.js";
 import { tryResolveAdapter } from "./resolve.js";
 
 /** Sink onboarding (design §4.6): each non-GitHub sink is completable from

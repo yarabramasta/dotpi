@@ -12,10 +12,10 @@ import {
 	readSinkSetup,
 	saveSinkConfig,
 	saveSinkSetup,
-} from "./backends/config.js";
-import type { PlanWorkspace, TaskExport } from "./backends/contract.js";
-import { resolveAdapter } from "./backends/resolve.js";
-import { syncExportedTasks } from "./backends/sync.js";
+} from "./src/sinks/config.js";
+import type { PlanWorkspace, TaskExport } from "./src/sinks/contract.js";
+import { resolveAdapter } from "./src/sinks/resolve.js";
+import { syncExportedTasks } from "./src/sinks/sync.js";
 import { renderDashboard } from "./dashboard.js";
 import { branchName, ccTypeOf, scopeOf } from "./naming.js";
 import { checkConsistency, formatFindings } from "./src/pipeline/consistency.js";
@@ -319,7 +319,7 @@ export function registerSpecdTools(pi: ExtensionAPI): void {
 			let sinkPush: string | undefined;
 			if (type === "work.started" || type === "work.completed") {
 				try {
-					const { pushStatusToSink } = await import("./backends/sync.js");
+					const { pushStatusToSink } = await import("./src/sinks/sync.js");
 					sinkPush = await pushStatusToSink(store, params.item);
 				} catch (e) {
 					sinkPush = `push failed: ${e instanceof Error ? e.message : String(e)}`;

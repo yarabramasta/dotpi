@@ -8,7 +8,7 @@ import {
 	ONBOARDING,
 	readinessMatrix,
 	SINK_IDS,
-} from "./backends/onboarding.js";
+} from "./src/sinks/onboarding.js";
 import { renderSessionReport, sessionReportFilename } from "./report.js";
 import { runDoctor } from "./src/store/doctor.js";
 import {

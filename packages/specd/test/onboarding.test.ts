@@ -3,7 +3,7 @@ import {
 	ONBOARDING,
 	SINK_IDS,
 	type SinkOnboarding,
-} from "../backends/onboarding.js";
+} from "../src/sinks/onboarding.js";
 
 describe("sink onboarding registry", () => {
 	it("covers the supported sinks with complete, plain-language data", () => {

@@ -1,12 +1,12 @@
-import { parseJsonLoose } from "../src/store/store.js";
+import { parseJsonLoose } from "../../store/store.js";
 import type {
 	SinkAdapter,
 	SinkSetup,
 	SinkVerify,
 	TaskCreated,
 	TaskExport,
-} from "./contract.js";
-import { type GhRunner, type GithubSinkConfig, realGhRunner } from "./gh.js";
+} from "../contract.js";
+import { type GhRunner, type GithubSinkConfig, realGhRunner } from "./runner.js";
 
 interface StatusFieldRow {
 	id?: string;
