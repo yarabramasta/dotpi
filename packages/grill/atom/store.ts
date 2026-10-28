@@ -214,3 +214,13 @@ export async function openAtomStore(cwd: string): Promise<AtomStore> {
 
 	return { db, paths, cwd };
 }
+
+/** Open the store only if atoms.db already exists — never scaffolds. Read-only
+ * tools use this so a stray query can't spawn .pi/knowledge/ into a repo that
+ * never used the atom KB (write tools and /atom init scaffold via openAtomStore). */
+export async function openAtomStoreReadOnly(
+	cwd: string,
+): Promise<AtomStore | undefined> {
+	if (!existsSync(atomPaths(cwd).dbPath)) return undefined;
+	return await openAtomStore(cwd);
+}

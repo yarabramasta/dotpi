@@ -24,6 +24,7 @@ import {
 	type NodeStatus,
 	type NodeType,
 	openAtomStore,
+	openAtomStoreReadOnly,
 } from "../atom/store.js";
 import { readAtomDefault } from "../settings.js";
 import { runtime } from "../state.js";
@@ -109,13 +110,31 @@ function text(content: string, details?: Record<string, unknown>) {
 	};
 }
 
+function atomEnabled(ctx: ExtensionContext): boolean {
+	return typeof runtime.state.atomOverride === "boolean"
+		? runtime.state.atomOverride
+		: readAtomDefault(ctx);
+}
+
 async function openAtom(ctx: ExtensionContext): Promise<AtomStore | undefined> {
-	const enabled =
-		typeof runtime.state.atomOverride === "boolean"
-			? runtime.state.atomOverride
-			: readAtomDefault(ctx);
-	if (!enabled) return undefined;
+	if (!atomEnabled(ctx)) return undefined;
 	return await openAtomStore(ctx.cwd);
+}
+
+// ponytail: read-only tools must never scaffold the store into a repo that
+// never used the atom KB (stray atom_query spawned .pi/knowledge/ there);
+// upgrade path if more read-only tools appear: open-mode flag on openAtomStore
+async function openAtomReadOnly(
+	ctx: ExtensionContext,
+): Promise<AtomStore | undefined> {
+	if (!atomEnabled(ctx)) return undefined;
+	return await openAtomStoreReadOnly(ctx.cwd);
+}
+
+function atomStoreMissing() {
+	return text(
+		"No atom store in this repo (.pi/knowledge/atoms.db not found). Read-only atom tools never create it; atom_create or /atom init scaffolds it.",
+	);
 }
 
 function atomDisabled() {
@@ -178,8 +197,8 @@ export function registerAtomTools(pi: ExtensionAPI): void {
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			if (!ctx) return atomDisabled();
-			const store = await openAtom(ctx);
-			if (!store) return atomDisabled();
+			const store = await openAtomReadOnly(ctx);
+			if (!store) return atomEnabled(ctx) ? atomStoreMissing() : atomDisabled();
 			const opts = queryOptsFromParams(params);
 			const rows = queryAtoms(store, {
 				...opts,
@@ -462,8 +481,8 @@ export function registerAtomTools(pi: ExtensionAPI): void {
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			if (!ctx) return atomDisabled();
-			const store = await openAtom(ctx);
-			if (!store) return atomDisabled();
+			const store = await openAtomReadOnly(ctx);
+			if (!store) return atomEnabled(ctx) ? atomStoreMissing() : atomDisabled();
 			return text(
 				renderDigest(store, params.task ? { task: params.task } : undefined),
 			);

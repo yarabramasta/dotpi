@@ -28,7 +28,11 @@ import { runDoctor } from "../doctor.ts";
 import { renderExport } from "../exports.ts";
 import { initAtom } from "../init.ts";
 import { migrateLegacyStore } from "../migrate.ts";
-import { openAtomStore, SCHEMA_VERSION } from "../store.ts";
+import {
+	openAtomStore,
+	openAtomStoreReadOnly,
+	SCHEMA_VERSION,
+} from "../store.ts";
 import { detectWorkspace } from "../workspace.ts";
 
 type RowWithSources = { sources: string | null };
@@ -75,6 +79,17 @@ describe("store v2", () => {
 			}[]
 		).map((c) => c.name);
 		expect(cols).toContain("body");
+	});
+
+	test("openAtomStoreReadOnly never scaffolds a missing store", async () => {
+		const repo = makeRepo();
+		const missing = await openAtomStoreReadOnly(repo);
+		expect(missing).toBeUndefined();
+		expect(existsSync(join(repo, ".pi", "knowledge", "atoms.db"))).toBe(false);
+		const opened = await openAtomStore(repo);
+		opened.db.close();
+		const reopened = await openAtomStoreReadOnly(repo);
+		expect(reopened?.paths.dbPath).toBe(opened.paths.dbPath);
 	});
 
 	test("openAtomStore is idempotent across reopen", async () => {

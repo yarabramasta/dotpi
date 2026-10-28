@@ -27,6 +27,7 @@ import {
 	type NodeStatus,
 	type NodeType,
 	openAtomStore,
+	openAtomStoreReadOnly,
 } from "./atom/store.js";
 import { buildDossier } from "./dossier.js";
 import { initialCheckpoint, statusMarkdown } from "./prompts.js";
@@ -316,8 +317,22 @@ Settings: { "atom": true|false } in ~/.pi/agent/grill.json or .pi/grill.json —
 			);
 			return;
 		}
+		const readOnly =
+			command === "doctor" ||
+			command === "show" ||
+			command === "query" ||
+			command === "digest";
 		try {
-			const store = await openAtomStore(ctx.cwd);
+			const store = readOnly
+				? await openAtomStoreReadOnly(ctx.cwd)
+				: await openAtomStore(ctx.cwd);
+			if (!store) {
+				ctx.ui.notify(
+					"No atom store in this repo (.pi/knowledge/atoms.db not found). /atom init or atom_create scaffolds it.",
+					"info",
+				);
+				return;
+			}
 			if (command === "init") {
 				const result = initAtom(store);
 				ctx.ui.notify(
