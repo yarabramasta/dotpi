@@ -14,8 +14,8 @@ import { resolveAdapter } from "../sinks/resolve.js";
 import {
 	appendEvent,
 	getItem,
-	linkedItems,
 	type ItemRow,
+	linkedItems,
 	type SpecdStore,
 } from "../store/store.js";
 import { openSpecd, text } from "./store-tools.js";

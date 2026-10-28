@@ -18,8 +18,8 @@ import {
 	lookupStore,
 	registerStore,
 	resolveReferenceStores,
-	storesRoot,
 	type StoreRegistryEntry,
+	storesRoot,
 } from "../store/registry.js";
 import { openSpecd, text } from "./store-tools.js";
 

@@ -1,11 +1,9 @@
-import { existsSync } from "node:fs";
-import path, { join } from "node:path";
+import path from "node:path";
 import type {
 	ExtensionAPI,
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { renderDashboard } from "../report.js";
 import {
 	assertCanCompleteWork,
 	assertCanExport,
@@ -13,6 +11,7 @@ import {
 	assertSpecCreationAllowed,
 	checklistState,
 } from "../pipeline/gates.js";
+import { renderDashboard } from "../report.js";
 import { syncExportedTasks } from "../sinks/sync.js";
 import { isSpecdStore, resolveReferenceStores } from "../store/registry.js";
 import {

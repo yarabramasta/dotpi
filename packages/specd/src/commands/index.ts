@@ -17,9 +17,9 @@ import { openStore } from "../store/store.js";
 import { dashboardContent } from "../tools/store-tools.js";
 import {
 	ANALYZE_PROMPT,
+	CLARIFY_PROMPT,
 	CONSTITUTION_PROMPT,
 	CONVERGE_PROMPT,
-	CLARIFY_PROMPT,
 	connectPrompt,
 	HELP,
 	PAUSE_PROMPT,

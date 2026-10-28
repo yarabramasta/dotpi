@@ -165,7 +165,9 @@ ${ob.steps.map((s, i) => `${i + 1}. ${s}`).join("\n")}${ported}
 Rules: credentials live only in my shell environment — never write them into the repo, the store, or this conversation.`;
 }
 
-export const REVIEW_PROMPT = (id: string) => `Review the requirements checklist ${id}:
+export const REVIEW_PROMPT = (
+	id: string,
+) => `Review the requirements checklist ${id}:
 
 1. specd_show(item=${id}) — read the checklist items and which are already checked.
 2. Present each unchecked item to me (ask-user-question) and ask whether it passes as a requirements-quality criterion — is the requirement testable, unambiguous, complete?
