@@ -99,6 +99,6 @@ export function branchName(
 		.toLowerCase()
 		.replace(/[^a-z0-9]+/g, "-")
 		.replace(/^-+|-+$/g, "")
-		.slice(0, 40);
+		.slice(0, 25);
 	return `specd/${type}/${item.id}-${slug}`;
 }

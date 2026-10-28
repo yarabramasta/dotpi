@@ -148,12 +148,12 @@ export function registerExecTools(pi: ExtensionAPI): void {
 			const store = await openSpecd(ctx);
 			const task = getItem(store, params.item);
 			if (!task) return text(`Unknown item: ${params.item}.`);
-			const branch = branchName(task, ccTypeOf(store, task.id)).slice(0, 96);
+			const branch = branchName(task, ccTypeOf(store, task.id));
 			const parent = path.dirname(ctx.cwd);
 			const leaf = path.basename(ctx.cwd);
 			const worktreePath = path.join(
 				parent,
-				`${leaf}-${branch.replace(/\//g, "-")}`,
+				`${leaf}-specd-${task.id}`,
 			);
 			const { execFileSync } = await import("node:child_process");
 			try {
