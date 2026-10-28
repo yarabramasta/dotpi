@@ -151,10 +151,7 @@ export function registerExecTools(pi: ExtensionAPI): void {
 			const branch = branchName(task, ccTypeOf(store, task.id));
 			const parent = path.dirname(ctx.cwd);
 			const leaf = path.basename(ctx.cwd);
-			const worktreePath = path.join(
-				parent,
-				`${leaf}-specd-${task.id}`,
-			);
+			const worktreePath = path.join(parent, `${leaf}-specd-${task.id}`);
 			const { execFileSync } = await import("node:child_process");
 			try {
 				execFileSync("git", ["worktree", "add", "-b", branch, worktreePath], {
