@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { checkChecklistsClear, checklistState } from "../pipeline/gates.js";
+import { checkChecklistsClear, checklistState } from "../src/pipeline/gates.js";
 import {
 	addLink,
 	appendEvent,

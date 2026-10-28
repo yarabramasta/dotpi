@@ -1,4 +1,4 @@
-import type { ItemRow } from "../src/store/store.js";
+import type { ItemRow } from "../store/store.js";
 
 /** M3 execution scheduling. Tasks execute in phase waves (setup →
  * foundational → story → polish, unphased last). Within a wave only

@@ -18,15 +18,15 @@ import { resolveAdapter } from "./backends/resolve.js";
 import { syncExportedTasks } from "./backends/sync.js";
 import { renderDashboard } from "./dashboard.js";
 import { branchName, ccTypeOf, scopeOf } from "./naming.js";
-import { checkConsistency, formatFindings } from "./pipeline/consistency.js";
+import { checkConsistency, formatFindings } from "./src/pipeline/consistency.js";
 import {
 	assertCanCompleteWork,
 	assertCanExport,
 	assertCanStartWork,
 	assertSpecCreationAllowed,
 	checklistState,
-} from "./pipeline/gates.js";
-import { planWaves } from "./pipeline/schedule.js";
+} from "./src/pipeline/gates.js";
+import { planWaves } from "./src/pipeline/schedule.js";
 import { insightLine, queryItems, renderInsight } from "./query.js";
 import {
 	addStoreReference,

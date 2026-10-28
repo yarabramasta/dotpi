@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { checkConsistency, formatFindings } from "../pipeline/consistency.js";
+import { checkConsistency, formatFindings } from "../src/pipeline/consistency.js";
 import { addLink, appendEvent, createItem } from "../src/store/store.js";
 import { makeStore, type TestStore } from "./helpers.js";
 
