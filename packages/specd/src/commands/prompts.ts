@@ -1,26 +1,6 @@
-import { writeFileSync } from "node:fs";
-import { join } from "node:path";
-import type {
-	ExtensionAPI,
-	ExtensionContext,
-} from "@earendil-works/pi-coding-agent";
-import { renderSessionReport, sessionReportFilename } from "./src/report.js";
-import {
-	ONBOARDING,
-	readinessMatrix,
-	SINK_IDS,
-} from "./src/sinks/onboarding.js";
-import { runDoctor } from "./src/store/doctor.js";
-import {
-	readStorageConfig,
-	STORAGE_MODES,
-	type StorageMode,
-	saveStorageConfig,
-} from "./src/store/storage.js";
-import { openStore } from "./src/store/store.js";
-import { dashboardContent } from "./src/tools/store-tools.js";
+import { ONBOARDING, SINK_IDS } from "../sinks/onboarding.js";
 
-const HELP = `# specd
+export const HELP = `# specd
 
 Spec-driven development for this repo. Knowledge lives in .spec/store.db (SQLite, gitignored by default).
 
@@ -45,7 +25,7 @@ Spec-driven development for this repo. Knowledge lives in .spec/store.db (SQLite
 
 The pipeline is agent-sequenced and code-gated: I (the agent) drive the stages, and the specd tools refuse anything the store state doesn't allow — like exporting tasks from an unapproved spec.`;
 
-const START_PROMPT = (
+export const START_PROMPT = (
 	idea: string,
 ) => `Start a specd development cycle for this idea:
 
@@ -72,7 +52,7 @@ VALID ITEM KINDS: spec · plan · task · cycle · epic · roadmap · constituti
 9. EXPORT — ask me whether to export the tasks now. If yes: specd_export(item=<task id>, sink=<sink id>). Ported sinks: null, github. For github the first export needs the project owner and project number — ask me, then pass github_owner + github_project_number once; they persist. The sink setup (if applied) drives the export title, labels, and lane placement.
 10. RUN — when I want a task implemented: /spec run <task id>.`;
 
-const CONSTITUTION_PROMPT = `Create/review/update the constitution (the product layer's anchor):
+export const CONSTITUTION_PROMPT = `Create/review/update the constitution (the product layer's anchor):
 
 1. specd_query(kind="constitution") — check if one exists.
 2. If none: interview me for the product purpose + principles, then specd_create_item(kind="constitution", title=…, body=…).
@@ -81,7 +61,7 @@ const CONSTITUTION_PROMPT = `Create/review/update the constitution (the product 
 
 The constitution IS the product layer's anchor — product-layer knowledge items (kind=product) inform it; it governs all plans.`;
 
-const CLARIFY_PROMPT = (
+export const CLARIFY_PROMPT = (
 	specId: string,
 ) => `Targeted clarification loop on the spec ${specId}:
 
@@ -94,7 +74,7 @@ const CLARIFY_PROMPT = (
 
 The spec stays the source of truth — clarify sharpens it, never overwrites it.`;
 
-const PLAN_ENTRY_PROMPT = (
+export const PLAN_ENTRY_PROMPT = (
 	specId: string,
 ) => `Plan the approved spec ${specId} (standalone re-entry):
 
@@ -105,7 +85,7 @@ const PLAN_ENTRY_PROMPT = (
 5. If no constitution exists yet, ask me whether to create one — specd_create_item(kind="constitution", …) — and link it part-of the plan.
 6. Offer the next step: /spec tasks <plan-id> or /spec run <task-id>.`;
 
-const TASKS_ENTRY_PROMPT = (
+export const TASKS_ENTRY_PROMPT = (
 	specId: string,
 ) => `Break the approved+planned spec ${specId} into tasks:
 
@@ -117,7 +97,7 @@ const TASKS_ENTRY_PROMPT = (
 
 The gates enforce ordering: no export before approval, no run before review. The tasks carry the conventional type for naming.`;
 
-const RUN_PROMPT = (
+export const RUN_PROMPT = (
 	task: string,
 ) => `Run the task ${task} through the execution seam (checklist-gated, reviewer-signed):
 
@@ -134,13 +114,13 @@ const RUN_PROMPT = (
 6. If the review passed: from the worktree run gh pr create (base = default branch) and record specd_append_event(item=${task}, type=pr.created, payload={url, branch}). If it failed: tell me exactly what failed — fix, re-review, and only then PR; completion is blocked until a review passes.
 7. When a PR exists and its review passed: specd_append_event(item=${task}, type=work.completed, payload={pr}) — the tool refuses without a passing review.`;
 
-const RUN_WAVES_PROMPT = `Run tasks through the execution seam in parallel waves:
+export const RUN_WAVES_PROMPT = `Run tasks through the execution seam in parallel waves:
 
 1. specd_schedule() — the wave plan: tasks ordered by phase (setup → foundational → story → polish), [P]-marked tasks with disjoint path scopes share a wave, collisions are serialized into later waves. Show me the plan.
 2. For each wave in order: run its tasks CONCURRENTLY — one full flow per task (worktree → work.started → worker → review gate → PR → work.completed), each with its own worktree and branch; the tools serialize any scope collision.
 3. Between waves, check the dashboard: failed or paused tasks are surfaced to me before the next wave starts.`;
 
-const CONVERGE_PROMPT = (
+export const CONVERGE_PROMPT = (
 	scope: string,
 ) => `Run a convergence assessment for ${scope} (append-only; fixes at source):
 
@@ -150,7 +130,7 @@ const CONVERGE_PROMPT = (
 4. Record the assessment: specd_append_event(item=${scope}, type=convergence.assessed, payload={done: true|false, gaps: [...]}).
 5. Report "converged" only when every gap is closed (all tasks done, no uncovered requirements). Otherwise loop: run the new tasks (/spec run), then converge again.`;
 
-const SINK_PROMPT = `Configure the sink (workspace coords, lanes, labels, naming, statusMap):
+export const SINK_PROMPT = `Configure the sink (workspace coords, lanes, labels, naming, statusMap):
 
 1. Ask me which sink to plan for (null = native; github). If null, there is nothing to plan — the null sink has no external board.
 2. Workspace coords per sink: github — owner + project number. Ask me (ask-user-question) for the coords plus lanes, label taxonomy, and naming convention. Offer the defaults if I don't override. Also set the statusMap: ask which board option each specd state maps to (exported / in-progress / done → e.g. Ready / In progress / Done) and pass statusMap={…} to specd_configure_sink — updateStatus writes exactly the mapped option. 
@@ -158,11 +138,11 @@ const SINK_PROMPT = `Configure the sink (workspace coords, lanes, labels, naming
 4. On my OK: re-run with apply=true. It is idempotent — re-runs converge, so a converged plan yields no changes.
 5. Record the decision: specd_append_event(item=<cycle or first item id>, type=decision.made, payload={decision: "sink setup applied", sink, lanes, labels, naming}).`;
 
-const PAUSE_PROMPT = `Pause the active work: write the resume capsule. For each in-progress item, run specd_append_event(item=<item id>, type=work.paused, payload={decisions: […], openQuestions: […], evidence: […], nextStep: "…"}) — summarize from our conversation. Then confirm what was parked so I can pick it up later (or hand it off).`;
+export const PAUSE_PROMPT = `Pause the active work: write the resume capsule. For each in-progress item, run specd_append_event(item=<item id>, type=work.paused, payload={decisions: […], openQuestions: […], evidence: […], nextStep: "…"}) — summarize from our conversation. Then confirm what was parked so I can pick it up later (or hand it off).`;
 
 /** Onboarding flow for one sink, rendered from the registry so the guided
  * prompt is the single source of the steps (design §4.6). */
-function connectPrompt(id: string): string {
+export function connectPrompt(id: string): string {
 	const ob = ONBOARDING[id];
 	if (!ob) {
 		return `Unknown sink "${id}". Known sinks: ${SINK_IDS.join(", ")}.`;
@@ -185,14 +165,14 @@ ${ob.steps.map((s, i) => `${i + 1}. ${s}`).join("\n")}${ported}
 Rules: credentials live only in my shell environment — never write them into the repo, the store, or this conversation.`;
 }
 
-const REVIEW_PROMPT = (id: string) => `Review the requirements checklist ${id}:
+export const REVIEW_PROMPT = (id: string) => `Review the requirements checklist ${id}:
 
 1. specd_show(item=${id}) — read the checklist items and which are already checked.
 2. Present each unchecked item to me (ask-user-question) and ask whether it passes as a requirements-quality criterion — is the requirement testable, unambiguous, complete?
 3. For each item I approve: specd_append_event(item=${id}, type=checklist.item.checked, payload={index: <n>}). Checked items are reviewer decisions about requirements quality — they are NOT implementation work, and implementation is blocked while any remain unchecked.
 4. When every item is checked, confirm the checklist is complete and offer the next step.`;
 
-const ANALYZE_PROMPT = (
+export const ANALYZE_PROMPT = (
 	scope: string,
 ) => `Run a cross-artifact consistency review${scope ? ` scoped to ${scope}` : " (whole store)"}:
 
@@ -200,234 +180,3 @@ const ANALYZE_PROMPT = (
 2. Semantic pass — read the spec, plan, and task bodies in scope and check for: contradictions between artifacts, duplicated requirements, ambiguous or untestable requirements, tasks whose path scope contradicts the plan, decisions made in the plan but absent from the spec.
 3. Present everything grouped by severity (critical / warning / note) and propose a fix for each finding.
 4. Fix at the SOURCE artifact only — a spec problem is fixed in the spec, never patched in a task; downstream artifacts get regenerated after a source fix. Ask me before rewriting anything.`;
-
-function firstWord(args: string): string {
-	return args.trim().split(/\s+/)[0] ?? "";
-}
-
-export function registerCommands(pi: ExtensionAPI): void {
-	pi.registerCommand("spec", {
-		description:
-			"Spec-driven development: start a cycle, run a task, current state, doctor",
-		handler: async (args: string, ctx: ExtensionContext) => {
-			const trimmed = args.trim();
-			const sub = firstWord(trimmed);
-			const rest = trimmed.slice(sub.length).trim();
-			if (sub === "help") {
-				pi.sendMessage({
-					customType: "specd-help",
-					content: HELP,
-					display: true,
-				});
-				return;
-			}
-			if (sub === "start") {
-				let idea = rest;
-				if (!idea && ctx.hasUI) {
-					const edited = await ctx.ui.editor(
-						"What should we build? (the cycle starts from this idea)",
-						"",
-					);
-					if (!edited?.trim()) {
-						ctx.ui.notify("Cancelled cycle start.", "info");
-						return;
-					}
-					idea = edited.trim();
-				}
-				if (!idea) {
-					ctx.ui.notify("Usage: /spec start <idea>", "warning");
-					return;
-				}
-				pi.sendUserMessage(START_PROMPT(idea));
-				return;
-			}
-			if (sub === "run") {
-				if (!rest) {
-					pi.sendUserMessage(RUN_WAVES_PROMPT);
-					return;
-				}
-				const task = rest;
-				pi.sendUserMessage(RUN_PROMPT(task));
-				return;
-			}
-			if (sub === "converge") {
-				const scope = rest;
-				if (!scope) {
-					ctx.ui.notify("Usage: /spec converge <spec-or-cycle-id>", "warning");
-					return;
-				}
-				pi.sendUserMessage(CONVERGE_PROMPT(scope));
-				return;
-			}
-			if (sub === "pause") {
-				pi.sendUserMessage(PAUSE_PROMPT);
-				return;
-			}
-			if (sub === "review") {
-				const id = rest;
-				if (!id) {
-					ctx.ui.notify("Usage: /spec review <checklist-id>", "warning");
-					return;
-				}
-				pi.sendUserMessage(REVIEW_PROMPT(id));
-				return;
-			}
-			if (sub === "analyze") {
-				pi.sendUserMessage(ANALYZE_PROMPT(rest));
-				return;
-			}
-			if (sub === "constitution") {
-				pi.sendUserMessage(CONSTITUTION_PROMPT);
-				return;
-			}
-			if (sub === "clarify") {
-				if (!rest) {
-					ctx.ui.notify("Usage: /spec clarify <spec-id>", "warning");
-					return;
-				}
-				pi.sendUserMessage(CLARIFY_PROMPT(rest));
-				return;
-			}
-			if (sub === "plan") {
-				if (!rest) {
-					ctx.ui.notify("Usage: /spec plan <spec-id>", "warning");
-					return;
-				}
-				pi.sendUserMessage(PLAN_ENTRY_PROMPT(rest));
-				return;
-			}
-			if (sub === "tasks") {
-				if (!rest) {
-					ctx.ui.notify("Usage: /spec tasks <spec-id>", "warning");
-					return;
-				}
-				pi.sendUserMessage(TASKS_ENTRY_PROMPT(rest));
-				return;
-			}
-			if (sub === "sink") {
-				pi.sendUserMessage(SINK_PROMPT);
-				return;
-			}
-			if (sub === "connect") {
-				const id = rest;
-				if (!id) {
-					ctx.ui.notify(
-						`Usage: /spec connect <sink> — known sinks: ${SINK_IDS.join(", ")}.`,
-						"warning",
-					);
-					return;
-				}
-				pi.sendMessage({
-					customType: "specd-connect",
-					content: connectPrompt(id),
-					display: true,
-				});
-				return;
-			}
-			if (sub === "import") {
-				const mode = firstWord(rest);
-				const source = rest.slice(mode.length).trim();
-				if (!source) {
-					ctx.ui.notify(
-						"Usage: /spec import <preview|apply> <source-repo-path>",
-						"warning",
-					);
-					return;
-				}
-				if (mode === "preview") {
-					pi.sendUserMessage(
-						`Run specd_import_preview(source=${JSON.stringify(source)}) and summarize what would be imported.`,
-					);
-				} else if (mode === "apply") {
-					pi.sendUserMessage(
-						`Run specd_import_apply(source=${JSON.stringify(source)}, apply=true). Confirm idempotency by re-running the preview after.`,
-					);
-				} else if (mode === "revert") {
-					pi.sendUserMessage(
-						`Run specd_import_revert() to list known import batches, show me the list, and revert only the batch I name (specd_import_revert(batch=<id>)). After reverting, run /spec doctor to confirm the store is clean.`,
-					);
-				} else {
-					ctx.ui.notify(
-						`Usage: /spec import <preview|apply> <source-repo-path> — got mode "${mode}".`,
-						"warning",
-					);
-				}
-				return;
-			}
-			try {
-				const store = await openStore(ctx.cwd);
-				if (sub === "doctor") {
-					const findings = runDoctor(store);
-					const text = findings.length
-						? findings.map((f) => `- ${f.kind}: ${f.detail}`).join("\n")
-						: "clean — the store matches its event history.";
-					const matrix = await readinessMatrix(store);
-					pi.sendMessage({
-						customType: "specd-doctor",
-						content: `# specd doctor\n\n${text}\n\n${matrix}`,
-						display: true,
-					});
-					return;
-				}
-				if (sub === "storage") {
-					const mode = firstWord(rest);
-					if (!mode) {
-						const config = readStorageConfig(store);
-						pi.sendMessage({
-							customType: "specd-storage",
-							content: `Storage mode: **${config.mode}**${config.mdPath ? ` (${config.mdPath})` : ""}\n\n- db-only — md promotion off (default)\n- md-inrepo — md mirrors under docs/specd/ in this repo\n- md-external <path> — md mirrors in a directory outside the repo\n\nPromotion surface: the specd_promote tool (write/remove an item's md mirror).`,
-							display: true,
-						});
-						return;
-					}
-					if (!STORAGE_MODES.includes(mode as StorageMode)) {
-						ctx.ui.notify(
-							`Unknown storage mode: ${mode}. Valid: ${STORAGE_MODES.join(", ")}.`,
-							"warning",
-						);
-						return;
-					}
-					const mdPath = rest.slice(mode.length).trim() || undefined;
-					if (mode === "md-external" && !mdPath) {
-						ctx.ui.notify("Usage: /spec storage md-external <path>", "warning");
-						return;
-					}
-					saveStorageConfig(store, { mode: mode as StorageMode, mdPath });
-					ctx.ui.notify(
-						`Storage mode set to ${mode}${mdPath ? ` (${mdPath})` : ""}.`,
-						"info",
-					);
-					return;
-				}
-				if (sub === "export") {
-					const target = rest || join(ctx.cwd, sessionReportFilename());
-					const html = renderSessionReport(store);
-					writeFileSync(target, html, "utf8");
-					pi.sendMessage({
-						customType: "specd-export",
-						content: `Session report written: ${target}\n\npi's own conversation export covers the chat side — run it from the session as well when handing both to another agent.`,
-						display: true,
-					});
-					return;
-				}
-				if (sub === "" || sub === "status" || sub === "dashboard") {
-					pi.sendMessage({
-						customType: "specd-dashboard",
-						content: await dashboardContent(store),
-						display: true,
-					});
-					return;
-				}
-				ctx.ui.notify(
-					`Unknown /spec command: ${sub}. Try /spec help.`,
-					"warning",
-				);
-			} catch (error) {
-				ctx.ui.notify(
-					`specd error: ${error instanceof Error ? error.message : String(error)}`,
-					"error",
-				);
-			}
-		},
-	});
-}
