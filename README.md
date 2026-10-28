@@ -39,8 +39,8 @@ Full flag reference, install modes, and online-install recipes:
 ```
 
 Extensions and skills are selectable (`-e`/`-n`, `-S`/`-N`); without filters,
-interactive mode shows menus. Extensions: `android-cli`, `grill`, `jina`,
-`wandb` — see each package's README for what it does.
+interactive mode shows menus. Extensions: `specd`, `grill`, `jina`,
+`android-cli` — see each package's README for what it does.
 
 ## What gets installed
 
@@ -66,9 +66,9 @@ Jina key from the [Jina AI API dashboard](https://jina.ai/api-dashboard/).
 
 ```text
 packages/               extensions (pnpm workspace; real sources)
+  specd/                Spec-driven development extension (pi-specd)
   grill/                Socratic planning extension (pi-grill)
   jina/                 Jina web tools (pi-jina-web)
-  wandb/                W&B provider extension (pi-wandb-inference)
   android-cli/          Android tooling extension (pi-android-cli)
 agent/                  mirrors ~/.pi/agent (installer source)
   skills/               skills (installed by dotpi)
