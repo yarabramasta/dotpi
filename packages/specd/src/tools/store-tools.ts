@@ -27,6 +27,7 @@ import { demoteItem, promoteItem } from "../store/storage.js";
 import {
 	addLink,
 	appendEvent,
+	assertStoreOwner,
 	counts,
 	createItem,
 	getItem,
@@ -46,7 +47,8 @@ export function text(content: string, details?: Record<string, unknown>) {
 }
 
 export async function openSpecd(ctx: ExtensionContext): Promise<SpecdStore> {
-	return openStore(ctx.cwd);
+	const ownerSessionId = ctx.sessionManager?.getSessionId();
+	return openStore(ctx.cwd, ownerSessionId);
 }
 
 /** Render a work.paused capsule payload (decisions / openQuestions /
@@ -161,6 +163,7 @@ export function registerStoreTools(pi: ExtensionAPI): void {
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const store = await openSpecd(ctx);
+			assertStoreOwner(store, ctx);
 			if (params.kind === "spec") {
 				// The explore decision gate: only a cycle whose latest explore
 				// decision is "go" may spawn a spec.
@@ -208,6 +211,7 @@ export function registerStoreTools(pi: ExtensionAPI): void {
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const store = await openSpecd(ctx);
+			assertStoreOwner(store, ctx);
 			const type = params.type as EventType;
 			if (type === "task.exported") {
 				assertCanExport(store, params.item); // throws with plain-language reason
@@ -270,6 +274,7 @@ export function registerStoreTools(pi: ExtensionAPI): void {
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const store = await openSpecd(ctx);
+			assertStoreOwner(store, ctx);
 			addLink(store, params.from, params.to, params.kind as LinkKind);
 			return text(`Linked ${params.from} -[${params.kind}]-> ${params.to}.`);
 		},
@@ -494,6 +499,7 @@ export function registerStoreTools(pi: ExtensionAPI): void {
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const store = await openSpecd(ctx);
+			assertStoreOwner(store, ctx);
 			const result = store.db
 				.prepare(
 					"DELETE FROM links WHERE from_item = ? AND to_item = ? AND kind = ?",
@@ -524,6 +530,7 @@ export function registerStoreTools(pi: ExtensionAPI): void {
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const store = await openSpecd(ctx);
+			assertStoreOwner(store, ctx);
 			if (params.demote) {
 				const removed = demoteItem(store, params.item);
 				return text(

@@ -172,3 +172,23 @@ store URL in your notes).
 - `store.db-shm` — transient SQLite shared memory
 
 Everything else (events, md mirrors, the marker file) can be committed.
+
+## Store ownership
+
+A specd store is owned by the session that creates or first opens it. The
+owner session id is stored in `meta.owner_session_id`. Any later session
+that resolves the same store (for example, a spawned worker in a task
+worktree) inherits that owner id and is not allowed to perform mutating
+tool calls against the store.
+
+Mutating specd tools (`specd_append_event`, `specd_create_item`,
+`specd_promote`, `specd_export`, `specd_start_work`, `specd_import`,
+`specd_configure_sink`, `specd_store` write actions, and `specd_open_pr`)
+check the owner before executing. If the caller session is not the owner,
+the tool throws a `no-specd-store-writes` error and tells the child to
+report results to the parent session, which records all specd events.
+
+This makes the "child receives no store tools" enforcement reliable even
+when ambient extension loading gives a spawned session access to the specd
+tool names — the ownership check in the store/tool layer is what actually
+refuses writes.

@@ -7,6 +7,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { migrateStore } from "./migrate.js";
 import { eventsForItem, recomputeProjection } from "./projection.js";
 import {
@@ -57,6 +58,9 @@ export interface SpecdStore {
 	/** If true, the store may not be mutated locally (referenced stores and
 	 * explicit read-only opens). Mutating functions must throw. */
 	readOnly?: boolean;
+	/** Session that owns the store. Bound when the store is first opened
+	 * by a session, then persisted in meta so later opens inherit it. */
+	ownerSessionId?: string;
 }
 
 export interface AppendEventInput {
@@ -103,7 +107,40 @@ function nowIso(): string {
 
 import { resolveStoreDir } from "./registry.js";
 
-export async function openStore(cwd: string): Promise<SpecdStore> {
+const OWNER_SESSION_ID_KEY = "owner_session_id";
+
+function readMetaValue(db: DatabaseSync, key: string): string | undefined {
+	const row = db.prepare("SELECT value FROM meta WHERE key = ?").get(key) as
+		| { value: string }
+		| undefined;
+	return row?.value;
+}
+
+function writeMetaValue(db: DatabaseSync, key: string, value: string): void {
+	db.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)").run(
+		key,
+		value,
+	);
+}
+
+export function assertStoreOwner(
+	store: SpecdStore,
+	ctx: ExtensionContext,
+): void {
+	if (!store.ownerSessionId) return;
+	const caller = ctx.sessionManager?.getSessionId();
+	if (!caller) return;
+	if (caller !== store.ownerSessionId) {
+		throw new Error(
+			`no-specd-store-writes: session ${caller} is not the owner of this specd store (owned by ${store.ownerSessionId}). Child sessions report results to the parent session; the parent records all specd events.`,
+		);
+	}
+}
+
+export async function openStore(
+	cwd: string,
+	ownerSessionId?: string,
+): Promise<SpecdStore> {
 	const sqlite = await import("node:sqlite").catch(() => undefined);
 	if (!sqlite) {
 		throw new Error(
@@ -137,7 +174,12 @@ export async function openStore(cwd: string): Promise<SpecdStore> {
 				"schema_version",
 				SCHEMA_VERSION,
 			);
-			return { db, cwd, dir, path };
+			let owner = readMetaValue(db, OWNER_SESSION_ID_KEY);
+			if (!owner && ownerSessionId) {
+				writeMetaValue(db, OWNER_SESSION_ID_KEY, ownerSessionId);
+				owner = ownerSessionId;
+			}
+			return { db, cwd, dir, path, ownerSessionId: owner };
 		}
 	}
 
@@ -166,7 +208,12 @@ export async function openStore(cwd: string): Promise<SpecdStore> {
 		"schema_version",
 		SCHEMA_VERSION,
 	);
-	return { db, cwd, dir, path };
+	let owner = readMetaValue(db, OWNER_SESSION_ID_KEY);
+	if (!owner && ownerSessionId) {
+		writeMetaValue(db, OWNER_SESSION_ID_KEY, ownerSessionId);
+		owner = ownerSessionId;
+	}
+	return { db, cwd, dir, path, ownerSessionId: owner };
 }
 
 /** Open a store read-only. Three cases:
@@ -183,7 +230,8 @@ export function openStoreReadOnly(dir: string): SpecdStore | undefined {
 			db.close();
 			return undefined;
 		}
-		return { db, cwd: dir, dir, path: dbPath };
+		const owner = readMetaValue(db, OWNER_SESSION_ID_KEY);
+		return { db, cwd: dir, dir, path: dbPath, ownerSessionId: owner };
 	}
 	if (!existsSync(jsonlPath)) return undefined;
 	const db = new DatabaseSync(":memory:");
@@ -193,7 +241,15 @@ export function openStoreReadOnly(dir: string): SpecdStore | undefined {
 		"schema_version",
 		SCHEMA_VERSION,
 	);
-	return { db, cwd: dir, dir, path: dbPath, readOnly: true };
+	const owner = readMetaValue(db, OWNER_SESSION_ID_KEY);
+	return {
+		db,
+		cwd: dir,
+		dir,
+		path: dbPath,
+		readOnly: true,
+		ownerSessionId: owner,
+	};
 }
 
 function eventsJsonlPath(dir: string): string {

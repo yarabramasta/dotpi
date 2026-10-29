@@ -1,6 +1,9 @@
 import { existsSync, mkdirSync } from "node:fs";
 import path, { join } from "node:path";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type {
+	ExtensionAPI,
+	ExtensionContext,
+} from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import {
 	DEFAULT_LABELS,
@@ -19,10 +22,24 @@ import {
 	lookupStore,
 	registerStore,
 	resolveReferenceStores,
+	resolveStoreDir,
 	type StoreRegistryEntry,
 	storesRoot,
 } from "../store/registry.js";
+import { assertStoreOwner, openStoreReadOnly } from "../store/store.js";
 import { openSpecd, text } from "./store-tools.js";
+
+function assertLocalStoreOwner(ctx: ExtensionContext): void {
+	const storeDir = resolveStoreDir(ctx.cwd);
+	if (!isSpecdStore(storeDir)) return;
+	const store = openStoreReadOnly(storeDir);
+	if (!store) return;
+	try {
+		assertStoreOwner(store, ctx);
+	} finally {
+		store.db.close();
+	}
+}
 
 export function parseReferenceTarget(
 	input: string,
@@ -122,6 +139,7 @@ export function registerSinkTools(pi: ExtensionAPI): void {
 
 			// ----- register -----
 			if (action === "register") {
+				assertLocalStoreOwner(ctx);
 				if (!params.type) {
 					return text(
 						"register action requires type=<in-repo|external|external-git>.",
@@ -144,6 +162,7 @@ export function registerSinkTools(pi: ExtensionAPI): void {
 			}
 
 			// ----- reference -----
+			assertLocalStoreOwner(ctx);
 			if (!params.store) {
 				return text("reference action requires store=<path-or-git-url>.");
 			}
@@ -244,6 +263,7 @@ export function registerSinkTools(pi: ExtensionAPI): void {
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const store = await openSpecd(ctx);
+			assertStoreOwner(store, ctx);
 			const sink = params.sink;
 
 			// Build the workspace from params + stored config.
