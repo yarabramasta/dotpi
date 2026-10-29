@@ -110,6 +110,26 @@ class SyncCommandTests(unittest.TestCase):
             self.assertEqual(destination.read_bytes(), source.read_bytes())
             self.assertIn("agents/specd-worker.md", output.getvalue())
 
+    def test_sync_agents_only_passes_selection_guard(self):
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory)
+            (target / "agent").mkdir()
+            args = argparse.Namespace(
+                target=str(target),
+                settings=False,
+                models=False,
+                agents=True,
+                apply=True,
+                dry_run=False,
+                json=False,
+                yes=True,
+            )
+            with contextlib.redirect_stdout(io.StringIO()) as output:
+                sync.sync_command(args)
+            destination = target / "agent/agents/specd-worker.md"
+            self.assertTrue(destination.is_file())
+            self.assertIn("agents/specd-worker.md", output.getvalue())
+
     def test_sync_agents_skipped_without_flag(self):
         with tempfile.TemporaryDirectory() as directory:
             target = Path(directory)

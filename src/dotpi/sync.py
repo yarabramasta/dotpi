@@ -21,8 +21,8 @@ def sync_path_specs(args: argparse.Namespace) -> list[tuple[str, Path]]:
         selected.append(("settings.json", Path("agent/settings.json")))
     if args.models:
         selected.append(("models.json", Path("agent/models.json")))
-    if not selected:
-        die("sync requires --settings (-s) and/or --models (-M)")
+    if not selected and not args.agents:
+        die("sync requires --settings (-s), --models (-M), and/or --agents (-A)")
     return selected
 
 
