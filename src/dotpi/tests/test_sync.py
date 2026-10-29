@@ -87,6 +87,7 @@ class SyncCommandTests(unittest.TestCase):
             self.assertEqual(destination.stat().st_mode & 0o777, target_mode)
             backups = list(target.parent.glob(f"{target.name}-backups/*"))
             self.assertEqual(len(backups), 1)
+
     def test_sync_agents_mirrors_definitions(self):
         with tempfile.TemporaryDirectory() as directory:
             target = Path(directory)

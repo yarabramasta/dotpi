@@ -181,9 +181,7 @@ def safe_or_cherry_install(args: argparse.Namespace, root: Path, target: Path) -
 
     json_sources = direct_json_sources(root)
     agent_defs_dir = root / "agent" / "agents"
-    agent_docs = (
-        sorted(agent_defs_dir.glob("*.md")) if agent_defs_dir.is_dir() else []
-    )
+    agent_docs = sorted(agent_defs_dir.glob("*.md")) if agent_defs_dir.is_dir() else []
     previews = [
         preview
         for source in json_sources

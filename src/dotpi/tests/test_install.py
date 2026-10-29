@@ -72,12 +72,7 @@ class CleanInstallTests(unittest.TestCase):
             self.assertTrue((target / "agent" / "sessions" / "seed.jsonl").is_file())
             self.assertTrue(
                 (
-                    target
-                    / "agent"
-                    / "npm"
-                    / "node_modules"
-                    / "pkg"
-                    / "index.js"
+                    target / "agent" / "npm" / "node_modules" / "pkg" / "index.js"
                 ).is_file(),
                 "npm package trees are host state — COPY_IGNORE must not drop them",
             )
