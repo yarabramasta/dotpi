@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { saveSinkSetup } from "../src/sinks/config.js";
 import { addLink, createItem } from "../src/store/store.js";
 import { buildTaskExport } from "../src/tools/exec-tools.js";
 import { makeStore } from "./helpers.js";
@@ -20,8 +21,11 @@ describe("buildTaskExport labels", () => {
 
 		const exported = buildTaskExport(store, task);
 
-		expect(exported.labels).toContain("specd");
-		expect(exported.labels).toContain("spec:auth-service");
+		expect(exported.labels).toEqual([
+			"specd",
+			"specd:task",
+			"spec:auth-service",
+		]);
 		expect(exported.body).toContain(spec.id);
 	});
 
@@ -35,7 +39,42 @@ describe("buildTaskExport labels", () => {
 
 		const exported = buildTaskExport(store, task);
 
-		expect(exported.labels).toEqual(["specd"]);
+		expect(exported.labels).toEqual(["specd", "specd:task"]);
+	});
+
+	it("does not leak the sink setup's label taxonomy into per-task labels", async () => {
+		const { store } = await makeStore();
+		saveSinkSetup(
+			store,
+			{
+				workspace: { owner: "o", projectNumber: 1 },
+				lanes: ["Backlog"],
+				labels: ["specd", "specd:task", "specd:spec", "bug", "area:web"],
+				naming: "{ref}: {title}",
+			},
+			"github",
+		);
+		const spec = createItem(store, {
+			kind: "spec",
+			title: "Auth Service",
+			actor: "test",
+		});
+		const task = createItem(store, {
+			kind: "task",
+			title: "Add login",
+			actor: "test",
+		});
+		addLink(store, task.id, spec.id, "part-of");
+
+		// The taxonomy is repo-wide vocabulary (seeded at configure time);
+		// exports assign only contextual labels.
+		const exported = buildTaskExport(store, task);
+
+		expect(exported.labels).toEqual([
+			"specd",
+			"specd:task",
+			"spec:auth-service",
+		]);
 	});
 
 	it("picks a spec deterministically when a task is linked to multiple specs", async () => {

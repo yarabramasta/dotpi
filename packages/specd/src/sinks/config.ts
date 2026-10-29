@@ -16,6 +16,18 @@ export const DEFAULT_LANES = [
 ] as const;
 export const DEFAULT_NAMING = "{type}({scope}): {title}";
 
+/** Default label taxonomy the sink interview offers — the specd family.
+ * Taxonomy labels are seeded repo-wide at configure time (ensurePlan);
+ * exports assign only contextual labels (specd, specd:<kind>, spec:<scope>),
+ * never the whole taxonomy. */
+export const DEFAULT_LABELS = [
+	"specd",
+	"specd:spec",
+	"specd:plan",
+	"specd:task",
+	"specd:cycle",
+];
+
 /** Sink targeting config lives in the store's meta table — non-secret ids
  * only (owner, project number, lane). Credentials stay in the dev's shell. */
 export function readSinkConfig(

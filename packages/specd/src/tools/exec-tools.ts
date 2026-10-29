@@ -40,13 +40,12 @@ export function buildTaskExport(store: SpecdStore, task: ItemRow): TaskExport {
 		? `## Spec reference\n\n${spec.id} — ${spec.title}\n\n${spec.body.slice(0, 1500)}${spec.body.length > 1500 ? "\n…" : ""}`
 		: "## Spec reference\n\n(none linked)";
 	const body = `## Task\n\n${task.body || task.title}\n\n${specSection}\n\n---\nExported from specd (${task.id}).`;
-	const labels = ["specd"];
+	// Labels are assigned contextually per issue. The sink setup's label
+	// taxonomy is repo-wide vocabulary — seeded once at configure time
+	// (ensurePlan) — and must never be applied wholesale to every export.
+	const labels = ["specd", `specd:${task.kind}`];
 	if (spec) labels.push(`spec:${slugify(spec.title)}`);
-	const plan = readSinkSetup(store);
-	if (plan) {
-		for (const l of plan.labels) if (!labels.includes(l)) labels.push(l);
-	}
-	const naming = plan?.naming || DEFAULT_NAMING;
+	const naming = readSinkSetup(store)?.naming || DEFAULT_NAMING;
 	const title = naming
 		.replace("{type}", ccTypeOf(store, task.id))
 		.replace("{scope}", scopeOf(task.path_scope) || task.id)

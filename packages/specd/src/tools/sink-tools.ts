@@ -3,6 +3,7 @@ import path, { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import {
+	DEFAULT_LABELS,
 	DEFAULT_LANES,
 	DEFAULT_NAMING,
 	readSinkConfig,
@@ -190,7 +191,7 @@ export function registerSinkTools(pi: ExtensionAPI): void {
 		name: "specd_configure_sink",
 		label: "Configure the specd sink",
 		description:
-			"Preview (default) or apply the sink setup for a sink: workspace, lanes, label taxonomy, naming convention. Preview is read-only and lists what would change. Apply is idempotent — a converged plan yields no changes. The plan persists in the store and drives export titles, labels, and lane placement.",
+			"Preview (default) or apply the sink setup for a sink: workspace, lanes, label taxonomy, naming convention. Preview is read-only and lists what would change. Apply is idempotent — a converged plan yields no changes. The plan persists in the store and drives export titles and lane placement; the label taxonomy is repo-wide vocabulary seeded once here (labels are created on the workspace, never applied to issues — exports assign only contextual labels).",
 		promptSnippet: "Preview/apply the sink setup",
 		parameters: Type.Object({
 			sink: Type.String({
@@ -237,7 +238,7 @@ export function registerSinkTools(pi: ExtensionAPI): void {
 			statusMap: Type.Optional(
 				Type.Record(Type.String(), Type.String(), {
 					description:
-						'specd item status → the board\'s own workflow option (D15), e.g. { exported: "Ready", "in-progress": "In progress", done: "Done" }. updateStatus writes exactly the mapped option.',
+						'specd item status → the board\'s own workflow option (D15), e.g. { exported: "Ready", "in-progress": "In progress", done: "Done" }. updateStatus writes exactly the mapped option. Optional "in-review": the option a done task\'s still-open PR sits in until the PR merges (default "In review").',
 				}),
 			),
 		}),
@@ -276,7 +277,7 @@ export function registerSinkTools(pi: ExtensionAPI): void {
 			const plan = {
 				workspace,
 				lanes: params.lanes ?? prior?.lanes ?? [...DEFAULT_LANES],
-				labels: params.labels ?? prior?.labels ?? ["specd"],
+				labels: params.labels ?? prior?.labels ?? [...DEFAULT_LABELS],
 				naming: params.naming ?? prior?.naming ?? DEFAULT_NAMING,
 				statusMap: params.statusMap ?? prior?.statusMap,
 			};

@@ -474,6 +474,13 @@ export function createGithubAdapter(
 			return { state: parsed?.state ?? "unknown" };
 		},
 
+		async readPrState(branch: string): Promise<string> {
+			const result = await gh(["pr", "view", branch, "--json", "state"]);
+			const parsed = parseJsonLoose<{ state?: string }>(result.stdout);
+			// gh emits OPEN | CLOSED | MERGED; lowercase for the contract.
+			return (parsed?.state ?? "unknown").toLowerCase();
+		},
+
 		async placeInLane(externalRef: string, lane: string): Promise<void> {
 			// Lanes are the board's workflow columns (Model B): the Status
 			// option IS the lane.

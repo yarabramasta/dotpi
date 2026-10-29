@@ -54,7 +54,9 @@ export interface SinkSetup {
 	/** Explicit mapping of specd item statuses → the board's own workflow
 	 * options (D15). updateStatus writes exactly the mapped option and
 	 * never creates status options; unmapped states are reported, not
-	 * guessed. */
+	 * guessed. "in-review" is a sink-side pseudo-status: the option a done
+	 * task's still-open PR maps to until the merge reconcile records
+	 * pr.merged (default "In review"). */
 	statusMap?: Record<string, string>;
 }
 
@@ -69,6 +71,11 @@ export interface SinkAdapter {
 	createTask(task: TaskExport): Promise<TaskCreated>;
 	/** Map state back from the sink (issue open/closed → store event). */
 	readBack(externalRef: string): Promise<{ state: string }>;
+	/** Read the state of the PR open for a branch, when the sink hosts
+	 * code PRs ("open" | "closed" | "merged" on github). Drives the merge
+	 * reconcile: a done task's open PR holds its board item in the review
+	 * lane until this reports "merged". Adapters without PRs omit it. */
+	readPrState?(branch: string): Promise<string>;
 	/** Place the item in a lane — a workflow column of the sink (GitHub
 	 * Status option, Trello list, …). The kanban placement action. */
 	placeInLane?(externalRef: string, lane: string): Promise<void>;
