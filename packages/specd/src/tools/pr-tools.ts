@@ -7,7 +7,7 @@ import {
 	watchChecks,
 } from "../sinks/github/pr.js";
 import { realGhRunner } from "../sinks/github/runner.js";
-import { assertStoreOwner, getItem } from "../store/store.js";
+import { assertParentContext, getItem } from "../store/store.js";
 import { openSpecd, text } from "./store-tools.js";
 
 /** PR/CI seam tools (plan-0006 slice 2). specd_open_pr enforces the review
@@ -36,8 +36,8 @@ export function registerPrTools(pi: ExtensionAPI): void {
 			),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			assertParentContext(ctx);
 			const store = await openSpecd(ctx);
-			assertStoreOwner(store, ctx);
 			const task = getItem(store, params.item);
 			if (!task) return text(`Unknown item: ${params.item}.`);
 			let result: OpenPrResult;

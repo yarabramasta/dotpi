@@ -173,22 +173,33 @@ store URL in your notes).
 
 Everything else (events, md mirrors, the marker file) can be committed.
 
-## Store ownership
+## Child-session write guard (no-specd-store-writes)
 
-A specd store is owned by the session that creates or first opens it. The
-owner session id is stored in `meta.owner_session_id`. Any later session
-that resolves the same store (for example, a spawned worker in a task
-worktree) inherits that owner id and is not allowed to perform mutating
-tool calls against the store.
+A specd store is a durable shared artifact, so enforcement of "child
+receives no store tools" deliberately does NOT rest on session identity:
+a session UUID is ephemeral and conversation-scoped, and binding ownership
+to it either locks out legitimate sessions (whoever binds first wins) or
+is stolen by whichever session opens the store first. Instead, the guard
+keys on the one artifact specd itself creates for spawned workers: the
+convention task worktree (`<repo>-specd-<kind>-<id>`, made by
+`specd_start_work`).
 
-Mutating specd tools (`specd_append_event`, `specd_create_item`,
-`specd_promote`, `specd_export`, `specd_start_work`, `specd_import`,
-`specd_configure_sink`, `specd_store` write actions, and `specd_open_pr`)
-check the owner before executing. If the caller session is not the owner,
-the tool throws a `no-specd-store-writes` error and tells the child to
-report results to the parent session, which records all specd events.
+All mutating specd tools (`specd_append_event`, `specd_create_item`,
+`specd_add_link`, `specd_remove_link`, `specd_promote`, `specd_export`,
+`specd_start_work`, `specd_import` (apply/revert), `specd_configure_sink`,
+`specd_store` register/reference actions, and `specd_open_pr`) refuse
+calls whose cwd is a task worktree with a `no-specd-store-writes` error
+that tells the child to report results to the parent session, which
+records all specd events. Reads stay open from child contexts — children
+may inspect the store.
+
+`specd_read(view=dashboard)` performs a read-back sync that can append
+events (exported tasks whose sink item closed become done); from a child
+context that sync is skipped, so the read view stays read-only for
+children. (Stale `meta` rows from earlier session-binding experiments are
+ignored.)
 
 This makes the "child receives no store tools" enforcement reliable even
 when ambient extension loading gives a spawned session access to the specd
-tool names — the ownership check in the store/tool layer is what actually
-refuses writes.
+tool names — the guard in the store/tool layer is what actually refuses
+writes.

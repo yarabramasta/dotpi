@@ -14,7 +14,7 @@ import type { TaskExport } from "../sinks/contract.js";
 import { resolveAdapter } from "../sinks/resolve.js";
 import {
 	appendEvent,
-	assertStoreOwner,
+	assertParentContext,
 	getItem,
 	history,
 	type ItemRow,
@@ -88,8 +88,8 @@ export function registerExecTools(pi: ExtensionAPI): void {
 			),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			assertParentContext(ctx);
 			const store = await openSpecd(ctx);
-			assertStoreOwner(store, ctx);
 			const sink = params.sink ?? "null";
 			if (sink === "github") {
 				const existing = readSinkConfig(store, "sink.github");
@@ -146,8 +146,8 @@ export function registerExecTools(pi: ExtensionAPI): void {
 			item: Type.String({ description: "Task id (e.g. task-0001)." }),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			assertParentContext(ctx);
 			const store = await openSpecd(ctx);
-			assertStoreOwner(store, ctx);
 			const task = getItem(store, params.item);
 			if (!task) return text(`Unknown item: ${params.item}.`);
 			const branch = branchName(task, ccTypeOf(store, task.id));
@@ -246,8 +246,8 @@ export function registerExecTools(pi: ExtensionAPI): void {
 				const { listImportBatches, revertImport } = await import(
 					"../import/run.js"
 				);
+				assertParentContext(ctx);
 				const store = await openSpecd(ctx);
-				assertStoreOwner(store, ctx);
 				if (!params.batch) {
 					const batches = listImportBatches(store);
 					return text(
@@ -300,8 +300,8 @@ export function registerExecTools(pi: ExtensionAPI): void {
 				);
 			}
 			const { planImport, applyImport } = await import("../import/run.js");
+			assertParentContext(ctx);
 			const store = await openSpecd(ctx);
-			assertStoreOwner(store, ctx);
 			const batch = `import-${Date.now()}`;
 			const plan = planImport(store, mapped, batch);
 			// Build the id map from the plan so applyImport doesn't need

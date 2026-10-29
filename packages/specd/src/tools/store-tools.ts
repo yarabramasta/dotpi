@@ -27,11 +27,12 @@ import { demoteItem, promoteItem } from "../store/storage.js";
 import {
 	addLink,
 	appendEvent,
-	assertStoreOwner,
+	assertParentContext,
 	counts,
 	createItem,
 	getItem,
 	history,
+	isTaskWorktreeCwd,
 	listItems,
 	openStore,
 	openStoreReadOnly,
@@ -47,8 +48,7 @@ export function text(content: string, details?: Record<string, unknown>) {
 }
 
 export async function openSpecd(ctx: ExtensionContext): Promise<SpecdStore> {
-	const ownerSessionId = ctx.sessionManager?.getSessionId();
-	return openStore(ctx.cwd, ownerSessionId);
+	return openStore(ctx.cwd);
 }
 
 /** Render a work.paused capsule payload (decisions / openQuestions /
@@ -101,12 +101,19 @@ function renderChecklist(
 
 /** Dashboard content shared by the /spec command and the dashboard view
  * of specd_read. Read-back sync runs best-effort first (exported tasks
- * whose sink item closed become done), then the projection snapshot renders. */
-export async function dashboardContent(store: SpecdStore): Promise<string> {
-	try {
-		await syncExportedTasks(store);
-	} catch {
-		// best-effort: an unreachable sink never breaks the dashboard
+ * whose sink item closed become done), then the projection snapshot renders.
+ * Pass sync:false from child contexts — the sync path appends events, and
+ * spawned children must not mutate the store even through a read view. */
+export async function dashboardContent(
+	store: SpecdStore,
+	options?: { sync?: boolean },
+): Promise<string> {
+	if (options?.sync !== false) {
+		try {
+			await syncExportedTasks(store);
+		} catch {
+			// best-effort: an unreachable sink never breaks the dashboard
+		}
 	}
 	const rows = listItems(store, { limit: 20 });
 	const paused = rows
@@ -162,8 +169,8 @@ export function registerStoreTools(pi: ExtensionAPI): void {
 			),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			assertParentContext(ctx);
 			const store = await openSpecd(ctx);
-			assertStoreOwner(store, ctx);
 			if (params.kind === "spec") {
 				// The explore decision gate: only a cycle whose latest explore
 				// decision is "go" may spawn a spec.
@@ -210,8 +217,8 @@ export function registerStoreTools(pi: ExtensionAPI): void {
 			),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			assertParentContext(ctx);
 			const store = await openSpecd(ctx);
-			assertStoreOwner(store, ctx);
 			const type = params.type as EventType;
 			if (type === "task.exported") {
 				assertCanExport(store, params.item); // throws with plain-language reason
@@ -273,8 +280,8 @@ export function registerStoreTools(pi: ExtensionAPI): void {
 			}),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			assertParentContext(ctx);
 			const store = await openSpecd(ctx);
-			assertStoreOwner(store, ctx);
 			addLink(store, params.from, params.to, params.kind as LinkKind);
 			return text(`Linked ${params.from} -[${params.kind}]-> ${params.to}.`);
 		},
@@ -334,7 +341,11 @@ export function registerStoreTools(pi: ExtensionAPI): void {
 			// ----- dashboard -----
 			if (view === "dashboard") {
 				const store = await openSpecd(ctx);
-				return text(await dashboardContent(store));
+				return text(
+					await dashboardContent(store, {
+						sync: !isTaskWorktreeCwd(ctx.cwd),
+					}),
+				);
 			}
 
 			// ----- show -----
@@ -498,8 +509,8 @@ export function registerStoreTools(pi: ExtensionAPI): void {
 			}),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			assertParentContext(ctx);
 			const store = await openSpecd(ctx);
-			assertStoreOwner(store, ctx);
 			const result = store.db
 				.prepare(
 					"DELETE FROM links WHERE from_item = ? AND to_item = ? AND kind = ?",
@@ -529,8 +540,8 @@ export function registerStoreTools(pi: ExtensionAPI): void {
 			),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			assertParentContext(ctx);
 			const store = await openSpecd(ctx);
-			assertStoreOwner(store, ctx);
 			if (params.demote) {
 				const removed = demoteItem(store, params.item);
 				return text(

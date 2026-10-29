@@ -5,9 +5,17 @@ import type {
 	ExtensionAPI,
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import { describe, expect, it } from "vitest";
-import { createItem, openStore } from "../src/store/store.js";
+import { describe, expect, it, vi } from "vitest";
+import {
+	createItem,
+	isTaskWorktreeCwd,
+	openStore,
+} from "../src/store/store.js";
 import { registerStoreTools } from "../src/tools/store-tools.js";
+
+vi.mock("../src/sinks/sync.js", () => ({
+	syncExportedTasks: vi.fn(async () => {}),
+}));
 
 interface CapturedToolDef {
 	name: string;
@@ -36,109 +44,163 @@ function captureStoreTool(name: string): CapturedToolDef {
 	return found;
 }
 
-function fakeCtx(cwd: string, sessionId: string | undefined): ExtensionContext {
-	return {
-		cwd,
-		sessionManager: sessionId
-			? {
-					getSessionId: () => sessionId,
-				}
-			: undefined,
-	} as unknown as ExtensionContext;
+/** A plain repo dir (what a parent session runs in) and the worktree dir
+ * specd_start_work itself would create for it. */
+function parentDir(): string {
+	return mkdtempSync(join(tmpdir(), "specd-own-parent-"));
+}
+function childWorktreeOf(parent: string): string {
+	return `${parent}-specd-task-0042`;
 }
 
-async function seededStore(ownerSessionId: string) {
-	const dir = mkdtempSync(join(tmpdir(), "specd-owner-"));
-	const store = await openStore(dir, ownerSessionId);
+function fakeCtx(cwd: string): ExtensionContext {
+	return { cwd } as unknown as ExtensionContext;
+}
+
+async function seededStore(dir: string) {
+	const store = await openStore(dir);
 	const task = createItem(store, {
 		kind: "task",
-		title: "Owned task",
+		title: "Guarded task",
 		body: "Body.",
 		actor: "test",
 	});
 	store.db.close();
-	return { dir, taskId: task.id };
+	return { taskId: task.id };
 }
 
-describe("specd store ownership", () => {
-	it("persistently binds the owner session id", async () => {
-		const dir = mkdtempSync(join(tmpdir(), "specd-owner-bind-"));
-		const cleanup = () => rmSync(dir, { recursive: true, force: true });
-		try {
-			const first = await openStore(dir, "parent-session");
-			expect(first.ownerSessionId).toBe("parent-session");
-			first.db.close();
+function cleanupDir(dir: string) {
+	rmSync(dir, { recursive: true, force: true });
+}
 
-			const second = await openStore(dir, "child-session");
-			expect(second.ownerSessionId).toBe("parent-session");
-			second.db.close();
-		} finally {
-			cleanup();
-		}
+describe("specd task-worktree write guard", () => {
+	it("detects the worktree convention specd itself creates", () => {
+		expect(isTaskWorktreeCwd("/repo/dotpi-specd-task-0009")).toBe(true);
+		expect(isTaskWorktreeCwd("/repo/dotpi-specd-spec-0007")).toBe(true);
+		expect(isTaskWorktreeCwd("/repo/dotpi")).toBe(false);
+		expect(isTaskWorktreeCwd("/repo/dotpi-specd-task-42")).toBe(false);
+		expect(isTaskWorktreeCwd("/repo/my-specd-notes")).toBe(false);
 	});
 
-	it("refuses a write-tool call from a non-owner session", async () => {
-		const { dir, taskId } = await seededStore("parent-session");
-		const cleanup = () => rmSync(dir, { recursive: true, force: true });
+	it("refuses a write-tool call from a spawned child in a task worktree", async () => {
+		const parent = parentDir();
+		const worktree = childWorktreeOf(parent);
 		try {
+			const { taskId } = await seededStore(parent);
 			const tool = captureStoreTool("specd_append_event");
 
 			await expect(
 				tool.execute(
 					"t1",
-					{
-						item: taskId,
-						type: "work.started",
-						payload: {},
-					},
+					{ item: taskId, type: "work.started", payload: {} },
 					undefined,
 					undefined,
-					fakeCtx(dir, "child-session"),
+					fakeCtx(worktree),
 				),
 			).rejects.toThrow(/no-specd-store-writes/);
+		} finally {
+			cleanupDir(parent);
+			cleanupDir(worktree);
+		}
+	});
 
+	it("explains the correct flow when refusing a child write", async () => {
+		const parent = parentDir();
+		const worktree = childWorktreeOf(parent);
+		try {
+			const { taskId } = await seededStore(parent);
+			const tool = captureStoreTool("specd_append_event");
 			await expect(
 				tool.execute(
-					"t2",
-					{
-						item: taskId,
-						type: "work.started",
-						payload: {},
-					},
+					"t1",
+					{ item: taskId, type: "work.started", payload: {} },
 					undefined,
 					undefined,
-					fakeCtx(dir, "parent-session"),
+					fakeCtx(worktree),
+				),
+			).rejects.toThrow(
+				/Report results to the parent session; the parent records all specd events/,
+			);
+		} finally {
+			cleanupDir(parent);
+			cleanupDir(worktree);
+		}
+	});
+
+	it("allows the identical write from a parent context (plain repo cwd)", async () => {
+		const parent = parentDir();
+		try {
+			const { taskId } = await seededStore(parent);
+			const tool = captureStoreTool("specd_append_event");
+			await expect(
+				tool.execute(
+					"t1",
+					{ item: taskId, type: "work.started", payload: {} },
+					undefined,
+					undefined,
+					fakeCtx(parent),
 				),
 			).resolves.toMatchObject({
 				content: [{ type: "text", text: expect.stringContaining("Appended") }],
 			});
 		} finally {
-			cleanup();
+			cleanupDir(parent);
 		}
 	});
 
-	it("explains the correct flow when refusing a child write", async () => {
-		const { dir, taskId } = await seededStore("parent-session");
-		const cleanup = () => rmSync(dir, { recursive: true, force: true });
+	it("does not run the dashboard read-back sync from a child context", async () => {
+		const { syncExportedTasks } = await import("../src/sinks/sync.js");
+		const syncMock = vi.mocked(syncExportedTasks);
+		const parent = parentDir();
+		const worktree = childWorktreeOf(parent);
 		try {
-			const tool = captureStoreTool("specd_append_event");
+			await seededStore(parent);
+			const tool = captureStoreTool("specd_read");
+
+			syncMock.mockClear();
+			await tool.execute(
+				"t1",
+				{ view: "dashboard" },
+				undefined,
+				undefined,
+				fakeCtx(worktree),
+			);
+			expect(syncMock).not.toHaveBeenCalled();
+
+			await tool.execute(
+				"t2",
+				{ view: "dashboard" },
+				undefined,
+				undefined,
+				fakeCtx(parent),
+			);
+			expect(syncMock).toHaveBeenCalledTimes(1);
+		} finally {
+			cleanupDir(parent);
+			cleanupDir(worktree);
+		}
+	});
+
+	it("keeps reads open from a child context", async () => {
+		const parent = parentDir();
+		const worktree = childWorktreeOf(parent);
+		try {
+			await seededStore(parent);
+			const tool = captureStoreTool("specd_read");
 			await expect(
 				tool.execute(
 					"t1",
-					{
-						item: taskId,
-						type: "work.started",
-						payload: {},
-					},
+					{ view: "query", kind: "task" },
 					undefined,
 					undefined,
-					fakeCtx(dir, "child-session"),
+					fakeCtx(worktree),
 				),
-			).rejects.toThrow(
-				/Child sessions report results to the parent session; the parent records all specd events/,
-			);
+			).resolves.toMatchObject({
+				content: [{ type: "text", text: expect.any(String) }],
+			});
 		} finally {
-			cleanup();
+			cleanupDir(parent);
+			cleanupDir(worktree);
 		}
 	});
 });

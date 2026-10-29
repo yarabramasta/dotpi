@@ -5,7 +5,7 @@ import {
 	readFileSync,
 	writeFileSync,
 } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { migrateStore } from "./migrate.js";
@@ -58,9 +58,6 @@ export interface SpecdStore {
 	/** If true, the store may not be mutated locally (referenced stores and
 	 * explicit read-only opens). Mutating functions must throw. */
 	readOnly?: boolean;
-	/** Session that owns the store. Bound when the store is first opened
-	 * by a session, then persisted in meta so later opens inherit it. */
-	ownerSessionId?: string;
 }
 
 export interface AppendEventInput {
@@ -107,40 +104,27 @@ function nowIso(): string {
 
 import { resolveStoreDir } from "./registry.js";
 
-const OWNER_SESSION_ID_KEY = "owner_session_id";
-
-function readMetaValue(db: DatabaseSync, key: string): string | undefined {
-	const row = db.prepare("SELECT value FROM meta WHERE key = ?").get(key) as
-		| { value: string }
-		| undefined;
-	return row?.value;
+/** True when cwd is a specd task worktree — the directories specd_start_work
+ * itself creates as `<repo>-specd-<kind>-<id>` (see tools/exec-tools.ts).
+ * Spawned child sessions run there, so this — not session identity — is the
+ * reliable child signal: a session UUID is ephemeral and conversation-scoped,
+ * while the store is durable, so binding ownership to it either locks out
+ * legitimate sessions or is stolen by whoever opens the store first. */
+export function isTaskWorktreeCwd(cwd: string): boolean {
+	return /-specd-[a-z]+-\d{4,}$/.test(basename(cwd));
 }
 
-function writeMetaValue(db: DatabaseSync, key: string, value: string): void {
-	db.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)").run(
-		key,
-		value,
+/** Refuse store-mutating tool calls from spawned child sessions (specd task
+ * worktree cwds). Reads stay open — children may inspect the store. */
+export function assertParentContext(ctx: ExtensionContext): void {
+	const cwd = ctx?.cwd;
+	if (!cwd || !isTaskWorktreeCwd(cwd)) return;
+	throw new Error(
+		`no-specd-store-writes: ${basename(cwd)} is a specd task worktree — spawned child sessions must not mutate the specd store. Report results to the parent session; the parent records all specd events.`,
 	);
 }
 
-export function assertStoreOwner(
-	store: SpecdStore,
-	ctx: ExtensionContext,
-): void {
-	if (!store.ownerSessionId) return;
-	const caller = ctx.sessionManager?.getSessionId();
-	if (!caller) return;
-	if (caller !== store.ownerSessionId) {
-		throw new Error(
-			`no-specd-store-writes: session ${caller} is not the owner of this specd store (owned by ${store.ownerSessionId}). Child sessions report results to the parent session; the parent records all specd events.`,
-		);
-	}
-}
-
-export async function openStore(
-	cwd: string,
-	ownerSessionId?: string,
-): Promise<SpecdStore> {
+export async function openStore(cwd: string): Promise<SpecdStore> {
 	const sqlite = await import("node:sqlite").catch(() => undefined);
 	if (!sqlite) {
 		throw new Error(
@@ -174,12 +158,7 @@ export async function openStore(
 				"schema_version",
 				SCHEMA_VERSION,
 			);
-			let owner = readMetaValue(db, OWNER_SESSION_ID_KEY);
-			if (!owner && ownerSessionId) {
-				writeMetaValue(db, OWNER_SESSION_ID_KEY, ownerSessionId);
-				owner = ownerSessionId;
-			}
-			return { db, cwd, dir, path, ownerSessionId: owner };
+			return { db, cwd, dir, path };
 		}
 	}
 
@@ -208,12 +187,7 @@ export async function openStore(
 		"schema_version",
 		SCHEMA_VERSION,
 	);
-	let owner = readMetaValue(db, OWNER_SESSION_ID_KEY);
-	if (!owner && ownerSessionId) {
-		writeMetaValue(db, OWNER_SESSION_ID_KEY, ownerSessionId);
-		owner = ownerSessionId;
-	}
-	return { db, cwd, dir, path, ownerSessionId: owner };
+	return { db, cwd, dir, path };
 }
 
 /** Open a store read-only. Three cases:
@@ -230,8 +204,7 @@ export function openStoreReadOnly(dir: string): SpecdStore | undefined {
 			db.close();
 			return undefined;
 		}
-		const owner = readMetaValue(db, OWNER_SESSION_ID_KEY);
-		return { db, cwd: dir, dir, path: dbPath, ownerSessionId: owner };
+		return { db, cwd: dir, dir, path: dbPath };
 	}
 	if (!existsSync(jsonlPath)) return undefined;
 	const db = new DatabaseSync(":memory:");
@@ -241,14 +214,12 @@ export function openStoreReadOnly(dir: string): SpecdStore | undefined {
 		"schema_version",
 		SCHEMA_VERSION,
 	);
-	const owner = readMetaValue(db, OWNER_SESSION_ID_KEY);
 	return {
 		db,
 		cwd: dir,
 		dir,
 		path: dbPath,
 		readOnly: true,
-		ownerSessionId: owner,
 	};
 }
 
