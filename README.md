@@ -45,8 +45,11 @@ interactive mode shows menus. Extensions: `specd`, `grill`, `jina`,
 ## What gets installed
 
 `agent/` mirrors `~/.pi/agent` and is the installer's source of truth. Tracked
-direct JSON under `agent/` is copied except `auth.json`; extensions come from
-`packages/*`. Tracked JSON can carry
+files under `agent/` are mirrored by `./dotpi install` (clean mode copies the
+whole tree; safe mode copies JSON files and skips `auth.json`); `./dotpi sync
+-s -M` updates only `settings.json` and `models.json` in place. Agents live
+under `agent/agents/` and are discovered by Pi from `~/.pi/agent/agents` after
+install. Extensions come from `packages/*`. Tracked JSON can carry
 machine-specific state — review before installing.
 
 ## API keys and auth

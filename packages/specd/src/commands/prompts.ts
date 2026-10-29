@@ -114,19 +114,13 @@ export const TASKS_ENTRY_PROMPT = (
 
 export const RUN_PROMPT = (
 	task: string,
-) => `Run the task ${task} through the execution seam (checklist-gated, reviewer-signed):
+) => `Run task ${task} through the execution seam:
 
-1. specd_read(view=show, item=${task}) — read the task body (acceptance criteria), path scope, and the linked spec for context. If the history ends with work.paused, read that capsule and resume from it.
-2. specd_start_work(item=${task}) — run the start gate, create or reuse the isolated worktree on the convention branch (specd/<type>/<task-id>-<slug>), and record work.started. Re-running an in-progress or paused task reuses the existing worktree and does not append a duplicate work.started event.
-3. Spawn ONE worker subagent (subagent tool, agent=worker) in the worktree cwd with a brief containing:
-   - the task title, body (acceptance criteria), and path scope
-   - the linked spec's intent and acceptance criteria
-   - the branch name
-   - NAMING (conventional commits, honored everywhere): the task's type (feat/fix/chore/docs/test/refactor/perf — from its created payload, default feat) and scope (from its path scope) drive every name. Commit messages AND the eventual PR title MUST be 'type(scope): subject' with the subject stating the goal and starting lowercase (e.g. 'feat(auth): add login route'); no scope → 'type: subject'.
-   - worker rules: implement only inside the path scope; SURGICAL CHANGES — every changed line traces to the task (no drive-by refactors, no reformatting adjacent code, no "improvements" beyond the task; clean up only orphans your own changes created); commit to the branch; push the branch; NEVER touch main; NEVER force-push; do NOT create the PR — report the pushed branch when done.
-   - if the task's type is docs: classify the doc first (Diataxis — tutorial / how-to / reference / explanation; one page, one job), write for a named audience, and strip AI-writing tropes before finishing.
-4. REVIEW GATE: spawn ONE reviewer subagent (read-only) over the worktree diff (default branch vs the task branch) against the task's acceptance criteria and the spec. Beyond correctness, check two dimensions: overcomplication (would a senior engineer call it overbuilt? the simpler version wins) and drive-by changes (any changed line not traceable to the task is a finding). Record its verdict: specd_append_event(item=${task}, type=review.completed, payload={passed: true|false, findings: [...]}).
-5. If the review passed: specd_open_pr(item=${task}) — the tool derives branch/title/body, records pr.created and work.completed itself, and returns the existing PR URL if one is already open. If the review failed: tell me exactly what failed, then run the fix loop — /spec diagnose ${task}: record diagnosis.recorded (symptom, root cause, specGap), revise the spec first if specGap, fix, re-review. Poll CI with specd_watch_checks(item=${task}) as needed — one non-blocking poll per call; on CI failure, the same loop applies.`;
+1. specd_read(view=show, item=${task}) — read the task title, body (acceptance criteria), path scope, and linked spec. If the history ends with work.paused, read the capsule and resume from it.
+2. specd_start_work(item=${task}) — run the start gate and create or reuse the isolated worktree and convention branch.
+3. Spawn ONE worker subagent (agent=specd-worker) in the worktree cwd with a brief containing only: task title, body (acceptance criteria), path scope, linked spec intent + acceptance criteria, and branch name.
+4. REVIEW GATE — spawn ONE reviewer subagent (agent=specd-reviewer) over the diff (default branch vs task branch) against the acceptance criteria. Record its verdict: specd_append_event(item=${task}, type=review.completed, payload={passed: true|false, findings: [...]}).
+5. If the review passed: specd_open_pr(item=${task}). If it failed: report the findings and run /spec diagnose ${task}.`;
 
 /** The diagnose/fix loop (#442-shaped): the structured path from a failing
  * review or CI run back to a reviewer-signed completion. Records a typed
