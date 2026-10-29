@@ -2,6 +2,9 @@ import { readdirSync, readFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
+// ponytail: fixed-depth relative to this test file; upgrade to walking up to .git if structure changes.
+const REPO_ROOT = resolve(import.meta.dirname, "../../..");
+
 const RESOLVABLE_TOOLS = new Set([
 	// Pi builtins
 	"read",
@@ -64,7 +67,7 @@ function assertResolvable(agent: AgentFrontmatter, source: string): void {
 
 describe("agent contract frontmatter", () => {
 	it("only permits tools from the resolvable set", () => {
-		const agentsDir = resolve("agent/agents");
+		const agentsDir = resolve(REPO_ROOT, "agent/agents");
 		for (const entry of readdirSync(agentsDir)) {
 			if (!entry.endsWith(".md")) continue;
 			const path = join(agentsDir, entry);
@@ -74,7 +77,9 @@ describe("agent contract frontmatter", () => {
 	});
 
 	it("pins the worker allowlist and 90-minute timeout", () => {
-		const agent = parseAgent(resolve("agent/agents/specd-worker.md"));
+		const agent = parseAgent(
+			resolve(REPO_ROOT, "agent/agents/specd-worker.md"),
+		);
 		expect(new Set(agent.tools)).toEqual(
 			new Set(["read", "edit", "write", "bash", "grep", "find", "ls"]),
 		);
@@ -82,7 +87,9 @@ describe("agent contract frontmatter", () => {
 	});
 
 	it("pins the reviewer allowlist", () => {
-		const agent = parseAgent(resolve("agent/agents/specd-reviewer.md"));
+		const agent = parseAgent(
+			resolve(REPO_ROOT, "agent/agents/specd-reviewer.md"),
+		);
 		expect(new Set(agent.tools)).toEqual(
 			new Set([
 				"read",
