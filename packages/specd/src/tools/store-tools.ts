@@ -27,10 +27,12 @@ import { demoteItem, promoteItem } from "../store/storage.js";
 import {
 	addLink,
 	appendEvent,
+	assertParentContext,
 	counts,
 	createItem,
 	getItem,
 	history,
+	isTaskWorktreeCwd,
 	listItems,
 	openStore,
 	openStoreReadOnly,
@@ -99,12 +101,19 @@ function renderChecklist(
 
 /** Dashboard content shared by the /spec command and the dashboard view
  * of specd_read. Read-back sync runs best-effort first (exported tasks
- * whose sink item closed become done), then the projection snapshot renders. */
-export async function dashboardContent(store: SpecdStore): Promise<string> {
-	try {
-		await syncExportedTasks(store);
-	} catch {
-		// best-effort: an unreachable sink never breaks the dashboard
+ * whose sink item closed become done), then the projection snapshot renders.
+ * Pass sync:false from child contexts — the sync path appends events, and
+ * spawned children must not mutate the store even through a read view. */
+export async function dashboardContent(
+	store: SpecdStore,
+	options?: { sync?: boolean },
+): Promise<string> {
+	if (options?.sync !== false) {
+		try {
+			await syncExportedTasks(store);
+		} catch {
+			// best-effort: an unreachable sink never breaks the dashboard
+		}
 	}
 	const rows = listItems(store, { limit: 20 });
 	const paused = rows
@@ -160,6 +169,7 @@ export function registerStoreTools(pi: ExtensionAPI): void {
 			),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			assertParentContext(ctx);
 			const store = await openSpecd(ctx);
 			if (params.kind === "spec") {
 				// The explore decision gate: only a cycle whose latest explore
@@ -207,6 +217,7 @@ export function registerStoreTools(pi: ExtensionAPI): void {
 			),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			assertParentContext(ctx);
 			const store = await openSpecd(ctx);
 			const type = params.type as EventType;
 			if (type === "task.exported") {
@@ -269,6 +280,7 @@ export function registerStoreTools(pi: ExtensionAPI): void {
 			}),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			assertParentContext(ctx);
 			const store = await openSpecd(ctx);
 			addLink(store, params.from, params.to, params.kind as LinkKind);
 			return text(`Linked ${params.from} -[${params.kind}]-> ${params.to}.`);
@@ -329,7 +341,11 @@ export function registerStoreTools(pi: ExtensionAPI): void {
 			// ----- dashboard -----
 			if (view === "dashboard") {
 				const store = await openSpecd(ctx);
-				return text(await dashboardContent(store));
+				return text(
+					await dashboardContent(store, {
+						sync: !isTaskWorktreeCwd(ctx.cwd),
+					}),
+				);
 			}
 
 			// ----- show -----
@@ -493,6 +509,7 @@ export function registerStoreTools(pi: ExtensionAPI): void {
 			}),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			assertParentContext(ctx);
 			const store = await openSpecd(ctx);
 			const result = store.db
 				.prepare(
@@ -523,6 +540,7 @@ export function registerStoreTools(pi: ExtensionAPI): void {
 			),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			assertParentContext(ctx);
 			const store = await openSpecd(ctx);
 			if (params.demote) {
 				const removed = demoteItem(store, params.item);

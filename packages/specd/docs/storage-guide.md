@@ -172,3 +172,38 @@ store URL in your notes).
 - `store.db-shm` — transient SQLite shared memory
 
 Everything else (events, md mirrors, the marker file) can be committed.
+
+## Child-session write guard (no-specd-store-writes)
+
+A specd store is a durable shared artifact, so enforcement of "child
+receives no store tools" deliberately does NOT rest on session identity:
+a session UUID is ephemeral and conversation-scoped, and binding ownership
+to it either locks out legitimate sessions (whoever binds first wins) or
+is stolen by whichever session opens the store first. Instead, the guard
+keys on the one artifact specd itself creates for spawned workers: the
+convention task worktree (`<repo>-specd-<kind>-<id>`, made by
+`specd_start_work`).
+
+All mutating specd tools (`specd_append_event`, `specd_create_item`,
+`specd_add_link`, `specd_remove_link`, `specd_promote`, `specd_export`,
+`specd_start_work`, `specd_import` (apply/revert), `specd_configure_sink`,
+`specd_store` register/reference actions, and `specd_open_pr`) refuse
+calls whose cwd is a task worktree with a `no-specd-store-writes` error
+that tells the child to report results to the parent session, which
+records all specd events. Reads stay open from child contexts — children
+may inspect the store they resolve (a child in a task worktree resolves
+its own fresh `.spec` copy there; committed in-repo stores resolve via
+the repo). The two slash-command write paths (`/spec storage`,
+`/spec export`) are deliberately unguarded: slash commands exist only in
+the parent TUI, which spawned children do not have.
+
+`specd_read(view=dashboard)` performs a read-back sync that can append
+events (exported tasks whose sink item closed become done); from a child
+context that sync is skipped, so the read view stays read-only for
+children. (Stale `meta` rows from earlier session-binding experiments are
+ignored.)
+
+This makes the "child receives no store tools" enforcement reliable even
+when ambient extension loading gives a spawned session access to the specd
+tool names — the guard in the store/tool layer is what actually refuses
+writes.

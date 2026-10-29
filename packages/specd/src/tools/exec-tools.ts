@@ -14,6 +14,7 @@ import type { TaskExport } from "../sinks/contract.js";
 import { resolveAdapter } from "../sinks/resolve.js";
 import {
 	appendEvent,
+	assertParentContext,
 	getItem,
 	history,
 	type ItemRow,
@@ -87,6 +88,7 @@ export function registerExecTools(pi: ExtensionAPI): void {
 			),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			assertParentContext(ctx);
 			const store = await openSpecd(ctx);
 			const sink = params.sink ?? "null";
 			if (sink === "github") {
@@ -144,6 +146,7 @@ export function registerExecTools(pi: ExtensionAPI): void {
 			item: Type.String({ description: "Task id (e.g. task-0001)." }),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			assertParentContext(ctx);
 			const store = await openSpecd(ctx);
 			const task = getItem(store, params.item);
 			if (!task) return text(`Unknown item: ${params.item}.`);
@@ -243,6 +246,7 @@ export function registerExecTools(pi: ExtensionAPI): void {
 				const { listImportBatches, revertImport } = await import(
 					"../import/run.js"
 				);
+				assertParentContext(ctx);
 				const store = await openSpecd(ctx);
 				if (!params.batch) {
 					const batches = listImportBatches(store);
@@ -296,6 +300,7 @@ export function registerExecTools(pi: ExtensionAPI): void {
 				);
 			}
 			const { planImport, applyImport } = await import("../import/run.js");
+			assertParentContext(ctx);
 			const store = await openSpecd(ctx);
 			const batch = `import-${Date.now()}`;
 			const plan = planImport(store, mapped, batch);

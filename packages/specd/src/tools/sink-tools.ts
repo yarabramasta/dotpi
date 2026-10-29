@@ -22,6 +22,7 @@ import {
 	type StoreRegistryEntry,
 	storesRoot,
 } from "../store/registry.js";
+import { assertParentContext } from "../store/store.js";
 import { openSpecd, text } from "./store-tools.js";
 
 export function parseReferenceTarget(
@@ -122,6 +123,7 @@ export function registerSinkTools(pi: ExtensionAPI): void {
 
 			// ----- register -----
 			if (action === "register") {
+				assertParentContext(ctx);
 				if (!params.type) {
 					return text(
 						"register action requires type=<in-repo|external|external-git>.",
@@ -144,6 +146,7 @@ export function registerSinkTools(pi: ExtensionAPI): void {
 			}
 
 			// ----- reference -----
+			assertParentContext(ctx);
 			if (!params.store) {
 				return text("reference action requires store=<path-or-git-url>.");
 			}
@@ -243,6 +246,7 @@ export function registerSinkTools(pi: ExtensionAPI): void {
 			),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			assertParentContext(ctx);
 			const store = await openSpecd(ctx);
 			const sink = params.sink;
 

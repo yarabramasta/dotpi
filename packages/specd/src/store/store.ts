@@ -5,8 +5,9 @@ import {
 	readFileSync,
 	writeFileSync,
 } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { migrateStore } from "./migrate.js";
 import { eventsForItem, recomputeProjection } from "./projection.js";
 import {
@@ -103,6 +104,28 @@ function nowIso(): string {
 
 import { resolveStoreDir } from "./registry.js";
 
+/** True when cwd is a specd task worktree — the directories specd_start_work
+ * itself creates as `<repo>-specd-<kind>-<id>` (see tools/exec-tools.ts).
+ * Spawned child sessions run there, so this — not session identity — is the
+ * reliable child signal: a session UUID is ephemeral and conversation-scoped,
+ * while the store is durable, so binding ownership to it either locks out
+ * legitimate sessions or is stolen by whoever opens the store first. */
+export function isTaskWorktreeCwd(cwd: string): boolean {
+	return new RegExp(`-specd-(${ITEM_KINDS.join("|")})-\\d{4,}$`).test(
+		basename(cwd),
+	);
+}
+
+/** Refuse store-mutating tool calls from spawned child sessions (specd task
+ * worktree cwds). Reads stay open — children may inspect the store. */
+export function assertParentContext(ctx: ExtensionContext): void {
+	const cwd = ctx?.cwd;
+	if (!cwd || !isTaskWorktreeCwd(cwd)) return;
+	throw new Error(
+		`no-specd-store-writes: ${basename(cwd)} is a specd task worktree — spawned child sessions must not mutate the specd store. Report results to the parent session; the parent records all specd events.`,
+	);
+}
+
 export async function openStore(cwd: string): Promise<SpecdStore> {
 	const sqlite = await import("node:sqlite").catch(() => undefined);
 	if (!sqlite) {
@@ -193,7 +216,13 @@ export function openStoreReadOnly(dir: string): SpecdStore | undefined {
 		"schema_version",
 		SCHEMA_VERSION,
 	);
-	return { db, cwd: dir, dir, path: dbPath, readOnly: true };
+	return {
+		db,
+		cwd: dir,
+		dir,
+		path: dbPath,
+		readOnly: true,
+	};
 }
 
 function eventsJsonlPath(dir: string): string {
