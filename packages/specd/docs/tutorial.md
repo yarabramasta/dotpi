@@ -138,8 +138,13 @@ This is where the magic happens:
    P0: Missing Retry-After header in the 429 response
    ```
 
-4. **Gate fires** — the review failed, so completion is refused. The agent
-   fixes the issue, pushes again.
+4. **Gate fires** — the review failed, so completion is refused. The
+   agent diagnoses first:
+   ```
+   /spec diagnose task-0001 "429 response missing Retry-After header"
+   ```
+   It records the root cause (and whether the spec itself was wrong),
+   fixes the issue, and pushes again.
 
 5. **Re-review** — the reviewer re-checks:
    ```
@@ -151,7 +156,8 @@ This is where the magic happens:
    feat(task-0001): rate limiter middleware core
    ```
 
-7. **Completed** — `work.completed` recorded. The task is done.
+7. **Completed** — `work.completed` recorded. The board item moves to
+   **In review** and lands in **Done** when the PR merges.
 
 ## Step 8 — Merge
 

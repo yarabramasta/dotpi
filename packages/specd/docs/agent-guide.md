@@ -50,6 +50,9 @@ DO:
 | `specd_append_event(work.started)` | Checklist not reviewed | Complete the checklist review |
 | `specd_append_event(work.started)` | Scope collision with in-progress task | Wait or adjust scopes |
 | `specd_append_event(work.completed)` | No passing review | Run the reviewer, get `passed: true` |
+| `specd_append_event(work.completed)` | A failing review has no answering diagnosis | `/spec diagnose <task>` — record `diagnosis.recorded`, fix, re-review |
+| `specd_append_event(work.completed)` | A `specGap` diagnosis has no later spec revision | Update the linked spec first: `specd_append_event(type="body.updated")` on it |
+| `specd_append_event(diagnosis.recorded)` | Target is not an in-progress task | Diagnose only while the work is open |
 | `ensurePlan` | Missing template fields/views | Owner creates the project from the Kanban template in the GitHub UI |
 
 ## Naming conventions
@@ -82,6 +85,23 @@ When spawning a reviewer subagent, include:
 3. Instruction: return a verdict (`passed: true/false`) with findings
 
 Record the verdict: `specd_append_event(item=<task>, type="review.completed", payload={passed: bool, findings: [...]})`
+
+## The fix loop
+
+When a review fails or CI goes red on a running task, run
+`/spec diagnose <task-id> [symptom]` instead of fixing blindly:
+
+1. Read the task, its linked spec, and the failing evidence (review findings, CI output).
+2. Reproduce the failure until the symptom is precise.
+3. Trace the root cause. Decide: is the code wrong, or the spec?
+4. Record it: `specd_append_event(item=<task>, type="diagnosis.recorded", payload={symptom, rootCause, evidence: [...], specGap: bool})`
+5. If `specGap: true` — revise the linked spec FIRST: `specd_append_event(item=<spec>, type="body.updated", payload={body})`, then tell the user what changed.
+6. Fix surgically: every changed line traces to the diagnosis; add a regression test where feasible. Commit conventionally. The task stays in-progress.
+7. Re-run the reviewer and record `review.completed`. Every new failure needs a fresh diagnosis — the gate refuses a passing review that doesn't answer the last failure.
+8. After repeated failed cycles, stop and pause: `specd_append_event(item=<task>, type="work.paused")` — reassess the approach with the user.
+
+Steps 4–5 are enforced in code, not in this guide. The refusal messages
+name the exact missing piece.
 
 ## Scope collision
 

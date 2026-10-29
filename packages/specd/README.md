@@ -51,8 +51,11 @@ explore → spec → approve → plan → tasks → export → execute → revie
 
 Each stage is gated. The store refuses to export before the spec is
 approved, refuses to start work before the checklist is reviewed, and
-refuses to complete without a passing review. These aren't suggestions —
-they're enforced by the store, not by the agent.
+refuses to complete without a passing review. A failing review must be
+answered by a recorded diagnosis (`/spec diagnose`) before the next one
+counts — and a diagnosis that blames the spec forces a spec revision
+before the task can finish. These aren't suggestions — they're enforced
+by the store, not by the agent.
 
 ## Commands
 
@@ -60,6 +63,7 @@ they're enforced by the store, not by the agent.
 |---|---|
 | `/spec start <idea>` | Start a full development cycle |
 | `/spec run <task>` | Execute a task through the pipeline |
+| `/spec diagnose <task> [symptom]` | Structured fix loop for a failing task: diagnose → record → (revise spec) → fix → re-review |
 | `/spec clarify <spec>` | Sharpen an existing spec with targeted Q&A |
 | `/spec plan <spec>` | Plan an approved spec |
 | `/spec tasks <spec>` | Break an approved+planned spec into tasks |

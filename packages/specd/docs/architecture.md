@@ -54,7 +54,7 @@ asked to follow a checklist, and "hopefully" it does. specd's gates are
 |---|---|
 | Export | Task must be linked to an approved spec |
 | Start work | Checklist must be reviewed + no scope collision |
-| Complete work | A passing review must exist |
+| Complete work | Passing review that answers every failure with a diagnosis; a spec-gap diagnosis waits for the spec revision |
 | Re-export | Task must not already be exported |
 | Template | Project must have the Kanban template fields and views |
 
@@ -117,6 +117,14 @@ The completion gate requires a **passing review** — the agent cannot
 complete a task that the reviewer rejected. This is the quality gate that
 spec-kit's prompt-based workflows can't enforce.
 
+A failing review starts a structured fix loop instead of an improvised
+one. The agent records a **diagnosis** on the task — symptom, root
+cause, evidence, and whether the spec itself was wrong (`specGap`) —
+via `/spec diagnose`. The gate counts a passing review only once a
+diagnosis answers the last failure, so blind retries are refused in
+code. A specGap diagnosis holds completion until the linked spec is
+revised: bugs that reveal spec gaps update the spec, not just the code.
+
 ## The github sink
 
 specd integrates with GitHub Projects v2 via the `gh` CLI. The project
@@ -128,9 +136,11 @@ and workflows). specd then:
 3. Adds the `specd` label
 4. Maps store statuses to board columns (the statusMap)
 
-When a task starts, the issue moves to In Progress. When it completes,
-it moves to Done. When the board shows Done, the store syncs back.
-The push and pull are both automated.
+When a task starts, the issue moves to In Progress. When it completes
+with its PR still open, it moves to In review — Done waits for the
+merge. Read-back sync watches the PR: once it merges, the store records
+it (`pr.merged`) and the issue lands in Done. The push and pull are both
+automated.
 
 ## Why not file generation?
 

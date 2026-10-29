@@ -35,10 +35,11 @@ The gates are the value proposition — they prevent the agent from doing things
 
 The reviewer subagent reads the diff and checks it against the task's acceptance criteria. When it reports findings:
 
-1. **Fix the blockers** (P0) before proceeding — these prevent merge.
-2. **Address the suggestions** (lower priority) — they improve quality.
-3. **Re-run the review** — only a passing review unlocks completion.
-4. **Don't skip the review.** The completion gate checks for it.
+1. **Diagnose before fixing** — `/spec diagnose <task>` records the symptom, root cause, and whether the spec itself was wrong.
+2. **Fix the blockers** (P0) before proceeding — these prevent merge.
+3. **Address the suggestions** (lower priority) — they improve quality.
+4. **Re-run the review** — only a passing review unlocks completion, and the gate requires a diagnosis after every failure. A blind retry is refused.
+5. **Update the spec when the diagnosis says so** — a `specGap` finding means the requirement was wrong. Revise the spec before completing; fixes keep code and spec aligned, not code alone.
 
 ## Scope discipline
 

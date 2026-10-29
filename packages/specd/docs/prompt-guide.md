@@ -39,7 +39,8 @@ The agent handles the full seam: worktree, worker, reviewer, PR. You review the 
 |---|---|
 | Gate refuses | Read the message — it says what's missing |
 | Worker produces nothing | Check if the task was interrupted; /spec pause captures state |
-| Review fails | Fix the findings, re-run the review |
+| Review fails | `/spec diagnose <task>` — diagnose, record, fix, re-review. The gate requires the diagnosis |
+| CI fails on the task's PR | Same loop: `/spec diagnose <task>` |
 | Scope collision | Another task is in-progress with overlapping files |
 | Unknown item | Use specd_query to find the right id |
 
@@ -64,7 +65,7 @@ The insight mode gives one-line digests. For a single match, it adds the full ev
 2. Then configure: owner + project number
 3. The template gate validates the fields and views
 4. ensurePlan customizes the Status field to the 6 layer options
-5. Set the statusMap: exported → Ready, in-progress → In Progress, done → Done
+5. Set the statusMap: exported → Ready, in-progress → In Progress, done → Done. Optional `in-review` key maps where a done task's still-open PR sits (default: In review).
 
 ## Stage re-entries
 
@@ -109,6 +110,33 @@ When you run `/spec run task-0001`, here's what happens:
 6. **Board**: the issue moves on your GitHub project board automatically
 
 You review the PR like any other code change. The difference: the implementation was already checked against the spec's acceptance criteria by the reviewer.
+
+## The fix loop
+
+When a review or CI run fails on a running task, the fix path is a
+command, not improvisation:
+
+```
+/spec diagnose task-0001 "429 response missing Retry-After header"
+```
+
+The agent reproduces the failure, traces it to a root cause, and records
+a diagnosis on the task — symptom, root cause, evidence, and whether the
+spec itself was wrong. Then it fixes and re-runs the reviewer. The
+completion gate enforces the order: a passing review only counts once a
+diagnosis answers the last failure, and every new failure needs a fresh
+diagnosis. Blind retries are refused in code.
+
+When the diagnosis says the spec was wrong (`specGap`), the spec is
+revised before anything else — the completion gate holds the task until
+the linked spec has an update recorded after the diagnosis. Fixes keep
+code and spec aligned.
+
+Not every fix needs this — the loop is for failures:
+
+- Work that fits the task's acceptance criteria is just work. No command.
+- A requirement the task doesn't cover becomes a new task (`/spec converge` finds these too).
+- Trivia can stay ad-hoc — converge folds it into the store later.
 
 ## Pausing and resuming
 
