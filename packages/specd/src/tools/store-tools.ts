@@ -97,9 +97,9 @@ function renderChecklist(
 	return `\n\n## Checklist\n${lines.join("\n")}${summary}`;
 }
 
-/** Dashboard content shared by the /spec command and the specd_dashboard
- * tool. Read-back sync runs best-effort first (exported tasks whose sink
- * item closed become done), then the projection snapshot renders. */
+/** Dashboard content shared by the /spec command and the dashboard view
+ * of specd_read. Read-back sync runs best-effort first (exported tasks
+ * whose sink item closed become done), then the projection snapshot renders. */
 export async function dashboardContent(store: SpecdStore): Promise<string> {
 	try {
 		await syncExportedTasks(store);
@@ -154,7 +154,8 @@ export function registerStoreTools(pi: ExtensionAPI): void {
 			),
 			extra: Type.Optional(
 				Type.Record(Type.String(), Type.Unknown(), {
-					description: "Kind extras merged into the created event (checklists: { items: [...] }).",
+					description:
+						"Kind extras merged into the created event (checklists: { items: [...] }).",
 				}),
 			),
 		}),
@@ -275,139 +276,131 @@ export function registerStoreTools(pi: ExtensionAPI): void {
 	});
 
 	pi.registerTool({
-		name: "specd_show",
-		label: "Show specd item",
+		name: "specd_read",
+		label: "Read from the specd store",
 		description:
-			"Show one specd item: state, body, checklist/resume capsule, and history. Default is a summary (last 10 history lines + counts); full=true returns the complete history.",
-		promptSnippet: "Show a specd item with its history",
+			"Read from the specd store. view=show returns one item; view=query returns filtered items; view=dashboard returns the store-wide state.",
+		promptSnippet: "Read items or state from the specd store",
 		parameters: Type.Object({
-			item: Type.String({ description: "Item id (e.g. spec-0001)." }),
+			view: Type.String({
+				description: '"show" | "query" | "dashboard".',
+			}),
+			item: Type.Optional(Type.String({ description: "show: item id." })),
 			full: Type.Optional(
 				Type.Boolean({
-					description: "Return the complete event history (default: last 10 + counts).",
+					description:
+						"show: return complete event history (default: last 10).",
 				}),
 			),
-		}),
-		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-			const store = await openSpecd(ctx);
-			let item = getItem(store, params.item);
-			let itemStore: SpecdStore = store;
-			let from: string | undefined;
-			const opened: SpecdStore[] = [];
-			try {
-				if (!item) {
-					for (const dir of resolveReferenceStores(ctx.cwd)) {
-						const ref = openStoreReadOnly(dir);
-						if (!ref) continue;
-						opened.push(ref);
-						const found = getItem(ref, params.item);
-						if (found) {
-							item = found;
-							itemStore = ref;
-							from = dir;
-							break;
-						}
-					}
-				}
-				if (!item) {
-					const refNote =
-						resolveReferenceStores(ctx.cwd).length > 0
-							? " (searched referenced stores too)"
-							: "";
-					return text(`Unknown item: ${params.item}.${refNote}`);
-				}
-				const events = history(itemStore, params.item);
-				const capsule = events.findLast((e) => e.type === "work.paused");
-				const capsuleSection = capsule
-					? renderCapsule(
-							parseJsonLoose<Record<string, unknown>>(capsule.payload),
-						)
-					: "";
-				const checklistSection =
-					item.kind === "checklist"
-						? renderChecklist(checklistState(itemStore, params.item))
-						: "";
-				// Summary default (T2): long histories dominate the payload on
-				// items that went through the diagnose/fix loop. Last 10 lines
-				// + counts; full=true restores the complete timeline.
-				const total = events.length;
-				const shown = params.full === true ? events : events.slice(-10);
-				const historySection = shown
-					.map((e) => `- ${e.at} ${e.actor}: ${e.type}`)
-					.join("\n");
-				const historyHeader =
-					params.full === true || total <= 10
-						? "## History"
-						: `## History (last ${shown.length} of ${total} — full=true for all)`;
-				const fromLine = from ? `- from: ${from}\n` : "";
-				return text(
-					`# ${item.id}\n\n- kind: ${item.kind}\n- status: ${item.status}\n- path scope: ${item.path_scope ?? "—"}\n${fromLine}\n${item.body}${capsuleSection}${checklistSection}\n\n${historyHeader}\n\n${historySection}`,
-				);
-			} finally {
-				for (const ref of opened) {
-					if (ref !== itemStore) {
-						ref.db.close();
-					}
-				}
-				if (itemStore !== store) {
-					itemStore.db.close();
-				}
-			}
-		},
-	});
-
-	pi.registerTool({
-		name: "specd_dashboard",
-		label: "specd dashboard",
-		description:
-			"Current state of the specd store: all items, statuses, counts. Runs sink read-back sync first (best-effort).",
-		promptSnippet: "Show the specd dashboard",
-		parameters: Type.Object({}),
-		async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
-			const store = await openSpecd(ctx);
-			return text(await dashboardContent(store));
-		},
-	});
-
-	pi.registerTool({
-		name: "specd_query",
-		label: "Query specd items",
-		description:
-			"Query specd items with filters; renders one-line digests with insight=true, otherwise a table. Full histories: specd_show; store-wide state: specd_dashboard.",
-		promptSnippet: "Query and summarize items",
-		parameters: Type.Object({
 			kind: Type.Optional(
-				Type.String({ description: "Filter by item kind." }),
+				Type.String({ description: "query: filter by item kind." }),
 			),
 			status: Type.Optional(
-				Type.String({ description: "Filter by projected status." }),
+				Type.String({ description: "query: filter by projected status." }),
 			),
 			q: Type.Optional(
 				Type.String({
-					description: "Case-insensitive search over titles and bodies.",
+					description: "query: case-insensitive search over titles and bodies.",
 				}),
 			),
 			of: Type.Optional(
 				Type.String({
-					description: "Restrict to items linked to/from this id.",
+					description: "query: restrict to items linked to/from this id.",
 				}),
 			),
 			insight: Type.Optional(
 				Type.Boolean({
-					description: "true renders one-line digests per match.",
+					description: "query: true renders one-line digests per match.",
 				}),
 			),
 			limit: Type.Optional(
-				Type.Number({ description: "Max matches (default 20)." }),
+				Type.Number({ description: "query: max matches (default 20)." }),
 			),
 			store: Type.Optional(
 				Type.String({
 					description:
-						'Store: omit for local, "all" for local + referenced, or a store path.',
+						'query: omit for local, "all" for local + referenced, or a store path.',
 				}),
 			),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const view = params.view as "show" | "query" | "dashboard";
+
+			// ----- dashboard -----
+			if (view === "dashboard") {
+				const store = await openSpecd(ctx);
+				return text(await dashboardContent(store));
+			}
+
+			// ----- show -----
+			if (view === "show") {
+				if (!params.item) {
+					return text("show view requires item=<id>.");
+				}
+				const store = await openSpecd(ctx);
+				let item = getItem(store, params.item);
+				let itemStore: SpecdStore = store;
+				let from: string | undefined;
+				const opened: SpecdStore[] = [];
+				try {
+					if (!item) {
+						for (const dir of resolveReferenceStores(ctx.cwd)) {
+							const ref = openStoreReadOnly(dir);
+							if (!ref) continue;
+							opened.push(ref);
+							const found = getItem(ref, params.item);
+							if (found) {
+								item = found;
+								itemStore = ref;
+								from = dir;
+								break;
+							}
+						}
+					}
+					if (!item) {
+						const refNote =
+							resolveReferenceStores(ctx.cwd).length > 0
+								? " (searched referenced stores too)"
+								: "";
+						return text(`Unknown item: ${params.item}.${refNote}`);
+					}
+					const events = history(itemStore, params.item);
+					const capsule = events.findLast((e) => e.type === "work.paused");
+					const capsuleSection = capsule
+						? renderCapsule(
+								parseJsonLoose<Record<string, unknown>>(capsule.payload),
+							)
+						: "";
+					const checklistSection =
+						item.kind === "checklist"
+							? renderChecklist(checklistState(itemStore, params.item))
+							: "";
+					const total = events.length;
+					const shown = params.full === true ? events : events.slice(-10);
+					const historySection = shown
+						.map((e) => `- ${e.at} ${e.actor}: ${e.type}`)
+						.join("\n");
+					const historyHeader =
+						params.full === true || total <= 10
+							? "## History"
+							: `## History (last ${shown.length} of ${total} — full=true for all)`;
+					const fromLine = from ? `- from: ${from}\n` : "";
+					return text(
+						`# ${item.id}\n\n- kind: ${item.kind}\n- status: ${item.status}\n- path scope: ${item.path_scope ?? "—"}\n${fromLine}\n${item.body}${capsuleSection}${checklistSection}\n\n${historyHeader}\n\n${historySection}`,
+					);
+				} finally {
+					for (const ref of opened) {
+						if (ref !== itemStore) {
+							ref.db.close();
+						}
+					}
+					if (itemStore !== store) {
+						itemStore.db.close();
+					}
+				}
+			}
+
+			// ----- query -----
 			const { insightLine, queryItems, renderInsight } = await import(
 				"../query.js"
 			);

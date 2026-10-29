@@ -55,95 +55,98 @@ function sanitizeWorkspace(
 
 export function registerSinkTools(pi: ExtensionAPI): void {
 	pi.registerTool({
-		name: "specd_store_status",
-		label: "Check specd store status",
+		name: "specd_store",
+		label: "Manage specd store registration",
 		description:
-			"Check whether a specd store exists for this repo (registry + default .spec/ path). Returns the location or setup guidance.",
-		promptSnippet: "Check store status",
-		parameters: Type.Object({}),
-		async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
-			const cwd = ctx.cwd;
-			const entry = lookupStore(cwd);
-			const inRepo = existsSync(join(cwd, ".spec", "store.db"));
-			const refs = resolveReferenceStores(cwd);
-			if (entry) {
-				const refLines =
-					refs.length === 0
-						? ""
-						: `\n\nReferences:\n${refs
-								.map((r) => `- ${isSpecdStore(r) ? "✓" : "✗ missing"} ${r}`)
-								.join("\n")}`;
-				return text(
-					`Store registered: type=${entry.type}, path=${entry.storePath ?? "(in-repo)"}${entry.remote ? `, remote=${entry.remote}` : ""}${refLines}`,
-				);
-			}
-			if (inRepo) {
-				return text("Store found at .spec/store.db (in-repo, not registered).");
-			}
-			return text(
-				"No specd store found for this repo. Ask the user where it should live:\n" +
-					"1. External — specd-managed (zero footprint)\n" +
-					"2. External — git repo (shareable, versioned)\n" +
-					"3. In this repo (.spec/, gitignored)\n" +
-					"4. In this repo (.spec/, committed)\n" +
-					"Then register it with specd_register_store.",
-			);
-		},
-	});
-
-	pi.registerTool({
-		name: "specd_register_store",
-		label: "Register a specd store location",
-		description:
-			"Register the store location for this repo in the specd registry. External stores need an existing storePath.",
-		promptSnippet: "Register store location",
+			"Manage specd store registration and references. action=status checks registration; action=register (type, storePath, remote) registers a location; action=reference (store) adds a read-only reference.",
+		promptSnippet: "Check, register, or reference a specd store",
 		parameters: Type.Object({
-			type: Type.String({
-				description:
-					'"in-repo" (default .spec/), "external" (specd-managed), or "external-git" (standalone git repo).',
+			action: Type.String({
+				description: '"status" | "register" | "reference".',
 			}),
+			type: Type.Optional(
+				Type.String({
+					description: 'register: "in-repo", "external", or "external-git".',
+				}),
+			),
 			storePath: Type.Optional(
 				Type.String({
-					description:
-						"Absolute path to the store directory (required for external types).",
+					description: "register: absolute path (required for external types).",
 				}),
 			),
 			remote: Type.Optional(
 				Type.String({
-					description: "Git remote URL for external-git stores.",
+					description: "register: git remote URL for external-git stores.",
+				}),
+			),
+			store: Type.Optional(
+				Type.String({
+					description: "reference: store directory path or git URL.",
 				}),
 			),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-			const entry: StoreRegistryEntry = {
-				type: params.type as StoreRegistryEntry["type"],
-			};
-			if (params.storePath) entry.storePath = params.storePath;
-			if (params.remote) entry.remote = params.remote;
-			if (params.type !== "in-repo" && !params.storePath) {
+			const action = params.action as "status" | "register" | "reference";
+
+			// ----- status -----
+			if (action === "status") {
+				const cwd = ctx.cwd;
+				const entry = lookupStore(cwd);
+				const inRepo = existsSync(join(cwd, ".spec", "store.db"));
+				const refs = resolveReferenceStores(cwd);
+				if (entry) {
+					const refLines =
+						refs.length === 0
+							? ""
+							: `\n\nReferences:\n${refs
+									.map((r) => `- ${isSpecdStore(r) ? "✓" : "✗ missing"} ${r}`)
+									.join("\n")}`;
+					return text(
+						`Store registered: type=${entry.type}, path=${entry.storePath ?? "(in-repo)"}${entry.remote ? `, remote=${entry.remote}` : ""}${refLines}`,
+					);
+				}
+				if (inRepo) {
+					return text(
+						"Store found at .spec/store.db (in-repo, not registered).",
+					);
+				}
 				return text(
-					`External stores need a storePath. Got type=${params.type} without a path.`,
+					"No specd store found for this repo. Ask the user where it should live:\n" +
+						"1. External — specd-managed (zero footprint)\n" +
+						"2. External — git repo (shareable, versioned)\n" +
+						"3. In this repo (.spec/, gitignored)\n" +
+						"4. In this repo (.spec/, committed)\n" +
+						'Then register it with specd_store(action="register").',
 				);
 			}
-			registerStore(ctx.cwd, entry);
-			return text(
-				`Registered: ${ctx.cwd} → ${params.type}${params.storePath ? ` (${params.storePath})` : ""}`,
-			);
-		},
-	});
 
-	pi.registerTool({
-		name: "specd_add_reference",
-		label: "Add a specd store reference",
-		description:
-			"Add a read-only reference to another specd store (local path or git URL; git URLs clone into ~/.pi/agent/stores/{slug}).",
-		promptSnippet: "Reference another specd store",
-		parameters: Type.Object({
-			store: Type.String({
-				description: "Store directory path or git URL.",
-			}),
-		}),
-		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			// ----- register -----
+			if (action === "register") {
+				if (!params.type) {
+					return text(
+						"register action requires type=<in-repo|external|external-git>.",
+					);
+				}
+				const entry: StoreRegistryEntry = {
+					type: params.type as StoreRegistryEntry["type"],
+				};
+				if (params.storePath) entry.storePath = params.storePath;
+				if (params.remote) entry.remote = params.remote;
+				if (params.type !== "in-repo" && !params.storePath) {
+					return text(
+						`External stores need a storePath. Got type=${params.type} without a path.`,
+					);
+				}
+				registerStore(ctx.cwd, entry);
+				return text(
+					`Registered: ${ctx.cwd} → ${params.type}${params.storePath ? ` (${params.storePath})` : ""}`,
+				);
+			}
+
+			// ----- reference -----
+			if (!params.store) {
+				return text("reference action requires store=<path-or-git-url>.");
+			}
 			const target = parseReferenceTarget(params.store);
 			let dir: string;
 			if (target.kind === "git") {
