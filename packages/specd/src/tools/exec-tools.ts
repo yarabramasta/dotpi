@@ -1,8 +1,9 @@
+import { existsSync } from "node:fs";
 import path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { branchName, ccTypeOf, scopeOf } from "../naming.js";
-import { assertCanExport } from "../pipeline/gates.js";
+import { assertCanExport, assertCanStartWork } from "../pipeline/gates.js";
 import {
 	DEFAULT_NAMING,
 	readSinkConfig,
@@ -14,6 +15,7 @@ import { resolveAdapter } from "../sinks/resolve.js";
 import {
 	appendEvent,
 	getItem,
+	history,
 	type ItemRow,
 	linkedItems,
 	type SpecdStore,
@@ -133,11 +135,11 @@ export function registerExecTools(pi: ExtensionAPI): void {
 	});
 
 	pi.registerTool({
-		name: "specd_create_worktree",
-		label: "Create specd execution worktree",
+		name: "specd_start_work",
+		label: "Start work on a specd task",
 		description:
-			"Create a git worktree for the task with branch specd/<task-id>-<slug>. Returns the worktree path and branch; spawn the worker there.",
-		promptSnippet: "Create a specd-style worktree for task execution",
+			"Start work on a task: run the start gate, create or reuse the task's isolated git worktree on the convention branch, and record work.started. Returns {path, branch, status}. Idempotent: re-running on an in-progress or paused task reuses the existing worktree and does not append a duplicate work.started event.",
+		promptSnippet: "Start work on a specd task (worktree + work.started)",
 		parameters: Type.Object({
 			item: Type.String({ description: "Task id (e.g. task-0001)." }),
 		}),
@@ -149,19 +151,58 @@ export function registerExecTools(pi: ExtensionAPI): void {
 			const parent = path.dirname(ctx.cwd);
 			const leaf = path.basename(ctx.cwd);
 			const worktreePath = path.join(parent, `${leaf}-specd-${task.id}`);
+
+			// Idempotent re-use: an already-started task with its worktree
+			// still present is resumed, not restarted.
+			const alreadyStarted = history(store, params.item).some(
+				(e) => e.type === "work.started",
+			);
+			if (alreadyStarted && existsSync(worktreePath)) {
+				const current = getItem(store, params.item);
+				return text(
+					`Work already started. Reusing existing worktree.\n- path: ${worktreePath}\n- branch: ${branch}\n- status: ${current?.status ?? "?"}`,
+					{ path: worktreePath, branch, status: current?.status ?? "?" },
+				);
+			}
+
+			// Gate FIRST — refusal must leave no worktree on disk.
+			try {
+				assertCanStartWork(store, params.item);
+			} catch (error) {
+				const msg = error instanceof Error ? error.message : String(error);
+				return text(`Start refused: ${msg}`);
+			}
+
 			const { execFileSync } = await import("node:child_process");
 			try {
-				execFileSync("git", ["worktree", "add", "-b", branch, worktreePath], {
-					cwd: ctx.cwd,
-					stdio: "pipe",
-				});
+				if (!existsSync(worktreePath)) {
+					execFileSync("git", ["worktree", "add", "-b", branch, worktreePath], {
+						cwd: ctx.cwd,
+						stdio: "pipe",
+					});
+				}
 			} catch (error) {
 				const msg = error instanceof Error ? error.message : String(error);
 				return text(`Worktree creation failed: ${msg}`);
 			}
+
+			appendEvent(store, {
+				item: params.item,
+				type: "work.started",
+				actor: "agent",
+			});
+			const current = getItem(store, params.item);
+			let sinkPush: string | undefined;
+			try {
+				const { pushStatusToSink } = await import("../sinks/sync.js");
+				sinkPush = await pushStatusToSink(store, params.item);
+			} catch (e) {
+				sinkPush = `push failed: ${e instanceof Error ? e.message : String(e)}`;
+			}
+			const sinkNote = sinkPush ? ` Sink: ${sinkPush}.` : "";
 			return text(
-				`Worktree ready.\n- path: ${worktreePath}\n- branch: ${branch}\n\nSpawn the worker in cwd=${worktreePath} (subagent tool, agent=worker, worktree=false — the worker inherits the prepared worktree).`,
-				{ path: worktreePath, branch },
+				`Worktree ready.\n- path: ${worktreePath}\n- branch: ${branch}\n- status: ${current?.status ?? "?"}${sinkNote}\n\nSpawn the worker in cwd=${worktreePath} (subagent tool, agent=worker, worktree=false — the worker inherits the prepared worktree).`,
+				{ path: worktreePath, branch, status: current?.status ?? "?" },
 			);
 		},
 	});

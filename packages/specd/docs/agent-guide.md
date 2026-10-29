@@ -47,11 +47,11 @@ DO:
 |---|---|---|
 | `specd_export` | Spec not approved | Get the spec approved first |
 | `specd_export` | Task already exported | Use the existing export |
-| `specd_append_event(work.started)` | Checklist not reviewed | Complete the checklist review |
-| `specd_append_event(work.started)` | Scope collision with in-progress task | Wait or adjust scopes |
-| `specd_append_event(work.completed)` | No passing review | Run the reviewer, get `passed: true` |
-| `specd_append_event(work.completed)` | A failing review has no answering diagnosis | `/spec diagnose <task>` — record `diagnosis.recorded`, fix, re-review |
-| `specd_append_event(work.completed)` | A `specGap` diagnosis has no later spec revision | Update the linked spec first: `specd_append_event(type="body.updated")` on it |
+| `specd_start_work` | Checklist not reviewed | Complete the checklist review |
+| `specd_start_work` | Scope collision with in-progress task | Wait or adjust scopes |
+| `specd_open_pr` | No passing review | Run the reviewer, get `passed: true` |
+| `specd_open_pr` | A failing review has no answering diagnosis | `/spec diagnose <task>` — record `diagnosis.recorded`, fix, re-review |
+| `specd_open_pr` | A `specGap` diagnosis has no later spec revision | Update the linked spec first: `specd_append_event(type="body.updated")` on it |
 | `specd_append_event(diagnosis.recorded)` | Target is not an in-progress task | Diagnose only while the work is open |
 | `ensurePlan` | Missing template fields/views | Owner creates the project from the Kanban template in the GitHub UI |
 
@@ -72,7 +72,7 @@ When spawning a worker subagent for `/spec run`, include:
 
 1. The task title, body (acceptance criteria), and path scope
 2. The linked spec's intent and acceptance criteria
-3. The branch name (from `specd_create_worktree`)
+3. The branch name (from `specd_start_work`)
 4. The naming rules (conventional commits, PR title format)
 5. Worker rules: implement only inside the path scope; commit to the branch; push; NEVER touch main; NEVER force-push; do NOT create the PR
 

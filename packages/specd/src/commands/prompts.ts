@@ -117,18 +117,16 @@ export const RUN_PROMPT = (
 ) => `Run the task ${task} through the execution seam (checklist-gated, reviewer-signed):
 
 1. specd_read(view=show, item=${task}) — read the task body (acceptance criteria), path scope, and the linked spec for context. If the history ends with work.paused, read that capsule and resume from it.
-2. specd_create_worktree(item=${task}) — get the isolated worktree path and convention branch (specd/<task-id>-<slug>). Never reuse another task's worktree.
-3. specd_append_event(item=${task}, type=work.started) — the gate refuses unmet preconditions (unchecked checklists, overlapping in-progress scope); never work around refusals.
-4. Spawn ONE worker subagent (subagent tool, agent=worker) in the worktree cwd with a brief containing:
+2. specd_start_work(item=${task}) — run the start gate, create or reuse the isolated worktree on the convention branch (specd/<type>/<task-id>-<slug>), and record work.started. Re-running an in-progress or paused task reuses the existing worktree and does not append a duplicate work.started event.
+3. Spawn ONE worker subagent (subagent tool, agent=worker) in the worktree cwd with a brief containing:
    - the task title, body (acceptance criteria), and path scope
    - the linked spec's intent and acceptance criteria
    - the branch name
    - NAMING (conventional commits, honored everywhere): the task's type (feat/fix/chore/docs/test/refactor/perf — from its created payload, default feat) and scope (from its path scope) drive every name. Commit messages AND the eventual PR title MUST be 'type(scope): subject' with the subject stating the goal and starting lowercase (e.g. 'feat(auth): add login route'); no scope → 'type: subject'.
    - worker rules: implement only inside the path scope; SURGICAL CHANGES — every changed line traces to the task (no drive-by refactors, no reformatting adjacent code, no "improvements" beyond the task; clean up only orphans your own changes created); commit to the branch; push the branch; NEVER touch main; NEVER force-push; do NOT create the PR — report the pushed branch when done.
    - if the task's type is docs: classify the doc first (Diataxis — tutorial / how-to / reference / explanation; one page, one job), write for a named audience, and strip AI-writing tropes before finishing.
-5. REVIEW GATE: spawn ONE reviewer subagent (read-only) over the worktree diff (default branch vs the task branch) against the task's acceptance criteria and the spec. Beyond correctness, check two dimensions: overcomplication (would a senior engineer call it overbuilt? the simpler version wins) and drive-by changes (any changed line not traceable to the task is a finding). Record its verdict: specd_append_event(item=${task}, type=review.completed, payload={passed: true|false, findings: [...]}).
-6. If the review passed: specd_open_pr(item=${task}) — the tool derives branch/title/body, records pr.created itself, and returns the existing PR URL if one is already open. If the review failed: tell me exactly what failed, then run the fix loop — /spec diagnose ${task}: record diagnosis.recorded (symptom, root cause, specGap), revise the spec first if specGap, fix, re-review. Poll CI with specd_watch_checks(item=${task}) as needed — one non-blocking poll per call; on CI failure, the same loop applies.
-7. When a PR exists and its review passed: specd_append_event(item=${task}, type=work.completed, payload={pr}).`;
+4. REVIEW GATE: spawn ONE reviewer subagent (read-only) over the worktree diff (default branch vs the task branch) against the task's acceptance criteria and the spec. Beyond correctness, check two dimensions: overcomplication (would a senior engineer call it overbuilt? the simpler version wins) and drive-by changes (any changed line not traceable to the task is a finding). Record its verdict: specd_append_event(item=${task}, type=review.completed, payload={passed: true|false, findings: [...]}).
+5. If the review passed: specd_open_pr(item=${task}) — the tool derives branch/title/body, records pr.created and work.completed itself, and returns the existing PR URL if one is already open. If the review failed: tell me exactly what failed, then run the fix loop — /spec diagnose ${task}: record diagnosis.recorded (symptom, root cause, specGap), revise the spec first if specGap, fix, re-review. Poll CI with specd_watch_checks(item=${task}) as needed — one non-blocking poll per call; on CI failure, the same loop applies.`;
 
 /** The diagnose/fix loop (#442-shaped): the structured path from a failing
  * review or CI run back to a reviewer-signed completion. Records a typed
@@ -146,12 +144,12 @@ export const DIAGNOSE_PROMPT = (
 5. If specGap: revise the spec FIRST — specd_append_event(item=<spec id>, type=body.updated, payload={body}) with the corrected requirement, and tell me what changed (re-approval is recommended for material changes).
 6. FIX — implement the targeted fix in the task's worktree (surgical: trace every changed line to the diagnosis; add a regression test where feasible). Commit conventionally. The task stays in-progress.
 7. RE-REVIEW — spawn the reviewer again over the new diff and record review.completed. If it fails again, loop from step 2 — every cycle needs a fresh diagnosis. After repeated failed cycles, stop and pause with me: specd_append_event(item=${task}, type=work.paused) and reassess the approach.
-8. Back on the normal flow: specd_open_pr → work.completed (the gates now pass).`;
+8. Back on the normal flow: specd_open_pr (the gates now pass).`;
 
 export const RUN_WAVES_PROMPT = `Run tasks through the execution seam in parallel waves:
 
 1. specd_schedule() — the wave plan: tasks ordered by phase (setup → foundational → story → polish), [P]-marked tasks with disjoint path scopes share a wave, collisions are serialized into later waves. Show me the plan.
-2. For each wave in order: run its tasks CONCURRENTLY — one full flow per task (worktree → work.started → worker → review gate → PR → work.completed), each with its own worktree and branch; the tools serialize any scope collision.
+2. For each wave in order: run its tasks CONCURRENTLY — one full flow per task (specd_start_work → worker → review gate → specd_open_pr), each with its own worktree and branch; the tools serialize any scope collision.
 3. Between waves, check the dashboard: failed or paused tasks are surfaced to me before the next wave starts.`;
 
 export const CONVERGE_PROMPT = (

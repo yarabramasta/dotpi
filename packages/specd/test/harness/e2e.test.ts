@@ -249,7 +249,7 @@ describe.skipIf(SKIP)("specd e2e replay harness (option a)", () => {
 			// truncated at the review verdict (option a) ---
 			const prompt = `${RUN_PROMPT(taskId)}
 
-HARNESS SCOPE (baseline replay): after step 5 records the review verdict, STOP. Do not run step 6 (specd_open_pr) or step 7 (work.completed) — this fixture has a local bare remote and no gh; the PR step is out of scope for this measurement. Report the recorded verdict and stop.`;
+HARNESS SCOPE (baseline replay): after step 4 records the review verdict, STOP. Do not run step 5 (specd_open_pr) — this fixture has a local bare remote and no gh; the PR step is out of scope for this measurement. Report the recorded verdict and stop.`;
 
 			let stdout = "";
 			try {

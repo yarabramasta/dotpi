@@ -1,6 +1,11 @@
 import { branchName, ccTitle, ccTypeOf } from "../../naming.js";
 import { checkCanCompleteWork } from "../../pipeline/gates.js";
-import { getItem, parseJsonLoose, type SpecdStore } from "../../store/store.js";
+import {
+	appendEvent,
+	getItem,
+	parseJsonLoose,
+	type SpecdStore,
+} from "../../store/store.js";
 import { writeTempBody } from "./adapter.js";
 import type { GhRunner } from "./runner.js";
 
@@ -9,6 +14,26 @@ import type { GhRunner } from "./runner.js";
  * (board placement) — PRs are code-hosting concerns, so the frozen M1
  * contract is untouched (D2). All gh access runs through the injectable
  * runner so tests stay offline. */
+
+function appendPrCompleted(
+	store: SpecdStore,
+	item: string,
+	url: string,
+	branch: string,
+): void {
+	appendEvent(store, {
+		item,
+		type: "pr.created",
+		payload: { url, branch },
+		actor: "agent",
+	});
+	appendEvent(store, {
+		item,
+		type: "work.completed",
+		payload: { pr: url },
+		actor: "agent",
+	});
+}
 
 export interface OpenPrInput {
 	/** Base branch override; default resolves via gh repo view. */
@@ -65,6 +90,7 @@ export async function openPr(
 	);
 	const existing = (listed ?? [])[0];
 	if (existing?.url && existing.number !== undefined) {
+		appendPrCompleted(store, input.taskId, existing.url, branch);
 		return {
 			branch,
 			created: false,
@@ -107,6 +133,7 @@ export async function openPr(
 			);
 		}
 		const number = url.split("/pull/").at(-1) ?? "";
+		appendPrCompleted(store, input.taskId, url, branch);
 		return { branch, created: true, number, url };
 	} finally {
 		await body.cleanup();
@@ -120,16 +147,19 @@ export interface CheckReport {
 	state: CheckState;
 }
 
-/** gh pr checks exit codes: 0 all passed, 1 at least one failed, 8 pending.
- * The runner rejects on nonzero exit with the code attached, so both
- * failure flavors arrive through the catch. The exit code decides the
- * state; JSON only names the failures (degrades to an empty list if the
- * gh version emits no parseable JSON). */
+/** gh pr checks exit codes: 0 all passed, 1 at least one failed OR the
+ * repo has no configured CI (gh prints "no checks reported"), 8 pending.
+ * When exit 1 carries the "no checks reported" message, we map it to
+ * pending — the task is not blocked, the agent can keep waiting/polling.
+ * Real failing checks still exit 1 with check rows and map to failed.
+ * JSON only names the failures (degrades to an empty list if the gh
+ * version emits no parseable JSON). */
 const CHECK_EXIT: Record<number, CheckState> = {
 	0: "passed",
 	1: "failed",
 	8: "pending",
 };
+const NO_CHECKS_REPORTED = /no checks reported/i;
 
 /** Single non-blocking poll (D3): one `gh pr checks <branch>` per call.
  * The agent re-invokes to re-poll; nothing here waits on CI. */
@@ -161,6 +191,9 @@ export async function watchChecks(
 		};
 		code = typeof e.code === "number" ? e.code : 1;
 		stdout = e.stdout ?? "";
+		if (code === 1 && NO_CHECKS_REPORTED.test(stdout)) {
+			return { failing: [], state: "pending" };
+		}
 		if (!(code in CHECK_EXIT)) {
 			throw new Error(
 				`gh pr checks failed (exit ${code}): ${(e.stderr ?? e.message ?? "").trim()}`,

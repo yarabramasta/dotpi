@@ -7,19 +7,20 @@ import {
 	watchChecks,
 } from "../sinks/github/pr.js";
 import { realGhRunner } from "../sinks/github/runner.js";
-import { appendEvent, getItem } from "../store/store.js";
+import { getItem } from "../store/store.js";
 import { openSpecd, text } from "./store-tools.js";
 
 /** PR/CI seam tools (plan-0006 slice 2). specd_open_pr enforces the review
  * gate in code (D4 — the gate IS gates.checkCanCompleteWork) and records
- * pr.created itself, so the run prompt stops carrying raw gh folklore.
- * watchChecks is a single non-blocking poll (D3) — the agent re-invokes. */
+ * pr.created plus work.completed itself, so the run prompt stops carrying
+ * raw gh folklore. watchChecks is a single non-blocking poll (D3) — the
+ * agent re-invokes. */
 export function registerPrTools(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "specd_open_pr",
 		label: "Open a PR for a specd task",
 		description:
-			"Open the PR for a task's convention branch via gh. Refuses without a passing review.completed. Idempotent: returns the existing PR URL; records pr.created.",
+			"Open the PR for a task's convention branch via gh. Refuses without a passing review.completed. Idempotent: returns the existing PR URL; records pr.created and work.completed.",
 		promptSnippet: "Open a review-gated PR for a specd task",
 		parameters: Type.Object({
 			item: Type.String({ description: "Task id (e.g. task-0001)." }),
@@ -49,21 +50,22 @@ export function registerPrTools(pi: ExtensionAPI): void {
 				const message = error instanceof Error ? error.message : String(error);
 				return text(`PR refused: ${message}`);
 			}
-			if (!result.created) {
-				return text(`PR already open for ${result.branch}: ${result.url}`, {
-					branch: result.branch,
-					created: false,
-					url: result.url,
-				});
+			let sinkPush: string | undefined;
+			try {
+				const { pushStatusToSink } = await import("../sinks/sync.js");
+				sinkPush = await pushStatusToSink(store, params.item);
+			} catch (e) {
+				sinkPush = `push failed: ${e instanceof Error ? e.message : String(e)}`;
 			}
-			appendEvent(store, {
-				item: params.item,
-				type: "pr.created",
-				payload: { url: result.url, branch: result.branch },
-				actor: "agent",
-			});
+			const sinkNote = sinkPush ? ` Sink: ${sinkPush}.` : "";
+			if (!result.created) {
+				return text(
+					`PR already open for ${result.branch}: ${result.url}.${sinkNote}`,
+					{ branch: result.branch, created: false, url: result.url },
+				);
+			}
 			return text(
-				`PR opened: ${result.url} (branch ${result.branch}). Poll CI with specd_watch_checks(item=${params.item}) — a single non-blocking poll per call.`,
+				`PR opened: ${result.url} (branch ${result.branch}). Poll CI with specd_watch_checks(item=${params.item}) — a single non-blocking poll per call.${sinkNote}`,
 				{ branch: result.branch, created: true, url: result.url },
 			);
 		},
@@ -73,7 +75,7 @@ export function registerPrTools(pi: ExtensionAPI): void {
 		name: "specd_watch_checks",
 		label: "Poll CI checks for a task's PR",
 		description:
-			"Single non-blocking poll of gh pr checks for the task's convention branch. Returns {state: passed|failed|pending, failing: [names]} — the agent re-invokes to re-poll and fixes failures between polls.",
+			"Single non-blocking poll of gh pr checks for the task's convention branch. Returns {state: passed|failed|pending, failing: [names]} — pending is also returned when the repo has no configured CI (gh reports 'no checks reported'). The agent re-invokes to re-poll and fixes failures between polls.",
 		promptSnippet: "Poll CI checks for a specd task's PR",
 		parameters: Type.Object({
 			item: Type.String({ description: "Task id (e.g. task-0001)." }),
