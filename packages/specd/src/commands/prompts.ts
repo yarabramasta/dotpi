@@ -107,7 +107,7 @@ export const TASKS_ENTRY_PROMPT = (
 ) => `Break the approved+planned spec ${specId} into tasks:
 
 1. specd_read(view=show, item=${specId}) — verify it is approved and has a linked plan.
-2. Interview me for the task breakdown: what are the 1–3 work items, their conventional types (feat/fix/chore/docs), path scopes, and [P] parallel markers? Phrase every acceptance criterion as a verifiable goal — a test to write, a command to run, an observable outcome — never an imperative like "make it work".
+2. Interview me for the task breakdown: what are the 1–3 work items, their conventional types (feat/fix/chore/docs), path scopes, and [P] parallel markers? Phrase every acceptance criterion as a verifiable goal — a test to write, a command to run, an observable outcome — never an imperative like "make it work". For docs-type tasks, include an acceptance criterion that requires applying the write-good-docs skill (classify by Diataxis, name the audience, strip AI-writing tropes; see .agents/skills/write-good-docs/SKILL.md).
 3. specd_create_item(kind="task", title=…, body=<acceptance criteria>, path_scope=…, extra={type:"feat"}) each, linked part-of ${specId}.
 4. Verify with specd_schedule(spec=${specId}) — waves, parallelism, serialization.
 5. Offer export: specd_export(item=<task id>, sink=…) for each task.`;

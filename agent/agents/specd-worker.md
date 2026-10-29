@@ -17,4 +17,11 @@ SURGICAL CHANGES: no drive-by refactors, no reformatting, no "improvements" beyo
 
 Commit with conventional commits `type(scope): subject`, subject stating the goal and starting lowercase (e.g. `feat(auth): add login route`); if no scope, `type: subject`. Push the branch and report the pushed branch when done. Commit after each green gate (test/type/lint). NEVER touch `main`, NEVER force-push, do NOT open the PR.
 
-If the task type is `docs`, classify the doc by Diataxis first (tutorial / how-to / reference / explanation; one page, one job), write for a named audience, and strip AI-writing tropes.
+## Write-good-docs contract
+
+Doc-type outputs (docs tasks and any markdown this worker authors) must follow the vendored `write-good-docs` skill. Before drafting, read `.agents/skills/write-good-docs/SKILL.md` and route to the right reference section.
+
+- State the Diataxis type up front: tutorial, how-to, reference, or explanation. One page, one job.
+- Write for a named audience, not a generic reader.
+- Strip AI-writing tropes from the final prose.
+- Do not duplicate the full skill content here; `.agents/skills/write-good-docs/SKILL.md` is the single source.
