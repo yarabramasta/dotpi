@@ -40,7 +40,7 @@ Full flag reference, install modes, and online-install recipes:
 
 Extensions are selectable (`-e`/`-n`); without filters,
 interactive mode shows menus. Extensions: `specd`, `grill`, `jina`,
-`android-cli` — see each package's README for what it does.
+`android-cli`, `wandb` — see each package's README for what it does.
 
 ## What gets installed
 
@@ -73,6 +73,7 @@ packages/               extensions (pnpm workspace; real sources)
   grill/                Socratic planning extension (pi-grill)
   jina/                 Jina web tools (pi-jina-web)
   android-cli/          Android tooling extension (pi-android-cli)
+  wandb/                W&B custom provider extension (pi-wandb-inference)
 agent/                  mirrors ~/.pi/agent (installer source)
   settings.json models.json auth.json
 .agents/skills/         vendored agent skills (karpathy-guidelines, write-good-docs, flatten-fake-layers)
@@ -93,6 +94,12 @@ them as `peerDependencies: "*"`. The repo root `package.json` also carries a
 ```sh
 pi install git:github.com/yarabramasta/dotpi@v1   # pin a ref
 ```
+
+## Development workflow
+
+This repo uses `specd` for its own planning and execution. `grill`,
+`jina`, `android-cli`, and `wandb` are installable Pi extensions under
+`packages/`, just like `specd`.
 
 ## Dev workflow
 

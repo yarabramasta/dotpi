@@ -8,7 +8,7 @@ My Pi configuration kept as code, mirroring `~/.pi`. It is not a generic package
 manager — it is a reproducible dotfiles-style setup with guardrails. Two halves:
 
 - `src/dotpi/` — Python installer/manager (`./dotpi` shell launcher → `python3 -m dotpi`)
-- `packages/` — TypeScript Pi extensions: `specd`, `grill`, `jina`, `android-cli`
+- `packages/` — TypeScript Pi extensions: `specd`, `grill`, `jina`, `android-cli`, `wandb`
 - `.agents/skills/` — vendored agent skills (`karpathy-guidelines`, `write-good-docs`, `flatten-fake-layers`); pi discovers project `.agents/skills/` natively
 
 `agent/` holds the mirrored Pi config (`settings.json`, `models.json`, example
@@ -37,7 +37,8 @@ Run a single extension's tests from its directory, e.g. `cd packages/grill && np
 - Import sibling modules with explicit `.js` suffixes (`./state.js`), never `.ts`.
 - Extension pattern used across packages: keep logic in pure modules (reducers,
   routers, composition functions) with unit tests; keep `src/index.ts`/command
-  registration thin. See `packages/grill` (`src/picker-state.ts` reducer + `test/`) for the model. See `packages/specd/` for the store + gates + pipeline pattern (event-sourced, code-enforced).
+  registration thin. See `packages/specd/` for the store + gates + pipeline
+  pattern (event-sourced, code-enforced).
 - UI feedback loop: edit → `/reload` inside a running Pi session → try it. Tests
   first for pure logic; the TUI surface (`pi-tui` overlays, status line) is
   smoke-tested by hand in the reload loop.
