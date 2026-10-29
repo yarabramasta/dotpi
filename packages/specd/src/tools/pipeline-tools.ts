@@ -15,7 +15,8 @@ export function registerPipelineTools(pi: ExtensionAPI): void {
 		parameters: Type.Object({
 			item: Type.Optional(
 				Type.String({
-					description: "Scope to an item's part-of subgraph; omit for the whole store.",
+					description:
+						"Scope to an item's part-of subgraph; omit for the whole store.",
 				}),
 			),
 		}),
@@ -35,7 +36,8 @@ export function registerPipelineTools(pi: ExtensionAPI): void {
 		parameters: Type.Object({
 			spec: Type.Optional(
 				Type.String({
-					description: "Tasks linked part-of this spec id; omit for all not-done tasks.",
+					description:
+						"Tasks linked part-of this spec id; omit for all not-done tasks.",
 				}),
 			),
 		}),
