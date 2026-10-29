@@ -1,0 +1,56 @@
+{
+	"stoppedAfter": "review-verdict (option a)",
+	"promptBytes": 3673,
+	"reviewVerdictPassed": true,
+	"branches": "+ specd/feat/task-0001-add-answer-module\n",
+	"parent": {
+		"file": "/var/folders/q7/z3z497ks7kx_6l0n_yk72gch0000gn/T/specd-e2e-1793272209681/sessions/2026-10-29T11-10-10-018Z_01a1875a-6261-71fd-a9b8-2cead3f0b572.jsonl",
+		"turns": 16,
+		"input": 381756,
+		"output": 3628,
+		"cacheRead": 52224,
+		"cacheWrite": 0,
+		"reasoning": 1508,
+		"totalTokens": 437608,
+		"costTotal": 0.06168859999999998,
+		"models": ["zai-org/GLM-5.3-Flash"]
+	},
+	"children": [
+		{
+			"file": "/var/folders/q7/z3z497ks7kx_6l0n_yk72gch0000gn/T/specd-e2e-1793272209681/sessions/2026-10-29T11-10-10-018Z_01a1875a-6261-71fd-a9b8-2cead3f0b572/68e55dd3-c415-4776-bb48-70279515fde0/run-0/session.jsonl",
+			"turns": 15,
+			"input": 17024,
+			"output": 1731,
+			"cacheRead": 69984,
+			"cacheWrite": 0,
+			"reasoning": 0,
+			"totalTokens": 88739,
+			"costTotal": 0.028643139999999997,
+			"models": ["moonshotai/Kimi-K2.7-Code"],
+			"role": "worker"
+		},
+		{
+			"file": "/var/folders/q7/z3z497ks7kx_6l0n_yk72gch0000gn/T/specd-e2e-1793272209681/sessions/2026-10-29T11-10-10-018Z_01a1875a-6261-71fd-a9b8-2cead3f0b572/bb5261b7-d90c-446a-9e4b-e38e38ce43d3/run-0/session.jsonl",
+			"turns": 16,
+			"input": 32076,
+			"output": 5455,
+			"cacheRead": 76032,
+			"cacheWrite": 0,
+			"reasoning": 2642,
+			"totalTokens": 113563,
+			"costTotal": 0.06696676800000001,
+			"models": ["deepseek-ai/DeepSeek-V4-Pro-0813"],
+			"role": "reviewer"
+		}
+	],
+	"childrenTotals": {
+		"turns": 31,
+		"input": 49100,
+		"output": 7186,
+		"totalTokens": 202302,
+		"costTotal": 0.09560990800000001
+	},
+	"grandTotalTokens": 639910,
+	"grandTotalCost": 0.1573,
+	"stdoutTail": "eat(src): add answer module`; single added line `export const answer = 42;` in `src/answer.ts`; branch pushed to bare remote; `main` untouched |\n| Reviewer | **VERDICT: PASS** — correct against AC/spec, zero drive-by changes (`src/index.js`, `README.md` identical across trees), zero overcomplication; no findings |\n| `review.completed` | ✅ recorded: `{passed: true, findings: []}` — task state remains `in-progress` |\n\n**Stopped per harness scope:** `specd_open_pr` (step 6) and `work.completed` (step 7) intentionally not run — fixture has a local bare remote and no `gh`; no CI polling performed.\n"
+}
