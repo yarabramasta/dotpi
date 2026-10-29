@@ -12,6 +12,7 @@ Spec-driven development for this repo. Knowledge lives in .spec/store.db (SQLite
 - /spec pause — write the resume capsule for in-progress work
 - /spec review <checklist-id> — reviewer pass over a requirements checklist
 - /spec analyze [cycle-or-spec-id] — cross-artifact consistency review
+- /spec diagnose <task-id> [symptom] — structured fix loop for a failing task: diagnose → record → (revise spec) → fix → re-review
 - /spec sink — configure the sink: workspace coords, lanes, statusMap (preview then apply)
 - /spec constitution — create/review/update the constitution standalone
 - /spec clarify <spec-id> — targeted clarification loop on an existing spec
@@ -61,11 +62,11 @@ Follow the fast-path flow. The specd tools enforce the gates — never work arou
 4. SPEC — specd_create_item(kind=spec, title=…, body=<filled template>, cycle=<cycle id>) — the gate checks the explore decision and links the spec to the cycle.
 5. APPROVAL — show me the finished spec and ask for approval. On yes: specd_append_event(item=<spec id>, type=spec.approved). Nothing can be exported before this — the tools will refuse.
 6. PLAN — specd_create_item(kind=plan, title=…, body=<short technical approach>), then link it: specd_add_link(from=<plan id>, to=<spec id>, kind=part-of). Record each technical decision: specd_append_event(item=<plan id>, type=decision.made, payload={decision}). Also: if this repo has no constitution item yet, ask me whether to capture the product purpose and principles as one — specd_create_item(kind=constitution, title=…, body=…) — and link it: specd_add_link(from=<plan id>, to=<constitution id>, kind=part-of). If a constitution already exists, link the plan to it — consistency checks every plan for a constitution anchor.
-7. SINK SETUP — if the sink is not null, interview me once for the sink setup (ask-user-question): workspace coords (github: owner + project number), lanes, label taxonomy, naming convention. Then specd_configure_sink(sink=…, workspace={…} for non-github sinks, github_owner=…, github_project_number=…, lanes=[…], labels=[…], naming=…). This previews what would change. Show me the preview, and on my OK re-run with apply=true — it is idempotent, so re-runs converge. If the sink is null, skip this step.
+7. SINK SETUP — if the sink is not null, interview me once for the sink setup (ask-user-question): workspace coords (github: owner + project number), lanes, label taxonomy, naming convention. Labels are a repo-wide vocabulary seeded once at configure time — keep it to the specd family (specd, specd:spec, specd:plan, specd:task, specd:cycle) plus any area labels I name; exports never apply the whole taxonomy to issues. Then specd_configure_sink(sink=…, workspace={…} for non-github sinks, github_owner=…, github_project_number=…, lanes=[…], labels=[…], naming=…). This previews what would change. Show me the preview, and on my OK re-run with apply=true — it is idempotent, so re-runs converge. If the sink is null, skip this step.
 VALID ITEM KINDS: spec · plan · task · cycle · epic · roadmap · constitution · checklist · product (product-layer knowledge) · domain (business & domain knowledge) · application (technical knowledge). The knowledge kind is retired — use the layer kinds instead.
 
 8. TASKS — break the spec into 1–3 tasks: specd_create_item(kind=task, title=…, body=<acceptance criteria>, path_scope=<file paths this task owns>, extra={type:'feat'|'fix'|'chore'|'docs'|'test'|'refactor'|'perf'}) each — the conventional type drives branch/issue/PR/commit naming — linked with specd_add_link(from=<task id>, to=<spec id>, kind=part-of). If the spec has meaningful ambiguity, also generate a requirements checklist: specd_create_item(kind=checklist, title=…, extra={items:[…]}), linked part-of the spec — I review it via /spec review before implementation runs.
-9. EXPORT — ask me whether to export the tasks now. If yes: specd_export(item=<task id>, sink=<sink id>). Ported sinks: null, github. For github the first export needs the project owner and project number — ask me, then pass github_owner + github_project_number once; they persist. The sink setup (if applied) drives the export title, labels, and lane placement.
+9. EXPORT — ask me whether to export the tasks now. If yes: specd_export(item=<task id>, sink=<sink id>). Ported sinks: null, github. For github the first export needs the project owner and project number — ask me, then pass github_owner + github_project_number once; they persist. The sink setup (if applied) drives the export title and lane placement; labels are assigned contextually per task (specd, specd:<kind>, spec:<scope>) — the taxonomy is only seeded repo-wide at configure time.
 10. RUN — when I want a task implemented: /spec run <task id>.`;
 
 export const CONSTITUTION_PROMPT = `Create/review/update the constitution (the product layer's anchor):
@@ -128,8 +129,26 @@ export const RUN_PROMPT = (
    - worker rules: implement only inside the path scope; SURGICAL CHANGES — every changed line traces to the task (no drive-by refactors, no reformatting adjacent code, no "improvements" beyond the task; clean up only orphans your own changes created); commit to the branch; push the branch; NEVER touch main; NEVER force-push; do NOT create the PR — report the pushed branch when done.
    - if the task's type is docs: classify the doc first (Diataxis — tutorial / how-to / reference / explanation; one page, one job), write for a named audience, and strip AI-writing tropes before finishing.
 5. REVIEW GATE: spawn ONE reviewer subagent (read-only) over the worktree diff (default branch vs the task branch) against the task's acceptance criteria and the spec. Beyond correctness, check two dimensions: overcomplication (would a senior engineer call it overbuilt? the simpler version wins) and drive-by changes (any changed line not traceable to the task is a finding). Record its verdict: specd_append_event(item=${task}, type=review.completed, payload={passed: true|false, findings: [...]}).
-6. If the review passed: specd_open_pr(item=${task}) — the tool enforces the review gate in code, derives branch/title/body (gh pr create --body-file; base = default branch unless overridden), records pr.created {url, branch} itself, and returns the existing PR URL if one is already open for the branch. If the review failed: tell me exactly what failed — fix, re-review, and only then PR; the tool refuses until a passing review exists. Poll CI with specd_watch_checks(item=${task}) as needed — a single non-blocking poll per call.
-7. When a PR exists and its review passed: specd_append_event(item=${task}, type=work.completed, payload={pr}) — the tool refuses without a passing review.`;
+6. If the review passed: specd_open_pr(item=${task}) — the tool enforces the review gate in code, derives branch/title/body (gh pr create --body-file; base = default branch unless overridden), records pr.created {url, branch} itself, and returns the existing PR URL if one is already open for the branch. If the review failed: tell me exactly what failed, then run the fix loop — /spec diagnose ${task}: record diagnosis.recorded (symptom, root cause, specGap), revise the spec first if specGap, fix, re-review. The gates refuse a passing review that doesn't answer a failure with a diagnosis. Poll CI with specd_watch_checks(item=${task}) as needed — a single non-blocking poll per call; if CI fails, the same loop applies (/spec diagnose ${task}).
+7. When a PR exists and its review passed: specd_append_event(item=${task}, type=work.completed, payload={pr}) — the tool refuses without a passing review, and while a specGap diagnosis awaits a spec revision.`;
+
+/** The diagnose/fix loop (#442-shaped): the structured path from a failing
+ * review or CI run back to a reviewer-signed completion. Records a typed
+ * diagnosis so the gates can enforce it; spec gaps force spec revisions
+ * so code and spec never drift apart. */
+export const DIAGNOSE_PROMPT = (
+	task: string,
+	symptom?: string,
+) => `Run the diagnose/fix loop for ${task}${symptom ? ` — reported symptom: ${symptom}` : ""}:
+
+1. specd_show(item=${task}) — read the task, its linked spec, and the history: failing review.completed findings, failing CI checks, and any earlier diagnosis.recorded events.
+2. REPRODUCE — run the failing evidence yourself in the task's worktree (the failing test, build, or check) until you can state the symptom precisely. Do not fix yet.
+3. ROOT CAUSE — trace the failure to its cause, then judge: is the code wrong, or the spec? A bug that reveals a spec gap (wrong requirement, missing constraint, wrong acceptance criterion) is a specGap.
+4. RECORD — specd_append_event(item=${task}, type=diagnosis.recorded, payload={symptom, rootCause, evidence: […], specGap: true|false}). The completion gate requires this before the next passing review counts.
+5. If specGap: revise the spec FIRST — specd_append_event(item=<spec id>, type=body.updated, payload={body}) with the corrected requirement, and tell me what changed (re-approval is recommended for material changes). The completion gate refuses until the spec has this update.
+6. FIX — implement the targeted fix in the task's worktree (surgical: trace every changed line to the diagnosis; add a regression test where feasible). Commit conventionally. The task stays in-progress.
+7. RE-REVIEW — spawn the reviewer again over the new diff and record review.completed. If it fails again, loop from step 2 — every cycle needs a fresh diagnosis. After repeated failed cycles, stop and pause with me: specd_append_event(item=${task}, type=work.paused) and reassess the approach.
+8. Back on the normal flow: specd_open_pr → work.completed (the gates now pass).`;
 
 export const RUN_WAVES_PROMPT = `Run tasks through the execution seam in parallel waves:
 
@@ -150,7 +169,7 @@ export const CONVERGE_PROMPT = (
 export const SINK_PROMPT = `Configure the sink (workspace coords, lanes, labels, naming, statusMap):
 
 1. Ask me which sink to plan for (null = native; github). If null, there is nothing to plan — the null sink has no external board.
-2. Workspace coords per sink: github — owner + project number. Ask me (ask-user-question) for the coords plus lanes, label taxonomy, and naming convention. Offer the defaults if I don't override. Also set the statusMap: ask which board option each specd state maps to (exported / in-progress / done → e.g. Ready / In progress / Done) and pass statusMap={…} to specd_configure_sink — updateStatus writes exactly the mapped option. 
+2. Workspace coords per sink: github — owner + project number. Ask me (ask-user-question) for the coords plus lanes, label taxonomy, and naming convention. Offer the defaults if I don't override. Labels are repo-wide vocabulary seeded at configure time (specd family + my own area labels) — never per-issue decoration. Also set the statusMap: ask which board option each specd state maps to (exported / in-progress / done → e.g. Ready / In progress / Done) and pass statusMap={…} to specd_configure_sink — updateStatus writes exactly the mapped option. A done task whose PR is still open sits in the review lane until the PR merges; map that with the optional "in-review" key (default "In review").
 3. specd_configure_sink(sink=…, github_owner=…, github_project_number=…, workspace={…} for non-github sinks, lanes=[…], labels=[…], naming=…) — this is a PREVIEW (read-only). Show me the listed changes.
 4. On my OK: re-run with apply=true. It is idempotent — re-runs converge, so a converged plan yields no changes.
 5. Record the decision: specd_append_event(item=<cycle or first item id>, type=decision.made, payload={decision: "sink setup applied", sink, lanes, labels, naming}).`;

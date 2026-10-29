@@ -94,7 +94,11 @@ export function registerPrTools(pi: ExtensionAPI): void {
 			const failing = report.failing.length
 				? ` — failing: ${report.failing.join(", ")}`
 				: "";
-			return text(`CI checks ${report.state}${failing}.`, { ...report });
+			const hint =
+				report.state === "failed"
+					? ` Diagnose before fixing: /spec diagnose ${params.item}.`
+					: "";
+			return text(`CI checks ${report.state}${failing}.${hint}`, { ...report });
 		},
 	});
 }

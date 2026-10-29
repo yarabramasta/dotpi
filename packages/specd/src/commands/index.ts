@@ -22,6 +22,7 @@ import {
 	CONSTITUTION_PROMPT,
 	CONVERGE_PROMPT,
 	connectPrompt,
+	DIAGNOSE_PROMPT,
 	HELP,
 	PAUSE_PROMPT,
 	PLAN_ENTRY_PROMPT,
@@ -106,6 +107,16 @@ export function registerCommands(pi: ExtensionAPI): void {
 			}
 			if (sub === "analyze") {
 				pi.sendUserMessage(ANALYZE_PROMPT(rest));
+				return;
+			}
+			if (sub === "diagnose") {
+				if (!rest) {
+					ctx.ui.notify("Usage: /spec diagnose <task-id> [symptom]", "warning");
+					return;
+				}
+				const task = firstWord(rest);
+				const symptom = rest.slice(task.length).trim();
+				pi.sendUserMessage(DIAGNOSE_PROMPT(task, symptom || undefined));
 				return;
 			}
 			if (sub === "constitution") {

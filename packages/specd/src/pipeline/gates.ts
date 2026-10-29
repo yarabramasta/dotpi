@@ -173,16 +173,19 @@ export function checkCanStartWork(
 
 /** The completion gate (work.completed): a reviewer subagent must have
  * signed off — the latest review.completed event for the task must say
- * passed. Failing review blocks completion. */
+ * passed. Two loop rules tighten it: a failing review must be answered by
+ * a diagnosis.recorded before the next passing review counts (the fix
+ * loop — blind retries are refused), and a diagnosis that says the spec
+ * itself was wrong (specGap) holds completion until the linked spec is
+ * revised (body.updated after the diagnosis). */
 export function checkCanCompleteWork(
 	store: SpecdStore,
 	taskId: string,
 ): GateCheck {
 	const task = getItem(store, taskId);
 	if (!task) return { ok: false, reason: `Unknown item: ${taskId}.` };
-	const reviews = history(store, taskId).filter(
-		(e) => e.type === "review.completed",
-	);
+	const events = history(store, taskId);
+	const reviews = events.filter((e) => e.type === "review.completed");
 	const last = reviews.at(-1);
 	if (!last) {
 		return {
@@ -194,10 +197,80 @@ export function checkCanCompleteWork(
 	if (payload?.passed !== true) {
 		return {
 			ok: false,
-			reason: `The latest review of ${taskId} did not pass (or recorded no verdict). Address the findings, re-run the reviewer, and record a passing review.completed before completing.`,
+			reason: `The latest review of ${taskId} did not pass (or recorded no verdict). Diagnose first — /spec diagnose ${taskId} (record diagnosis.recorded with the symptom, root cause, and whether the spec itself was wrong) — then fix, re-run the reviewer, and record a passing review.completed before completing.`,
+		};
+	}
+	// The fix loop: a failing review must be answered by a recorded
+	// diagnosis before the next passing review counts. Each new failure
+	// needs a fresh diagnosis — the per-failure diagnosis IS the bound.
+	const lastFailure = reviews
+		.filter(
+			(e) => parseJsonLoose<{ passed?: boolean }>(e.payload)?.passed !== true,
+		)
+		.at(-1);
+	if (lastFailure) {
+		const diagnosed = events.some(
+			(e) => e.type === "diagnosis.recorded" && e.id > lastFailure.id,
+		);
+		if (!diagnosed) {
+			return {
+				ok: false,
+				reason: `The last review of ${taskId} failed, and no diagnosis answers it. Record one first: /spec diagnose ${taskId} (specd_append_event type=diagnosis.recorded with the symptom, root cause, and whether the spec itself was wrong), fix, then re-run the reviewer.`,
+			};
+		}
+	}
+	// The spec gap: when the latest diagnosis says the spec itself was
+	// wrong, completion waits until the linked spec is revised — fixes
+	// keep code and spec aligned.
+	const lastDiagnosis = events
+		.filter((e) => e.type === "diagnosis.recorded")
+		.at(-1);
+	if (
+		lastDiagnosis &&
+		parseJsonLoose<{ specGap?: boolean }>(lastDiagnosis.payload)?.specGap ===
+			true
+	) {
+		const specs = linkedItems(store, taskId, "part-of").filter(
+			(i) => i.kind === "spec",
+		);
+		const revised = specs.some((spec) =>
+			history(store, spec.id).some(
+				(e) => e.type === "body.updated" && e.id > lastDiagnosis.id,
+			),
+		);
+		if (!revised) {
+			return {
+				ok: false,
+				reason: specs.length
+					? `The latest diagnosis of ${taskId} says the spec itself was wrong. Revise ${specs.map((s) => s.id).join(", ")} first (specd_append_event type=body.updated on the spec) so the fix and the spec stay aligned, then complete.`
+					: `The latest diagnosis of ${taskId} says the spec itself was wrong, but the task has no linked spec to revise. Re-record the diagnosis with specGap=false if the spec is actually fine.`,
+			};
+		}
+	}
+	return { ok: true };
+}
+
+/** The diagnosis gate: diagnosis.recorded belongs to an in-progress task —
+ * diagnosing work that never started (or is already done) is bookkeeping
+ * noise, and the fix-loop gate keys on in-progress diagnoses. */
+export function checkDiagnosisTarget(
+	store: SpecdStore,
+	itemId: string,
+): GateCheck {
+	const item = getItem(store, itemId);
+	if (!item) return { ok: false, reason: `Unknown item: ${itemId}.` };
+	if (item.kind !== "task" || item.status !== "in-progress") {
+		return {
+			ok: false,
+			reason: `diagnosis.recorded belongs to an in-progress task — ${itemId} is a ${item.kind} in ${item.status}. Run /spec diagnose while the work is open.`,
 		};
 	}
 	return { ok: true };
+}
+
+export function assertDiagnosisTarget(store: SpecdStore, itemId: string): void {
+	const check = checkDiagnosisTarget(store, itemId);
+	if (!check.ok) throw new Error(check.reason);
 }
 
 export function assertCanStartWork(store: SpecdStore, taskId: string): void {

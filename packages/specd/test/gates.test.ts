@@ -4,6 +4,7 @@ import {
 	checkCanCompleteWork,
 	checkCanStartWork,
 	checkChecklistsClear,
+	checkDiagnosisTarget,
 	checkExport,
 } from "../src/pipeline/gates.js";
 import { addLink, appendEvent, createItem } from "../src/store/store.js";
@@ -194,7 +195,7 @@ describe("completion gate (work.completed)", () => {
 		expect(check.reason).toContain("no review yet");
 	});
 
-	it("blocks on a failing review until a passing one is recorded", async () => {
+	it("blocks on a failing review until a diagnosis and a passing one are recorded", async () => {
 		t = await makeStore();
 		const { taskId } = await makeApprovedCycle();
 		appendEvent(t.store, {
@@ -209,6 +210,22 @@ describe("completion gate (work.completed)", () => {
 			type: "review.completed",
 			payload: { passed: true, findings: [] },
 			actor: "reviewer",
+		});
+		// A passing review does not answer the failure by itself — the fix
+		// loop requires a diagnosis.recorded after the failure.
+		const loopCheck = checkCanCompleteWork(t.store, taskId);
+		expect(loopCheck.ok).toBe(false);
+		expect(loopCheck.reason).toContain("no diagnosis answers it");
+		appendEvent(t.store, {
+			item: taskId,
+			type: "diagnosis.recorded",
+			payload: {
+				symptom: "route returns 500",
+				rootCause: "missing await on session lookup",
+				evidence: ["test output"],
+				specGap: false,
+			},
+			actor: "agent",
 		});
 		expect(checkCanCompleteWork(t.store, taskId).ok).toBe(true);
 	});
@@ -229,5 +246,184 @@ describe("completion gate (work.completed)", () => {
 			actor: "reviewer",
 		});
 		expect(checkCanCompleteWork(t.store, taskId).ok).toBe(false);
+	});
+
+	it("points a failed review at the diagnose loop", async () => {
+		t = await makeStore();
+		const { taskId } = await makeApprovedCycle();
+		appendEvent(t.store, {
+			item: taskId,
+			type: "review.completed",
+			payload: { passed: false, findings: ["broken"] },
+			actor: "reviewer",
+		});
+		const check = checkCanCompleteWork(t.store, taskId);
+		expect(check.reason).toContain("/spec diagnose");
+	});
+});
+
+describe("diagnosis gate (diagnosis.recorded target)", () => {
+	it("accepts an in-progress task", async () => {
+		t = await makeStore();
+		const task = createItem(t.store, {
+			kind: "task",
+			title: "Fix login",
+			body: "fix",
+			actor: "test",
+		});
+		appendEvent(t.store, {
+			item: task.id,
+			type: "work.started",
+			actor: "test",
+		});
+		const check = checkDiagnosisTarget(t.store, task.id);
+		expect(check.ok).toBe(true);
+	});
+
+	it("refuses drafts, done tasks, non-tasks, and unknown ids", async () => {
+		t = await makeStore();
+		const task = createItem(t.store, {
+			kind: "task",
+			title: "Fix login",
+			body: "fix",
+			actor: "test",
+		});
+		const draft = checkDiagnosisTarget(t.store, task.id);
+		expect(draft.ok).toBe(false);
+		expect(draft.reason).toContain("in draft");
+		appendEvent(t.store, {
+			item: task.id,
+			type: "work.started",
+			actor: "test",
+		});
+		appendEvent(t.store, {
+			item: task.id,
+			type: "work.completed",
+			actor: "test",
+		});
+		const done = checkDiagnosisTarget(t.store, task.id);
+		expect(done.ok).toBe(false);
+		expect(done.reason).toContain("in done");
+		const spec = createItem(t.store, {
+			kind: "spec",
+			title: "Auth",
+			body: "intent",
+			actor: "test",
+		});
+		expect(checkDiagnosisTarget(t.store, spec.id).ok).toBe(false);
+		expect(checkDiagnosisTarget(t.store, "task-9999").reason).toContain(
+			"Unknown item",
+		);
+	});
+});
+
+describe("fix loop (diagnosis + specGap gates)", () => {
+	it("needs a fresh diagnosis after each new failure", async () => {
+		t = await makeStore();
+		const { taskId } = await makeApprovedCycle();
+		appendEvent(t.store, {
+			item: taskId,
+			type: "review.completed",
+			payload: { passed: false },
+			actor: "reviewer",
+		});
+		appendEvent(t.store, {
+			item: taskId,
+			type: "diagnosis.recorded",
+			payload: { symptom: "s", rootCause: "r", evidence: [], specGap: false },
+			actor: "agent",
+		});
+		// Second failure: the earlier diagnosis predates it — refused.
+		appendEvent(t.store, {
+			item: taskId,
+			type: "review.completed",
+			payload: { passed: false },
+			actor: "reviewer",
+		});
+		appendEvent(t.store, {
+			item: taskId,
+			type: "review.completed",
+			payload: { passed: true },
+			actor: "reviewer",
+		});
+		expect(checkCanCompleteWork(t.store, taskId).ok).toBe(false);
+		appendEvent(t.store, {
+			item: taskId,
+			type: "diagnosis.recorded",
+			payload: { symptom: "s2", rootCause: "r2", evidence: [], specGap: false },
+			actor: "agent",
+		});
+		expect(checkCanCompleteWork(t.store, taskId).ok).toBe(true);
+	});
+
+	it("holds completion while a specGap diagnosis awaits a spec revision", async () => {
+		t = await makeStore();
+		const { taskId, specId } = await makeApprovedCycle();
+		appendEvent(t.store, {
+			item: taskId,
+			type: "review.completed",
+			payload: { passed: true },
+			actor: "reviewer",
+		});
+		appendEvent(t.store, {
+			item: taskId,
+			type: "diagnosis.recorded",
+			payload: {
+				symptom: "spec says GET, endpoint is POST",
+				rootCause: "acceptance criterion mismatched the API contract",
+				evidence: [],
+				specGap: true,
+			},
+			actor: "agent",
+		});
+		const check = checkCanCompleteWork(t.store, taskId);
+		expect(check.ok).toBe(false);
+		expect(check.reason).toContain(specId);
+		// A spec body.updated predating the diagnosis does not count.
+		appendEvent(t.store, {
+			item: specId,
+			type: "body.updated",
+			payload: { body: "stale" },
+			actor: "test",
+		});
+		appendEvent(t.store, {
+			item: taskId,
+			type: "diagnosis.recorded",
+			payload: { symptom: "s", rootCause: "r", evidence: [], specGap: true },
+			actor: "agent",
+		});
+		expect(checkCanCompleteWork(t.store, taskId).ok).toBe(false);
+		appendEvent(t.store, {
+			item: specId,
+			type: "body.updated",
+			payload: { body: "## Intent\nLogin works over POST." },
+			actor: "agent",
+		});
+		expect(checkCanCompleteWork(t.store, taskId).ok).toBe(true);
+	});
+
+	it("tells the agent how out when a specGap diagnosis has no linked spec", async () => {
+		t = await makeStore();
+		const task = createItem(t.store, {
+			kind: "task",
+			title: "Orphan fix",
+			body: "fix it",
+			actor: "test",
+		});
+		appendEvent(t.store, {
+			item: task.id,
+			type: "review.completed",
+			payload: { passed: true },
+			actor: "reviewer",
+		});
+		appendEvent(t.store, {
+			item: task.id,
+			type: "diagnosis.recorded",
+			payload: { symptom: "s", rootCause: "r", evidence: [], specGap: true },
+			actor: "agent",
+		});
+		const check = checkCanCompleteWork(t.store, task.id);
+		expect(check.ok).toBe(false);
+		expect(check.reason).toContain("specGap=false");
 	});
 });

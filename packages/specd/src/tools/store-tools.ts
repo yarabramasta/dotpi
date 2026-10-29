@@ -8,6 +8,7 @@ import {
 	assertCanCompleteWork,
 	assertCanExport,
 	assertCanStartWork,
+	assertDiagnosisTarget,
 	assertSpecCreationAllowed,
 	checklistState,
 } from "../pipeline/gates.js";
@@ -223,6 +224,11 @@ export function registerStoreTools(pi: ExtensionAPI): void {
 				// A reviewer subagent must have signed off (review.completed
 				// with passed=true) — failing review blocks completion.
 				assertCanCompleteWork(store, params.item);
+			}
+			if (type === "diagnosis.recorded") {
+				// The loop gate keys on in-progress diagnoses — refuse
+				// diagnosing work that never started or is already done.
+				assertDiagnosisTarget(store, params.item);
 			}
 			const event = appendEvent(store, {
 				item: params.item,
