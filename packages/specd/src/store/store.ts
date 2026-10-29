@@ -111,7 +111,9 @@ import { resolveStoreDir } from "./registry.js";
  * while the store is durable, so binding ownership to it either locks out
  * legitimate sessions or is stolen by whoever opens the store first. */
 export function isTaskWorktreeCwd(cwd: string): boolean {
-	return /-specd-[a-z]+-\d{4,}$/.test(basename(cwd));
+	return new RegExp(`-specd-(${ITEM_KINDS.join("|")})-\\d{4,}$`).test(
+		basename(cwd),
+	);
 }
 
 /** Refuse store-mutating tool calls from spawned child sessions (specd task

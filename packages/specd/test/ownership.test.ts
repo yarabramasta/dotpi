@@ -80,6 +80,8 @@ describe("specd task-worktree write guard", () => {
 		expect(isTaskWorktreeCwd("/repo/dotpi")).toBe(false);
 		expect(isTaskWorktreeCwd("/repo/dotpi-specd-task-42")).toBe(false);
 		expect(isTaskWorktreeCwd("/repo/my-specd-notes")).toBe(false);
+		expect(isTaskWorktreeCwd("/repo/project-specd-notes-2024")).toBe(false);
+		expect(isTaskWorktreeCwd("/repo/chat-specd-export-0001")).toBe(false);
 	});
 
 	it("refuses a write-tool call from a spawned child in a task worktree", async () => {

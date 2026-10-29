@@ -191,7 +191,11 @@ All mutating specd tools (`specd_append_event`, `specd_create_item`,
 calls whose cwd is a task worktree with a `no-specd-store-writes` error
 that tells the child to report results to the parent session, which
 records all specd events. Reads stay open from child contexts — children
-may inspect the store.
+may inspect the store they resolve (a child in a task worktree resolves
+its own fresh `.spec` copy there; committed in-repo stores resolve via
+the repo). The two slash-command write paths (`/spec storage`,
+`/spec export`) are deliberately unguarded: slash commands exist only in
+the parent TUI, which spawned children do not have.
 
 `specd_read(view=dashboard)` performs a read-back sync that can append
 events (exported tasks whose sink item closed become done); from a child
