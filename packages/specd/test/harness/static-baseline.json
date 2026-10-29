@@ -1,99 +1,69 @@
 {
 	"tools": {
 		"count": 21,
-		"totalSchemaBytes": 13728,
-		"totalSchemaTokensEst": 3432,
-		"totalDescriptionBytes": 4847,
+		"totalSchemaBytes": 11247,
+		"totalSchemaTokensEst": 2812,
+		"totalDescriptionBytes": 3167,
 		"perTool": [
 			{
 				"name": "specd_configure_sink",
-				"schemaBytes": 1954,
-				"schemaTokensEst": 489,
-				"descriptionBytes": 458
+				"schemaBytes": 1526,
+				"schemaTokensEst": 382,
+				"descriptionBytes": 244
 			},
 			{
 				"name": "specd_create_item",
-				"schemaBytes": 1306,
-				"schemaTokensEst": 327,
-				"descriptionBytes": 185
-			},
-			{
-				"name": "specd_query",
-				"schemaBytes": 1138,
-				"schemaTokensEst": 285,
-				"descriptionBytes": 248
+				"schemaBytes": 1094,
+				"schemaTokensEst": 274,
+				"descriptionBytes": 114
 			},
 			{
 				"name": "specd_append_event",
-				"schemaBytes": 1068,
-				"schemaTokensEst": 267,
-				"descriptionBytes": 311
+				"schemaBytes": 944,
+				"schemaTokensEst": 236,
+				"descriptionBytes": 187
+			},
+			{
+				"name": "specd_query",
+				"schemaBytes": 810,
+				"schemaTokensEst": 203,
+				"descriptionBytes": 157
 			},
 			{
 				"name": "specd_export",
-				"schemaBytes": 830,
-				"schemaTokensEst": 208,
+				"schemaBytes": 752,
+				"schemaTokensEst": 188,
 				"descriptionBytes": 208
-			},
-			{
-				"name": "specd_open_pr",
-				"schemaBytes": 771,
-				"schemaTokensEst": 193,
-				"descriptionBytes": 385
 			},
 			{
 				"name": "specd_register_store",
-				"schemaBytes": 661,
-				"schemaTokensEst": 165,
-				"descriptionBytes": 180
+				"schemaBytes": 563,
+				"schemaTokensEst": 141,
+				"descriptionBytes": 108
+			},
+			{
+				"name": "specd_open_pr",
+				"schemaBytes": 508,
+				"schemaTokensEst": 127,
+				"descriptionBytes": 155
 			},
 			{
 				"name": "specd_remove_link",
-				"schemaBytes": 646,
-				"schemaTokensEst": 162,
-				"descriptionBytes": 294
+				"schemaBytes": 458,
+				"schemaTokensEst": 115,
+				"descriptionBytes": 106
 			},
 			{
-				"name": "specd_consistency",
-				"schemaBytes": 557,
-				"schemaTokensEst": 139,
-				"descriptionBytes": 326
-			},
-			{
-				"name": "specd_schedule",
-				"schemaBytes": 544,
-				"schemaTokensEst": 136,
-				"descriptionBytes": 308
+				"name": "specd_show",
+				"schemaBytes": 443,
+				"schemaTokensEst": 111,
+				"descriptionBytes": 167
 			},
 			{
 				"name": "specd_promote",
-				"schemaBytes": 541,
-				"schemaTokensEst": 135,
-				"descriptionBytes": 233
-			},
-			{
-				"name": "specd_import_apply",
-				"schemaBytes": 495,
-				"schemaTokensEst": 124,
-				"descriptionBytes": 198
-			},
-			{
-				"name": "specd_import_revert",
-				"schemaBytes": 479,
-				"schemaTokensEst": 120,
-				"descriptionBytes": 285
-			},
-			{
-				"name": "specd_import_preview",
 				"schemaBytes": 433,
 				"schemaTokensEst": 108,
-				"descriptionBytes": 208
-			},
-			{
-				"name": "specd_create_worktree",
-				"schemaBytes": 428,
-				"schemaTokensEst": 107,
-				"descriptionBytes": 246
+				"descriptionBytes": 165
 			},
 			{
 				"name": "specd_add_link",
@@ -102,28 +72,58 @@
 				"descriptionBytes": 68
 			},
 			{
+				"name": "specd_consistency",
+				"schemaBytes": 406,
+				"schemaTokensEst": 102,
+				"descriptionBytes": 211
+			},
+			{
+				"name": "specd_schedule",
+				"schemaBytes": 397,
+				"schemaTokensEst": 99,
+				"descriptionBytes": 204
+			},
+			{
+				"name": "specd_import_revert",
+				"schemaBytes": 386,
+				"schemaTokensEst": 97,
+				"descriptionBytes": 192
+			},
+			{
 				"name": "specd_watch_checks",
 				"schemaBytes": 380,
 				"schemaTokensEst": 95,
 				"descriptionBytes": 201
 			},
 			{
+				"name": "specd_import_apply",
+				"schemaBytes": 379,
+				"schemaTokensEst": 95,
+				"descriptionBytes": 95
+			},
+			{
+				"name": "specd_import_preview",
+				"schemaBytes": 315,
+				"schemaTokensEst": 79,
+				"descriptionBytes": 103
+			},
+			{
+				"name": "specd_create_worktree",
+				"schemaBytes": 314,
+				"schemaTokensEst": 79,
+				"descriptionBytes": 132
+			},
+			{
 				"name": "specd_add_reference",
-				"schemaBytes": 369,
-				"schemaTokensEst": 92,
-				"descriptionBytes": 148
+				"schemaBytes": 309,
+				"schemaTokensEst": 77,
+				"descriptionBytes": 120
 			},
 			{
 				"name": "specd_store_status",
-				"schemaBytes": 261,
-				"schemaTokensEst": 65,
-				"descriptionBytes": 168
-			},
-			{
-				"name": "specd_show",
-				"schemaBytes": 252,
-				"schemaTokensEst": 63,
-				"descriptionBytes": 81
+				"schemaBytes": 215,
+				"schemaTokensEst": 54,
+				"descriptionBytes": 122
 			},
 			{
 				"name": "specd_dashboard",
@@ -136,13 +136,13 @@
 	"prompts": {
 		"HELP": 2095,
 		"ADOPT_SNIPPET": 645,
-		"START_PROMPT": 5071,
+		"START_PROMPT": 4521,
 		"CONSTITUTION_PROMPT": 633,
 		"CLARIFY_PROMPT": 849,
 		"PLAN_ENTRY_PROMPT": 707,
-		"TASKS_ENTRY_PROMPT": 878,
-		"RUN_PROMPT": 3391,
-		"DIAGNOSE_PROMPT": 1718,
+		"TASKS_ENTRY_PROMPT": 750,
+		"RUN_PROMPT": 3010,
+		"DIAGNOSE_PROMPT": 1585,
 		"RUN_WAVES_PROMPT": 637,
 		"CONVERGE_PROMPT": 854,
 		"SINK_PROMPT": 1415,
@@ -154,8 +154,8 @@
 	"payloads": {
 		"show": {
 			"events5": 570,
-			"events20": 1335,
-			"events40": 2355
+			"events20": 872,
+			"events40": 872
 		},
 		"dashboard": 382,
 		"queryInsight": 271

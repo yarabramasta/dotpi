@@ -58,7 +58,7 @@ export function registerSinkTools(pi: ExtensionAPI): void {
 		name: "specd_store_status",
 		label: "Check specd store status",
 		description:
-			"Check whether a specd store exists for the current repo — checks the registry and the default in-repo path. Returns the store location or guidance for setting one up.",
+			"Check whether a specd store exists for this repo (registry + default .spec/ path). Returns the location or setup guidance.",
 		promptSnippet: "Check store status",
 		parameters: Type.Object({}),
 		async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
@@ -95,12 +95,12 @@ export function registerSinkTools(pi: ExtensionAPI): void {
 		name: "specd_register_store",
 		label: "Register a specd store location",
 		description:
-			"Register the store location for the current repo in the specd store registry. For external stores, the directory must already exist (use specd_create_external_store to create one).",
+			"Register the store location for this repo in the specd registry. External stores need an existing storePath.",
 		promptSnippet: "Register store location",
 		parameters: Type.Object({
 			type: Type.String({
 				description:
-					'Store location type: "in-repo" (default .spec/), "external" (managed by specd), or "external-git" (a standalone git repo).',
+					'"in-repo" (default .spec/), "external" (specd-managed), or "external-git" (standalone git repo).',
 			}),
 			storePath: Type.Optional(
 				Type.String({
@@ -136,12 +136,11 @@ export function registerSinkTools(pi: ExtensionAPI): void {
 		name: "specd_add_reference",
 		label: "Add a specd store reference",
 		description:
-			"Add a read-only reference to another specd store (local path or git URL). Git URLs are cloned into ~/.pi/agent/stores/{slug} if not already present.",
+			"Add a read-only reference to another specd store (local path or git URL; git URLs clone into ~/.pi/agent/stores/{slug}).",
 		promptSnippet: "Reference another specd store",
 		parameters: Type.Object({
 			store: Type.String({
-				description:
-					"Absolute path to a specd store directory, or a git URL to clone.",
+				description: "Store directory path or git URL.",
 			}),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
@@ -191,7 +190,7 @@ export function registerSinkTools(pi: ExtensionAPI): void {
 		name: "specd_configure_sink",
 		label: "Configure the specd sink",
 		description:
-			"Preview (default) or apply the sink setup for a sink: workspace, lanes, label taxonomy, naming convention. Preview is read-only and lists what would change. Apply is idempotent — a converged plan yields no changes. The plan persists in the store and drives export titles and lane placement; the label taxonomy is repo-wide vocabulary seeded once here (labels are created on the workspace, never applied to issues — exports assign only contextual labels).",
+			"Preview (default, read-only) or apply the sink setup: workspace, lanes, labels, naming. Apply is idempotent. The plan persists and drives export titles and lane placement; labels are repo-wide vocabulary seeded here, never per-issue decoration.",
 		promptSnippet: "Preview/apply the sink setup",
 		parameters: Type.Object({
 			sink: Type.String({
@@ -199,24 +198,22 @@ export function registerSinkTools(pi: ExtensionAPI): void {
 			}),
 			apply: Type.Optional(
 				Type.Boolean({
-					description:
-						"true to apply (write); omit/false to preview only (read-only). Defaults to false.",
+					description: "true applies (write); default previews.",
 				}),
 			),
 			github_owner: Type.Optional(
 				Type.String({
-					description: "github workspace: owner (user or org).",
+					description: "GitHub org or user.",
 				}),
 			),
 			github_project_number: Type.Optional(
 				Type.Number({
-					description: "github workspace: Projects v2 project number.",
+					description: "GitHub Projects v2 number.",
 				}),
 			),
 			workspace: Type.Optional(
 				Type.Record(Type.String(), Type.Unknown(), {
-					description:
-						"Non-github sinks: workspace coords — null needs no coords. Persisted and reused.",
+					description: "Non-github sinks: workspace coords. null needs none.",
 				}),
 			),
 			lanes: Type.Optional(
@@ -238,7 +235,7 @@ export function registerSinkTools(pi: ExtensionAPI): void {
 			statusMap: Type.Optional(
 				Type.Record(Type.String(), Type.String(), {
 					description:
-						'specd item status → the board\'s own workflow option (D15), e.g. { exported: "Ready", "in-progress": "In progress", done: "Done" }. updateStatus writes exactly the mapped option. Optional "in-review": the option a done task\'s still-open PR sits in until the PR merges (default "In review").',
+						'specd status → board workflow option, e.g. { exported: "Ready", "in-progress": "In progress", done: "Done" }. Optional "in-review": lane for a done task\'s open PR (default "In review").',
 				}),
 			),
 		}),
@@ -296,7 +293,6 @@ export function registerSinkTools(pi: ExtensionAPI): void {
 					changes.length === 0
 						? `Plan preview for ${sink}: already converged — no changes needed.`
 						: `Plan preview for ${sink} (${changes.length} change(s)):\n${changes.map((c) => `- ${c}`).join("\n")}\n\nRe-run with apply=true to apply.`,
-					{ changes, plan },
 				);
 			}
 
@@ -306,7 +302,6 @@ export function registerSinkTools(pi: ExtensionAPI): void {
 				changes.length === 0
 					? `Plan applied for ${sink}: already converged — no changes.`
 					: `Plan applied for ${sink} (${changes.length} change(s)):\n${changes.map((c) => `- ${c}`).join("\n")}`,
-				{ changes, plan },
 			);
 		},
 	});

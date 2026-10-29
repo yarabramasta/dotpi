@@ -10,20 +10,19 @@ export function registerPipelineTools(pi: ExtensionAPI): void {
 		name: "specd_consistency",
 		label: "Specd consistency check",
 		description:
-			"Read-only cross-artifact consistency check over specs, plans, tasks and checklists: coverage gaps, gate blockers, parallel path-scope overlaps. Mechanical findings only — run it before export or /spec run, then do the semantic pass (contradictions, duplication, ambiguity). Fixes go to the SOURCE artifact, never downstream.",
+			"Read-only cross-artifact consistency check (coverage gaps, gate blockers, scope overlaps). Mechanical findings only — run before export or /spec run, then do the semantic pass. Fixes go to the SOURCE artifact.",
 		promptSnippet: "Check spec/plan/task consistency",
 		parameters: Type.Object({
 			item: Type.Optional(
 				Type.String({
-					description:
-						"Scope the check to an item's part-of subgraph (e.g. a cycle or spec id). Omit for the whole store.",
+					description: "Scope to an item's part-of subgraph; omit for the whole store.",
 				}),
 			),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const store = await openSpecd(ctx);
 			const findings = checkConsistency(store, params.item);
-			return text(formatFindings(findings), { findings });
+			return text(formatFindings(findings));
 		},
 	});
 
@@ -31,13 +30,12 @@ export function registerPipelineTools(pi: ExtensionAPI): void {
 		name: "specd_schedule",
 		label: "Schedule specd task execution",
 		description:
-			"Compute the execution waves for a spec's tasks (or all not-done tasks): tasks ordered by phase (setup → foundational → story → polish), [P]-marked tasks with disjoint path scopes share a wave, scope collisions are serialized into later waves. Run wave 1 concurrently, then wave 2, and so on. Read-only.",
+			"Compute execution waves for a spec's tasks (or all not-done tasks): phase-ordered; [P] tasks with disjoint scopes share a wave; collisions serialize later. Run wave 1 concurrently, then wave 2. Read-only.",
 		promptSnippet: "Compute parallel execution waves",
 		parameters: Type.Object({
 			spec: Type.Optional(
 				Type.String({
-					description:
-						"Scope to the tasks linked part-of this spec id (e.g. spec-0001). Omit for all not-done tasks in the store.",
+					description: "Tasks linked part-of this spec id; omit for all not-done tasks.",
 				}),
 			),
 		}),
@@ -64,18 +62,18 @@ export function registerPipelineTools(pi: ExtensionAPI): void {
 					wave.tasks.length > 1
 						? `run these ${wave.tasks.length} concurrently`
 						: "single task";
+				// Compact per-task lines (T8): collisions and their reasons are
+				// already listed below — the schedule line carries only the
+				// identity, phase, and parallel marker.
 				lines.push(
-					`Wave ${wave.n} (${concurrency}):\n${wave.tasks.map((t) => `- ${t.id} ${t.title}${t.phase ? ` [${t.phase}]` : ""}${t.parallel ? " [P]" : ""} scope=${t.pathScope ?? "(unscoped)"}`).join("\n")}`,
+					`Wave ${wave.n} (${concurrency}):\n${wave.tasks.map((t) => `- ${t.id} ${t.title}${t.phase ? ` [${t.phase}]` : ""}${t.parallel ? " [P]" : ""}`).join("\n")}`,
 				);
 			}
 			for (const s of result.serialized) {
 				lines.push(`serialized ${s.a} after ${s.b}: ${s.reason}`);
 			}
 			if (result.waves.length === 0) lines.push("No tasks to schedule.");
-			return text(lines.join("\n\n"), {
-				waves: result.waves,
-				serialized: result.serialized,
-			});
+			return text(lines.join("\n\n"));
 		},
 	});
 }

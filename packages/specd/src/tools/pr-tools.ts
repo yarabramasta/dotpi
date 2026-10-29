@@ -19,20 +19,18 @@ export function registerPrTools(pi: ExtensionAPI): void {
 		name: "specd_open_pr",
 		label: "Open a PR for a specd task",
 		description:
-			"Open the PR for a task's convention branch (specd/<type>/<id>-<slug>) via gh. Refuses with a plain-language reason unless the task history shows review.completed {passed: true}. Body = optional summary (plain prose) or the task title; passed via --body-file. Idempotent: returns the existing PR URL when one is already open for the branch. Records pr.created {url, branch} on creation.",
+			"Open the PR for a task's convention branch via gh. Refuses without a passing review.completed. Idempotent: returns the existing PR URL; records pr.created.",
 		promptSnippet: "Open a review-gated PR for a specd task",
 		parameters: Type.Object({
 			item: Type.String({ description: "Task id (e.g. task-0001)." }),
 			summary: Type.Optional(
 				Type.String({
-					description:
-						"Plain-prose PR body (no ## sections); defaults to the task title.",
+					description: "PR body (plain prose); defaults to the task title.",
 				}),
 			),
 			base: Type.Optional(
 				Type.String({
-					description:
-						"Base branch override; defaults to the repo's default branch.",
+					description: "Base branch; defaults to the repo default.",
 				}),
 			),
 		}),

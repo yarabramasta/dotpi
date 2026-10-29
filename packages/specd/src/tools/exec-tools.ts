@@ -75,14 +75,12 @@ export function registerExecTools(pi: ExtensionAPI): void {
 			),
 			github_owner: Type.Optional(
 				Type.String({
-					description:
-						"First github export: the project owner (user or org). Persisted for later exports.",
+					description: "GitHub org/user (persisted after first export).",
 				}),
 			),
 			github_project_number: Type.Optional(
 				Type.Number({
-					description:
-						"First github export: the Projects v2 project number. Persisted for later exports.",
+					description: "GitHub Projects v2 number (persisted).",
 				}),
 			),
 		}),
@@ -138,7 +136,7 @@ export function registerExecTools(pi: ExtensionAPI): void {
 		name: "specd_create_worktree",
 		label: "Create specd execution worktree",
 		description:
-			"Create a plain git worktree for the task with branch specd/<task-id>-<slug>. The /spec run prompt expects this tool to be called before spawning the worker so branch naming and isolation are convention-owned. Returns the worktree path and branch.",
+			"Create a git worktree for the task with branch specd/<task-id>-<slug>. Returns the worktree path and branch; spawn the worker there.",
 		promptSnippet: "Create a specd-style worktree for task execution",
 		parameters: Type.Object({
 			item: Type.String({ description: "Task id (e.g. task-0001)." }),
@@ -172,12 +170,11 @@ export function registerExecTools(pi: ExtensionAPI): void {
 		name: "specd_import_preview",
 		label: "Preview grill→specd import",
 		description:
-			"Read-only preview of a grill atoms.db → specd store migration. Returns counts by grill type, sample items, and the number of edges that will become specd links. Pass apply=true to specd_import_apply to run.",
+			"Read-only preview of a grill→specd import: counts by type, sample items, edge counts. Writes nothing.",
 		promptSnippet: "Preview a grill→specd import",
 		parameters: Type.Object({
 			source: Type.String({
-				description:
-					"Path to the grill repo root (where .pi/knowledge/atoms.db lives).",
+				description: "Grill repo root (containing .pi/knowledge/atoms.db).",
 			}),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
@@ -201,14 +198,8 @@ export function registerExecTools(pi: ExtensionAPI): void {
 					...counts.entries(),
 				]
 					.map(([k, v]) => `  - ${k}: ${v}`)
-					.join(
-						"\n",
-					)}\n\nMapped items: ${mapped.items.length}\nMapped links: ${mapped.links.length}\nSkipped edges (promoted-to / unknown): ${mapped.skippedEdges.length}\n\nSample:\n${sample}\n\nRe-run as specd_import_apply(source=<path>, apply=true) to write.`,
-				{
-					source: params.source,
-					counts: Object.fromEntries(counts),
-					sample: mapped.items.slice(0, 5),
-				},
+					.join("\n")}
+				)}\n\nMapped items: ${mapped.items.length}\nMapped links: ${mapped.links.length}\nSkipped edges (promoted-to / unknown): ${mapped.skippedEdges.length}\n\nSample:\n${sample}\n\nRe-run as specd_import_apply(source=<path>, apply=true) to write.`,
 			);
 		},
 	});
@@ -217,12 +208,11 @@ export function registerExecTools(pi: ExtensionAPI): void {
 		name: "specd_import_apply",
 		label: "Apply grill→specd import",
 		description:
-			"Run the grill→specd import in one transaction. Returns counts of items + links created. Idempotent: re-running with the same source skips already-imported atoms via the `imported` event origin_id.",
+			"Apply the grill→specd import in one transaction. Idempotent via the imported event origin_id.",
 		promptSnippet: "Apply a grill→specd import",
 		parameters: Type.Object({
 			source: Type.String({
-				description:
-					"Path to the grill repo root (where .pi/knowledge/atoms.db lives).",
+				description: "Grill repo root (containing .pi/knowledge/atoms.db).",
 			}),
 			apply: Type.Boolean({ description: "Must be true to write." }),
 		}),
@@ -254,7 +244,6 @@ export function registerExecTools(pi: ExtensionAPI): void {
 			);
 			return text(
 				`Import applied.\n- items created: ${report.created.length}\n- links added: ${report.linksAdded}\n- links skipped (cross-import or duplicates): ${report.linksSkipped}\n- batch: ${batch}`,
-				{ report },
 			);
 		},
 	});
@@ -263,7 +252,7 @@ export function registerExecTools(pi: ExtensionAPI): void {
 		name: "specd_import_revert",
 		label: "Revert a specd import batch",
 		description:
-			"Revert one grill→specd import batch: removes every batch item (plus its events, links, FTS rows) restoring the exact pre-import projection. Atomic and conservative — refuses when any batch item carries post-import work or links to native items. Pass no batch to list known batches.",
+			"Revert one import batch: removes batch items, events, links, FTS rows — restores the pre-import projection. Refuses when batch items carry post-import work. Omit batch to list known batches.",
 		promptSnippet: "Revert an import batch",
 		parameters: Type.Object({
 			batch: Type.Optional(
@@ -284,13 +273,11 @@ export function registerExecTools(pi: ExtensionAPI): void {
 					batches.length === 0
 						? "No import batches in this store."
 						: `Known import batches:\n${batches.map((b) => `- ${b.batch}: ${b.items} items (imported ${b.at ?? "?"})`).join("\n")}\n\nRevert with specd_import_revert(batch=<id>).`,
-					{ batches },
 				);
 			}
 			const report = revertImport(store, params.batch);
 			return text(
 				`Reverted batch ${report.batch}: removed ${report.itemsRemoved.length} item(s) and ${report.linksRemoved} link(s). Pre-import projection restored.`,
-				{ ...report },
 			);
 		},
 	});

@@ -118,7 +118,7 @@ export function registerStoreTools(pi: ExtensionAPI): void {
 		name: "specd_create_item",
 		label: "Create specd item",
 		description:
-			"Create an item in the specd store. Kinds: spec (requires cycle with explore decision go), plan, task, cycle, epic, roadmap, constitution, checklist, knowledge. Returns the generated id.",
+			"Create an item in the specd store. Specs require a cycle whose explore decision is 'go'. Returns the generated id.",
 		promptSnippet: "Create a specd store item",
 		parameters: Type.Object({
 			kind: Type.String({
@@ -128,37 +128,33 @@ export function registerStoreTools(pi: ExtensionAPI): void {
 			body: Type.Optional(
 				Type.String({
 					description:
-						"Item body. For specs use the template: Intent / Requirements (numbered, testable) / Acceptance criteria / Out of scope.",
+						"For specs: Intent / Requirements (numbered, testable) / Acceptance criteria / Out of scope.",
 				}),
 			),
 			path_scope: Type.Optional(
 				Type.String({
-					description:
-						"For tasks: the file paths this task owns (e.g. src/auth/**).",
+					description: "Tasks: file paths this task owns (e.g. src/auth/**).",
 				}),
 			),
 			cycle: Type.Optional(
 				Type.String({
 					description:
-						"For specs (required): the cycle id whose latest explore decision must be 'go'. The spec is auto-linked part-of the cycle.",
+						"Specs (required): cycle id with explore decision 'go'; auto-linked part-of.",
 				}),
 			),
 			phase: Type.Optional(
 				Type.String({
-					description:
-						"For tasks: execution phase (setup/foundational/story/polish).",
+					description: "Tasks: setup/foundational/story/polish.",
 				}),
 			),
 			parallel: Type.Optional(
 				Type.Boolean({
-					description:
-						"For tasks: true when the task may run concurrently with others.",
+					description: "Tasks: may run concurrently with others.",
 				}),
 			),
 			extra: Type.Optional(
 				Type.Record(Type.String(), Type.Unknown(), {
-					description:
-						"Kind-specific extras merged into the created event (e.g. checklists: { items: [...] }).",
+					description: "Kind extras merged into the created event (checklists: { items: [...] }).",
 				}),
 			),
 		}),
@@ -193,7 +189,7 @@ export function registerStoreTools(pi: ExtensionAPI): void {
 		name: "specd_append_event",
 		label: "Append specd event",
 		description:
-			"Append an event to a specd item's history. Status-changing events move the item's projected state. Gated events: task.exported requires an approved spec; work.started requires reviewer-checked requirements checklists and no overlapping in-progress path scope; work.completed requires a passing review.completed.",
+			"Append an event to an item's history. Gated events (task.exported, work.started, work.completed, diagnosis.recorded) refuse when store state doesn't allow them — the refusal states why.",
 		promptSnippet: "Append an event to a specd item",
 		parameters: Type.Object({
 			item: Type.String({ description: "Item id (e.g. task-0001)." }),
@@ -282,10 +278,15 @@ export function registerStoreTools(pi: ExtensionAPI): void {
 		name: "specd_show",
 		label: "Show specd item",
 		description:
-			"Show one specd item in full: current state, body, and its complete event history.",
+			"Show one specd item: state, body, checklist/resume capsule, and history. Default is a summary (last 10 history lines + counts); full=true returns the complete history.",
 		promptSnippet: "Show a specd item with its history",
 		parameters: Type.Object({
 			item: Type.String({ description: "Item id (e.g. spec-0001)." }),
+			full: Type.Optional(
+				Type.Boolean({
+					description: "Return the complete event history (default: last 10 + counts).",
+				}),
+			),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const store = await openSpecd(ctx);
@@ -326,12 +327,21 @@ export function registerStoreTools(pi: ExtensionAPI): void {
 					item.kind === "checklist"
 						? renderChecklist(checklistState(itemStore, params.item))
 						: "";
-				const historySection = events
+				// Summary default (T2): long histories dominate the payload on
+				// items that went through the diagnose/fix loop. Last 10 lines
+				// + counts; full=true restores the complete timeline.
+				const total = events.length;
+				const shown = params.full === true ? events : events.slice(-10);
+				const historySection = shown
 					.map((e) => `- ${e.at} ${e.actor}: ${e.type}`)
 					.join("\n");
+				const historyHeader =
+					params.full === true || total <= 10
+						? "## History"
+						: `## History (last ${shown.length} of ${total} — full=true for all)`;
 				const fromLine = from ? `- from: ${from}\n` : "";
 				return text(
-					`# ${item.id}\n\n- kind: ${item.kind}\n- status: ${item.status}\n- path scope: ${item.path_scope ?? "—"}\n${fromLine}\n${item.body}${capsuleSection}${checklistSection}\n\n## History\n\n${historySection}`,
+					`# ${item.id}\n\n- kind: ${item.kind}\n- status: ${item.status}\n- path scope: ${item.path_scope ?? "—"}\n${fromLine}\n${item.body}${capsuleSection}${checklistSection}\n\n${historyHeader}\n\n${historySection}`,
 				);
 			} finally {
 				for (const ref of opened) {
@@ -363,42 +373,37 @@ export function registerStoreTools(pi: ExtensionAPI): void {
 		name: "specd_query",
 		label: "Query specd items",
 		description:
-			"Query specd items with filters and get short insight: filter by kind/status/text, scope to items linked to an item, and render one-line digests (state, last event, links). For full histories use specd_show; for store-wide state use specd_dashboard.",
+			"Query specd items with filters; renders one-line digests with insight=true, otherwise a table. Full histories: specd_show; store-wide state: specd_dashboard.",
 		promptSnippet: "Query and summarize items",
 		parameters: Type.Object({
 			kind: Type.Optional(
-				Type.String({ description: "Filter by item kind (e.g. task, spec)." }),
+				Type.String({ description: "Filter by item kind." }),
 			),
 			status: Type.Optional(
-				Type.String({
-					description: "Filter by projected status (e.g. exported, done).",
-				}),
+				Type.String({ description: "Filter by projected status." }),
 			),
 			q: Type.Optional(
 				Type.String({
-					description:
-						"Case-insensitive substring search over titles and bodies.",
+					description: "Case-insensitive search over titles and bodies.",
 				}),
 			),
 			of: Type.Optional(
 				Type.String({
-					description:
-						"Item id — restrict to items linked to/from it (part-of family, direction annotated by the digest).",
+					description: "Restrict to items linked to/from this id.",
 				}),
 			),
 			insight: Type.Optional(
 				Type.Boolean({
-					description:
-						"true renders one-line digests per match (state, last event, links) and, for exactly one match, a fuller summary.",
+					description: "true renders one-line digests per match.",
 				}),
 			),
 			limit: Type.Optional(
-				Type.Number({ description: "Max matches returned. Defaults to 20." }),
+				Type.Number({ description: "Max matches (default 20)." }),
 			),
 			store: Type.Optional(
 				Type.String({
 					description:
-						'Store to query: omit for local only, "all" for local plus referenced stores, or an absolute store directory path.',
+						'Store: omit for local, "all" for local + referenced, or a store path.',
 				}),
 			),
 		}),
@@ -451,7 +456,7 @@ export function registerStoreTools(pi: ExtensionAPI): void {
 					referenced,
 				);
 				if (rows.length === 0) {
-					return text("No items match the query.", { matches: [] });
+					return text("No items match the query.");
 				}
 				if (params.insight) {
 					const lines = rows
@@ -485,7 +490,7 @@ export function registerStoreTools(pi: ExtensionAPI): void {
 		name: "specd_remove_link",
 		label: "Remove a specd link",
 		description:
-			"Remove one typed relation between two items (e.g. to exercise a consistency negative probe, or correct a mistyped link). Destructive but surgical: only this edge is deleted; items and events are untouched. Note: links are not event-sourced — the removal is not recorded in any item's history.",
+			"Remove one typed link between two items. Surgical: only this edge is deleted; links are not event-sourced.",
 		promptSnippet: "Remove a link between items",
 		parameters: Type.Object({
 			from: Type.String({ description: "Source item id." }),
@@ -514,14 +519,13 @@ export function registerStoreTools(pi: ExtensionAPI): void {
 		name: "specd_promote",
 		label: "Promote specd item to md",
 		description:
-			"Write (or remove) an item's readable md mirror, per the configured storage mode (/spec storage). db-only mode refuses; md-inrepo writes docs/specd/<id>.md; md-external writes into the configured directory. Re-promoting is idempotent.",
+			"Write (or remove) an item's readable md mirror, per the storage mode (db-only refuses; md-inrepo → docs/specd/<id>.md; md-external → configured dir). Idempotent.",
 		promptSnippet: "Promote an item to an md file",
 		parameters: Type.Object({
 			item: Type.String({ description: "Item id (e.g. spec-0001)." }),
 			demote: Type.Optional(
 				Type.Boolean({
-					description:
-						"true removes the md mirror and promotion record instead of writing it. Defaults to false.",
+					description: "true removes the md mirror instead of writing it.",
 				}),
 			),
 		}),
