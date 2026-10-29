@@ -75,14 +75,12 @@ export function registerExecTools(pi: ExtensionAPI): void {
 			),
 			github_owner: Type.Optional(
 				Type.String({
-					description:
-						"First github export: the project owner (user or org). Persisted for later exports.",
+					description: "GitHub org/user (persisted after first export).",
 				}),
 			),
 			github_project_number: Type.Optional(
 				Type.Number({
-					description:
-						"First github export: the Projects v2 project number. Persisted for later exports.",
+					description: "GitHub Projects v2 number (persisted).",
 				}),
 			),
 		}),
@@ -138,7 +136,7 @@ export function registerExecTools(pi: ExtensionAPI): void {
 		name: "specd_create_worktree",
 		label: "Create specd execution worktree",
 		description:
-			"Create a plain git worktree for the task with branch specd/<task-id>-<slug>. The /spec run prompt expects this tool to be called before spawning the worker so branch naming and isolation are convention-owned. Returns the worktree path and branch.",
+			"Create a git worktree for the task with branch specd/<task-id>-<slug>. Returns the worktree path and branch; spawn the worker there.",
 		promptSnippet: "Create a specd-style worktree for task execution",
 		parameters: Type.Object({
 			item: Type.String({ description: "Task id (e.g. task-0001)." }),
@@ -169,75 +167,95 @@ export function registerExecTools(pi: ExtensionAPI): void {
 	});
 
 	pi.registerTool({
-		name: "specd_import_preview",
-		label: "Preview grill→specd import",
+		name: "specd_import",
+		label: "Import grill knowledge into specd",
 		description:
-			"Read-only preview of a grill atoms.db → specd store migration. Returns counts by grill type, sample items, and the number of edges that will become specd links. Pass apply=true to specd_import_apply to run.",
-		promptSnippet: "Preview a grill→specd import",
+			"Import grill→specd: mode=preview (source) read-only; mode=apply (source, apply=true required) writes idempotently; mode=revert (batch optional) lists batches or reverts one.",
+		promptSnippet: "Preview, apply, or revert a grill→specd import",
 		parameters: Type.Object({
-			source: Type.String({
-				description:
-					"Path to the grill repo root (where .pi/knowledge/atoms.db lives).",
+			mode: Type.String({
+				description: '"preview" | "apply" | "revert".',
 			}),
-		}),
-		async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
-			const { snapshotGrill } = await import("../import/grill-source.js");
-			const { mapSnapshot } = await import("../import/map.js");
-			const snap = snapshotGrill(params.source);
-			const mapped = mapSnapshot(snap);
-			const counts = new Map<string, number>();
-			for (const atom of snap.atoms) {
-				counts.set(atom.type, (counts.get(atom.type) ?? 0) + 1);
-			}
-			const sample = mapped.items
-				.slice(0, 5)
-				.map(
-					(item) =>
-						`- ${item.originId} (${item.originalType}) → ${item.kind}: ${item.title}`,
-				)
-				.join("\n");
-			return text(
-				`Import preview from ${params.source}:\n\nAtoms by grill type:\n${[
-					...counts.entries(),
-				]
-					.map(([k, v]) => `  - ${k}: ${v}`)
-					.join(
-						"\n",
-					)}\n\nMapped items: ${mapped.items.length}\nMapped links: ${mapped.links.length}\nSkipped edges (promoted-to / unknown): ${mapped.skippedEdges.length}\n\nSample:\n${sample}\n\nRe-run as specd_import_apply(source=<path>, apply=true) to write.`,
-				{
-					source: params.source,
-					counts: Object.fromEntries(counts),
-					sample: mapped.items.slice(0, 5),
-				},
-			);
-		},
-	});
-
-	pi.registerTool({
-		name: "specd_import_apply",
-		label: "Apply grill→specd import",
-		description:
-			"Run the grill→specd import in one transaction. Returns counts of items + links created. Idempotent: re-running with the same source skips already-imported atoms via the `imported` event origin_id.",
-		promptSnippet: "Apply a grill→specd import",
-		parameters: Type.Object({
-			source: Type.String({
-				description:
-					"Path to the grill repo root (where .pi/knowledge/atoms.db lives).",
-			}),
-			apply: Type.Boolean({ description: "Must be true to write." }),
+			source: Type.Optional(
+				Type.String({
+					description:
+						"preview/apply: grill repo root (containing .pi/knowledge/atoms.db).",
+				}),
+			),
+			apply: Type.Optional(
+				Type.Boolean({
+					description: "apply: must be true to write.",
+				}),
+			),
+			batch: Type.Optional(
+				Type.String({
+					description:
+						"revert: batch id to revert; omit to list known batches.",
+				}),
+			),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-			if (!params.apply) {
-				return text(
-					"Import refused: apply=true is required to write. Run specd_import_preview first to inspect the mapping.",
+			const mode = params.mode as "preview" | "apply" | "revert";
+
+			// ----- revert -----
+			if (mode === "revert") {
+				const { listImportBatches, revertImport } = await import(
+					"../import/run.js"
 				);
+				const store = await openSpecd(ctx);
+				if (!params.batch) {
+					const batches = listImportBatches(store);
+					return text(
+						batches.length === 0
+							? "No import batches in this store."
+							: `Known import batches:\n${batches.map((b) => `- ${b.batch}: ${b.items} items (imported ${b.at ?? "?"})`).join("\n")}\n\nRevert with specd_import(mode="revert", batch=<id>).`,
+					);
+				}
+				const report = revertImport(store, params.batch);
+				return text(
+					`Reverted batch ${report.batch}: removed ${report.itemsRemoved.length} item(s) and ${report.linksRemoved} link(s). Pre-import projection restored.`,
+				);
+			}
+
+			// ----- preview / apply -----
+			if (!params.source) {
+				return text(`${mode} mode requires source=<grill-repo-root>.`);
 			}
 			const { snapshotGrill } = await import("../import/grill-source.js");
 			const { mapSnapshot } = await import("../import/map.js");
-			const { planImport, applyImport } = await import("../import/run.js");
-			const store = await openSpecd(ctx);
 			const snap = snapshotGrill(params.source);
 			const mapped = mapSnapshot(snap);
+
+			if (mode === "preview") {
+				const counts = new Map<string, number>();
+				for (const atom of snap.atoms) {
+					counts.set(atom.type, (counts.get(atom.type) ?? 0) + 1);
+				}
+				const sample = mapped.items
+					.slice(0, 5)
+					.map(
+						(item) =>
+							`- ${item.originId} (${item.originalType}) → ${item.kind}: ${item.title}`,
+					)
+					.join("\n");
+				return text(
+					`Import preview from ${params.source}:\n\nAtoms by grill type:\n${[
+						...counts.entries(),
+					]
+						.map(([k, v]) => `  - ${k}: ${v}`)
+						.join("\n")}
+					)}\n\nMapped items: ${mapped.items.length}\nMapped links: ${mapped.links.length}\nSkipped edges (promoted-to / unknown): ${mapped.skippedEdges.length}\n\nSample:\n${sample}\n\nRe-run as specd_import(mode="apply", source=<path>, apply=true) to write.`,
+				);
+			}
+
+			// mode === "apply"
+			if (!params.apply) {
+				return text(
+					'Import refused: apply=true is required to write. Run specd_import(mode="preview", source=<path>) first to inspect the mapping.',
+				);
+			}
+			const { planImport, applyImport } = await import("../import/run.js");
+			const store = await openSpecd(ctx);
 			const batch = `import-${Date.now()}`;
 			const plan = planImport(store, mapped, batch);
 			// Build the id map from the plan so applyImport doesn't need
@@ -254,43 +272,6 @@ export function registerExecTools(pi: ExtensionAPI): void {
 			);
 			return text(
 				`Import applied.\n- items created: ${report.created.length}\n- links added: ${report.linksAdded}\n- links skipped (cross-import or duplicates): ${report.linksSkipped}\n- batch: ${batch}`,
-				{ report },
-			);
-		},
-	});
-
-	pi.registerTool({
-		name: "specd_import_revert",
-		label: "Revert a specd import batch",
-		description:
-			"Revert one grill→specd import batch: removes every batch item (plus its events, links, FTS rows) restoring the exact pre-import projection. Atomic and conservative — refuses when any batch item carries post-import work or links to native items. Pass no batch to list known batches.",
-		promptSnippet: "Revert an import batch",
-		parameters: Type.Object({
-			batch: Type.Optional(
-				Type.String({
-					description:
-						"The import batch id to revert. Omit to list known batches.",
-				}),
-			),
-		}),
-		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-			const { listImportBatches, revertImport } = await import(
-				"../import/run.js"
-			);
-			const store = await openSpecd(ctx);
-			if (!params.batch) {
-				const batches = listImportBatches(store);
-				return text(
-					batches.length === 0
-						? "No import batches in this store."
-						: `Known import batches:\n${batches.map((b) => `- ${b.batch}: ${b.items} items (imported ${b.at ?? "?"})`).join("\n")}\n\nRevert with specd_import_revert(batch=<id>).`,
-					{ batches },
-				);
-			}
-			const report = revertImport(store, params.batch);
-			return text(
-				`Reverted batch ${report.batch}: removed ${report.itemsRemoved.length} item(s) and ${report.linksRemoved} link(s). Pre-import projection restored.`,
-				{ ...report },
 			);
 		},
 	});

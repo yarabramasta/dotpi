@@ -144,7 +144,7 @@ store can be rebuilt.
 
 1. Push the store repo to a git host (GitHub, GitLab, etc.)
 2. Teammate clones the store repo: `git clone <url> ~/.pi/agent/stores/{name}/`
-3. Teammate registers: `specd_register_store(type="external-git", storePath=…, remote=<url>)`
+3. Teammate registers: `specd_store(action="register", type="external-git", storePath=…, remote=<url>)`
 4. Teammate runs `/spec doctor` to verify
 
 ## The registry

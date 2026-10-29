@@ -97,9 +97,9 @@ function renderChecklist(
 	return `\n\n## Checklist\n${lines.join("\n")}${summary}`;
 }
 
-/** Dashboard content shared by the /spec command and the specd_dashboard
- * tool. Read-back sync runs best-effort first (exported tasks whose sink
- * item closed become done), then the projection snapshot renders. */
+/** Dashboard content shared by the /spec command and the dashboard view
+ * of specd_read. Read-back sync runs best-effort first (exported tasks
+ * whose sink item closed become done), then the projection snapshot renders. */
 export async function dashboardContent(store: SpecdStore): Promise<string> {
 	try {
 		await syncExportedTasks(store);
@@ -118,7 +118,7 @@ export function registerStoreTools(pi: ExtensionAPI): void {
 		name: "specd_create_item",
 		label: "Create specd item",
 		description:
-			"Create an item in the specd store. Kinds: spec (requires cycle with explore decision go), plan, task, cycle, epic, roadmap, constitution, checklist, knowledge. Returns the generated id.",
+			"Create an item in the specd store. Specs require a cycle whose explore decision is 'go'. Returns the generated id.",
 		promptSnippet: "Create a specd store item",
 		parameters: Type.Object({
 			kind: Type.String({
@@ -128,37 +128,34 @@ export function registerStoreTools(pi: ExtensionAPI): void {
 			body: Type.Optional(
 				Type.String({
 					description:
-						"Item body. For specs use the template: Intent / Requirements (numbered, testable) / Acceptance criteria / Out of scope.",
+						"For specs: Intent / Requirements (numbered, testable) / Acceptance criteria / Out of scope.",
 				}),
 			),
 			path_scope: Type.Optional(
 				Type.String({
-					description:
-						"For tasks: the file paths this task owns (e.g. src/auth/**).",
+					description: "Tasks: file paths this task owns (e.g. src/auth/**).",
 				}),
 			),
 			cycle: Type.Optional(
 				Type.String({
 					description:
-						"For specs (required): the cycle id whose latest explore decision must be 'go'. The spec is auto-linked part-of the cycle.",
+						"Specs (required): cycle id with explore decision 'go'; auto-linked part-of.",
 				}),
 			),
 			phase: Type.Optional(
 				Type.String({
-					description:
-						"For tasks: execution phase (setup/foundational/story/polish).",
+					description: "Tasks: setup/foundational/story/polish.",
 				}),
 			),
 			parallel: Type.Optional(
 				Type.Boolean({
-					description:
-						"For tasks: true when the task may run concurrently with others.",
+					description: "Tasks: may run concurrently with others.",
 				}),
 			),
 			extra: Type.Optional(
 				Type.Record(Type.String(), Type.Unknown(), {
 					description:
-						"Kind-specific extras merged into the created event (e.g. checklists: { items: [...] }).",
+						"Kind extras merged into the created event (checklists: { items: [...] }).",
 				}),
 			),
 		}),
@@ -193,7 +190,7 @@ export function registerStoreTools(pi: ExtensionAPI): void {
 		name: "specd_append_event",
 		label: "Append specd event",
 		description:
-			"Append an event to a specd item's history. Status-changing events move the item's projected state. Gated events: task.exported requires an approved spec; work.started requires reviewer-checked requirements checklists and no overlapping in-progress path scope; work.completed requires a passing review.completed.",
+			"Append an event to an item's history. Gated events (task.exported, work.started, work.completed, diagnosis.recorded) refuse when store state doesn't allow them — the refusal states why.",
 		promptSnippet: "Append an event to a specd item",
 		parameters: Type.Object({
 			item: Type.String({ description: "Item id (e.g. task-0001)." }),
@@ -279,130 +276,131 @@ export function registerStoreTools(pi: ExtensionAPI): void {
 	});
 
 	pi.registerTool({
-		name: "specd_show",
-		label: "Show specd item",
+		name: "specd_read",
+		label: "Read from the specd store",
 		description:
-			"Show one specd item in full: current state, body, and its complete event history.",
-		promptSnippet: "Show a specd item with its history",
+			"Read from the specd store. view=show returns one item; view=query returns filtered items; view=dashboard returns the store-wide state.",
+		promptSnippet: "Read items or state from the specd store",
 		parameters: Type.Object({
-			item: Type.String({ description: "Item id (e.g. spec-0001)." }),
-		}),
-		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-			const store = await openSpecd(ctx);
-			let item = getItem(store, params.item);
-			let itemStore: SpecdStore = store;
-			let from: string | undefined;
-			const opened: SpecdStore[] = [];
-			try {
-				if (!item) {
-					for (const dir of resolveReferenceStores(ctx.cwd)) {
-						const ref = openStoreReadOnly(dir);
-						if (!ref) continue;
-						opened.push(ref);
-						const found = getItem(ref, params.item);
-						if (found) {
-							item = found;
-							itemStore = ref;
-							from = dir;
-							break;
-						}
-					}
-				}
-				if (!item) {
-					const refNote =
-						resolveReferenceStores(ctx.cwd).length > 0
-							? " (searched referenced stores too)"
-							: "";
-					return text(`Unknown item: ${params.item}.${refNote}`);
-				}
-				const events = history(itemStore, params.item);
-				const capsule = events.findLast((e) => e.type === "work.paused");
-				const capsuleSection = capsule
-					? renderCapsule(
-							parseJsonLoose<Record<string, unknown>>(capsule.payload),
-						)
-					: "";
-				const checklistSection =
-					item.kind === "checklist"
-						? renderChecklist(checklistState(itemStore, params.item))
-						: "";
-				const historySection = events
-					.map((e) => `- ${e.at} ${e.actor}: ${e.type}`)
-					.join("\n");
-				const fromLine = from ? `- from: ${from}\n` : "";
-				return text(
-					`# ${item.id}\n\n- kind: ${item.kind}\n- status: ${item.status}\n- path scope: ${item.path_scope ?? "—"}\n${fromLine}\n${item.body}${capsuleSection}${checklistSection}\n\n## History\n\n${historySection}`,
-				);
-			} finally {
-				for (const ref of opened) {
-					if (ref !== itemStore) {
-						ref.db.close();
-					}
-				}
-				if (itemStore !== store) {
-					itemStore.db.close();
-				}
-			}
-		},
-	});
-
-	pi.registerTool({
-		name: "specd_dashboard",
-		label: "specd dashboard",
-		description:
-			"Current state of the specd store: all items, statuses, counts. Runs sink read-back sync first (best-effort).",
-		promptSnippet: "Show the specd dashboard",
-		parameters: Type.Object({}),
-		async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
-			const store = await openSpecd(ctx);
-			return text(await dashboardContent(store));
-		},
-	});
-
-	pi.registerTool({
-		name: "specd_query",
-		label: "Query specd items",
-		description:
-			"Query specd items with filters and get short insight: filter by kind/status/text, scope to items linked to an item, and render one-line digests (state, last event, links). For full histories use specd_show; for store-wide state use specd_dashboard.",
-		promptSnippet: "Query and summarize items",
-		parameters: Type.Object({
+			view: Type.String({
+				description: '"show" | "query" | "dashboard".',
+			}),
+			item: Type.Optional(Type.String({ description: "show: item id." })),
+			full: Type.Optional(
+				Type.Boolean({
+					description:
+						"show: return complete event history (default: last 10).",
+				}),
+			),
 			kind: Type.Optional(
-				Type.String({ description: "Filter by item kind (e.g. task, spec)." }),
+				Type.String({ description: "query: filter by item kind." }),
 			),
 			status: Type.Optional(
-				Type.String({
-					description: "Filter by projected status (e.g. exported, done).",
-				}),
+				Type.String({ description: "query: filter by projected status." }),
 			),
 			q: Type.Optional(
 				Type.String({
-					description:
-						"Case-insensitive substring search over titles and bodies.",
+					description: "query: case-insensitive search over titles and bodies.",
 				}),
 			),
 			of: Type.Optional(
 				Type.String({
-					description:
-						"Item id — restrict to items linked to/from it (part-of family, direction annotated by the digest).",
+					description: "query: restrict to items linked to/from this id.",
 				}),
 			),
 			insight: Type.Optional(
 				Type.Boolean({
-					description:
-						"true renders one-line digests per match (state, last event, links) and, for exactly one match, a fuller summary.",
+					description: "query: true renders one-line digests per match.",
 				}),
 			),
 			limit: Type.Optional(
-				Type.Number({ description: "Max matches returned. Defaults to 20." }),
+				Type.Number({ description: "query: max matches (default 20)." }),
 			),
 			store: Type.Optional(
 				Type.String({
 					description:
-						'Store to query: omit for local only, "all" for local plus referenced stores, or an absolute store directory path.',
+						'query: omit for local, "all" for local + referenced, or a store path.',
 				}),
 			),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const view = params.view as "show" | "query" | "dashboard";
+
+			// ----- dashboard -----
+			if (view === "dashboard") {
+				const store = await openSpecd(ctx);
+				return text(await dashboardContent(store));
+			}
+
+			// ----- show -----
+			if (view === "show") {
+				if (!params.item) {
+					return text("show view requires item=<id>.");
+				}
+				const store = await openSpecd(ctx);
+				let item = getItem(store, params.item);
+				let itemStore: SpecdStore = store;
+				let from: string | undefined;
+				const opened: SpecdStore[] = [];
+				try {
+					if (!item) {
+						for (const dir of resolveReferenceStores(ctx.cwd)) {
+							const ref = openStoreReadOnly(dir);
+							if (!ref) continue;
+							opened.push(ref);
+							const found = getItem(ref, params.item);
+							if (found) {
+								item = found;
+								itemStore = ref;
+								from = dir;
+								break;
+							}
+						}
+					}
+					if (!item) {
+						const refNote =
+							resolveReferenceStores(ctx.cwd).length > 0
+								? " (searched referenced stores too)"
+								: "";
+						return text(`Unknown item: ${params.item}.${refNote}`);
+					}
+					const events = history(itemStore, params.item);
+					const capsule = events.findLast((e) => e.type === "work.paused");
+					const capsuleSection = capsule
+						? renderCapsule(
+								parseJsonLoose<Record<string, unknown>>(capsule.payload),
+							)
+						: "";
+					const checklistSection =
+						item.kind === "checklist"
+							? renderChecklist(checklistState(itemStore, params.item))
+							: "";
+					const total = events.length;
+					const shown = params.full === true ? events : events.slice(-10);
+					const historySection = shown
+						.map((e) => `- ${e.at} ${e.actor}: ${e.type}`)
+						.join("\n");
+					const historyHeader =
+						params.full === true || total <= 10
+							? "## History"
+							: `## History (last ${shown.length} of ${total} — full=true for all)`;
+					const fromLine = from ? `- from: ${from}\n` : "";
+					return text(
+						`# ${item.id}\n\n- kind: ${item.kind}\n- status: ${item.status}\n- path scope: ${item.path_scope ?? "—"}\n${fromLine}\n${item.body}${capsuleSection}${checklistSection}\n\n${historyHeader}\n\n${historySection}`,
+					);
+				} finally {
+					for (const ref of opened) {
+						if (ref !== itemStore) {
+							ref.db.close();
+						}
+					}
+					if (itemStore !== store) {
+						itemStore.db.close();
+					}
+				}
+			}
+
+			// ----- query -----
 			const { insightLine, queryItems, renderInsight } = await import(
 				"../query.js"
 			);
@@ -451,7 +449,7 @@ export function registerStoreTools(pi: ExtensionAPI): void {
 					referenced,
 				);
 				if (rows.length === 0) {
-					return text("No items match the query.", { matches: [] });
+					return text("No items match the query.");
 				}
 				if (params.insight) {
 					const lines = rows
@@ -485,7 +483,7 @@ export function registerStoreTools(pi: ExtensionAPI): void {
 		name: "specd_remove_link",
 		label: "Remove a specd link",
 		description:
-			"Remove one typed relation between two items (e.g. to exercise a consistency negative probe, or correct a mistyped link). Destructive but surgical: only this edge is deleted; items and events are untouched. Note: links are not event-sourced — the removal is not recorded in any item's history.",
+			"Remove one typed link between two items. Surgical: only this edge is deleted; links are not event-sourced.",
 		promptSnippet: "Remove a link between items",
 		parameters: Type.Object({
 			from: Type.String({ description: "Source item id." }),
@@ -514,14 +512,13 @@ export function registerStoreTools(pi: ExtensionAPI): void {
 		name: "specd_promote",
 		label: "Promote specd item to md",
 		description:
-			"Write (or remove) an item's readable md mirror, per the configured storage mode (/spec storage). db-only mode refuses; md-inrepo writes docs/specd/<id>.md; md-external writes into the configured directory. Re-promoting is idempotent.",
+			"Write (or remove) an item's readable md mirror, per the storage mode (db-only refuses; md-inrepo → docs/specd/<id>.md; md-external → configured dir). Idempotent.",
 		promptSnippet: "Promote an item to an md file",
 		parameters: Type.Object({
 			item: Type.String({ description: "Item id (e.g. spec-0001)." }),
 			demote: Type.Optional(
 				Type.Boolean({
-					description:
-						"true removes the md mirror and promotion record instead of writing it. Defaults to false.",
+					description: "true removes the md mirror instead of writing it.",
 				}),
 			),
 		}),
