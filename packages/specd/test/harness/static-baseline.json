@@ -1,9 +1,9 @@
 {
 	"tools": {
 		"count": 15,
-		"totalSchemaBytes": 10123,
-		"totalSchemaTokensEst": 2531,
-		"totalDescriptionBytes": 2503,
+		"totalSchemaBytes": 10410,
+		"totalSchemaTokensEst": 2603,
+		"totalDescriptionBytes": 2795,
 		"perTool": [
 			{
 				"name": "specd_configure_sink",
@@ -49,9 +49,21 @@
 			},
 			{
 				"name": "specd_open_pr",
-				"schemaBytes": 508,
-				"schemaTokensEst": 127,
-				"descriptionBytes": 155
+				"schemaBytes": 527,
+				"schemaTokensEst": 132,
+				"descriptionBytes": 174
+			},
+			{
+				"name": "specd_start_work",
+				"schemaBytes": 487,
+				"schemaTokensEst": 122,
+				"descriptionBytes": 310
+			},
+			{
+				"name": "specd_watch_checks",
+				"schemaBytes": 475,
+				"schemaTokensEst": 119,
+				"descriptionBytes": 296
 			},
 			{
 				"name": "specd_remove_link",
@@ -82,18 +94,6 @@
 				"schemaBytes": 397,
 				"schemaTokensEst": 99,
 				"descriptionBytes": 204
-			},
-			{
-				"name": "specd_watch_checks",
-				"schemaBytes": 380,
-				"schemaTokensEst": 95,
-				"descriptionBytes": 201
-			},
-			{
-				"name": "specd_create_worktree",
-				"schemaBytes": 314,
-				"schemaTokensEst": 79,
-				"descriptionBytes": 132
 			}
 		]
 	},
@@ -105,9 +105,9 @@
 		"CLARIFY_PROMPT": 860,
 		"PLAN_ENTRY_PROMPT": 718,
 		"TASKS_ENTRY_PROMPT": 761,
-		"RUN_PROMPT": 3021,
-		"DIAGNOSE_PROMPT": 1596,
-		"RUN_WAVES_PROMPT": 637,
+		"RUN_PROMPT": 2887,
+		"DIAGNOSE_PROMPT": 1577,
+		"RUN_WAVES_PROMPT": 620,
 		"CONVERGE_PROMPT": 876,
 		"SINK_PROMPT": 1415,
 		"PAUSE_PROMPT": 326,
