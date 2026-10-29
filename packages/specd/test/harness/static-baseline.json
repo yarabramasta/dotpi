@@ -1,9 +1,9 @@
 {
 	"tools": {
-		"count": 21,
-		"totalSchemaBytes": 11247,
-		"totalSchemaTokensEst": 2812,
-		"totalDescriptionBytes": 3167,
+		"count": 15,
+		"totalSchemaBytes": 10123,
+		"totalSchemaTokensEst": 2531,
+		"totalDescriptionBytes": 2503,
 		"perTool": [
 			{
 				"name": "specd_configure_sink",
@@ -18,16 +18,22 @@
 				"descriptionBytes": 114
 			},
 			{
+				"name": "specd_read",
+				"schemaBytes": 1081,
+				"schemaTokensEst": 270,
+				"descriptionBytes": 134
+			},
+			{
 				"name": "specd_append_event",
 				"schemaBytes": 944,
 				"schemaTokensEst": 236,
 				"descriptionBytes": 187
 			},
 			{
-				"name": "specd_query",
-				"schemaBytes": 810,
-				"schemaTokensEst": 203,
-				"descriptionBytes": 157
+				"name": "specd_store",
+				"schemaBytes": 771,
+				"schemaTokensEst": 193,
+				"descriptionBytes": 199
 			},
 			{
 				"name": "specd_export",
@@ -36,10 +42,10 @@
 				"descriptionBytes": 208
 			},
 			{
-				"name": "specd_register_store",
-				"schemaBytes": 563,
-				"schemaTokensEst": 141,
-				"descriptionBytes": 108
+				"name": "specd_import",
+				"schemaBytes": 642,
+				"schemaTokensEst": 161,
+				"descriptionBytes": 175
 			},
 			{
 				"name": "specd_open_pr",
@@ -52,12 +58,6 @@
 				"schemaBytes": 458,
 				"schemaTokensEst": 115,
 				"descriptionBytes": 106
-			},
-			{
-				"name": "specd_show",
-				"schemaBytes": 443,
-				"schemaTokensEst": 111,
-				"descriptionBytes": 167
 			},
 			{
 				"name": "specd_promote",
@@ -84,70 +84,34 @@
 				"descriptionBytes": 204
 			},
 			{
-				"name": "specd_import_revert",
-				"schemaBytes": 386,
-				"schemaTokensEst": 97,
-				"descriptionBytes": 192
-			},
-			{
 				"name": "specd_watch_checks",
 				"schemaBytes": 380,
 				"schemaTokensEst": 95,
 				"descriptionBytes": 201
 			},
 			{
-				"name": "specd_import_apply",
-				"schemaBytes": 379,
-				"schemaTokensEst": 95,
-				"descriptionBytes": 95
-			},
-			{
-				"name": "specd_import_preview",
-				"schemaBytes": 315,
-				"schemaTokensEst": 79,
-				"descriptionBytes": 103
-			},
-			{
 				"name": "specd_create_worktree",
 				"schemaBytes": 314,
 				"schemaTokensEst": 79,
 				"descriptionBytes": 132
-			},
-			{
-				"name": "specd_add_reference",
-				"schemaBytes": 309,
-				"schemaTokensEst": 77,
-				"descriptionBytes": 120
-			},
-			{
-				"name": "specd_store_status",
-				"schemaBytes": 215,
-				"schemaTokensEst": 54,
-				"descriptionBytes": 122
-			},
-			{
-				"name": "specd_dashboard",
-				"schemaBytes": 198,
-				"schemaTokensEst": 50,
-				"descriptionBytes": 108
 			}
 		]
 	},
 	"prompts": {
 		"HELP": 2095,
-		"ADOPT_SNIPPET": 645,
-		"START_PROMPT": 4521,
-		"CONSTITUTION_PROMPT": 633,
-		"CLARIFY_PROMPT": 849,
-		"PLAN_ENTRY_PROMPT": 707,
-		"TASKS_ENTRY_PROMPT": 750,
-		"RUN_PROMPT": 3010,
-		"DIAGNOSE_PROMPT": 1585,
+		"ADOPT_SNIPPET": 653,
+		"START_PROMPT": 4569,
+		"CONSTITUTION_PROMPT": 644,
+		"CLARIFY_PROMPT": 860,
+		"PLAN_ENTRY_PROMPT": 718,
+		"TASKS_ENTRY_PROMPT": 761,
+		"RUN_PROMPT": 3021,
+		"DIAGNOSE_PROMPT": 1596,
 		"RUN_WAVES_PROMPT": 637,
-		"CONVERGE_PROMPT": 854,
+		"CONVERGE_PROMPT": 876,
 		"SINK_PROMPT": 1415,
 		"PAUSE_PROMPT": 326,
-		"REVIEW_PROMPT": 690,
+		"REVIEW_PROMPT": 701,
 		"ANALYZE_PROMPT": 790,
 		"CONNECT_PROMPT_GITHUB": 448
 	},

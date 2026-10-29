@@ -257,17 +257,16 @@ export interface PayloadMeasures {
 	queryInsight: number;
 }
 
-/** specd_show payload growth curve on a seeded store: the tool renders one
- * history line per event with no cap, so cost grows with the diagnosis /
- * review loop. dashboard + query insight measured once on the same store. */
+/** specd_read(view=show) payload growth curve on a seeded store: the tool
+ * renders one history line per event with no cap, so cost grows with the
+ * diagnosis / review loop. dashboard + query insight measured once on the
+ * same store. */
 export async function measurePayloads(): Promise<PayloadMeasures> {
 	const t = await makeStore();
 	try {
 		const { taskId } = seedSpecdStore(t.store);
 		const defs = captureToolDefs();
-		const show = defs.find((d) => d.name === "specd_show");
-		const dashboard = defs.find((d) => d.name === "specd_dashboard");
-		const query = defs.find((d) => d.name === "specd_query");
+		const read = defs.find((d) => d.name === "specd_read");
 
 		const filler = (i: number) => ({
 			item: taskId,
@@ -291,7 +290,7 @@ export async function measurePayloads(): Promise<PayloadMeasures> {
 			}
 		};
 		const showBytes = async () =>
-			utf8Bytes(await runToolText(show, { item: taskId }, t.dir));
+			utf8Bytes(await runToolText(read, { view: "show", item: taskId }, t.dir));
 
 		await growTo(5);
 		const events5 = await showBytes();
@@ -299,9 +298,15 @@ export async function measurePayloads(): Promise<PayloadMeasures> {
 		const events20 = await showBytes();
 		await growTo(40);
 		const events40 = await showBytes();
-		const dashboardBytes = utf8Bytes(await runToolText(dashboard, {}, t.dir));
+		const dashboardBytes = utf8Bytes(
+			await runToolText(read, { view: "dashboard" }, t.dir),
+		);
 		const queryBytes = utf8Bytes(
-			await runToolText(query, { kind: "task", insight: true }, t.dir),
+			await runToolText(
+				read,
+				{ view: "query", kind: "task", insight: true },
+				t.dir,
+			),
 		);
 		return {
 			show: { events5, events20, events40 },

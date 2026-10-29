@@ -13,9 +13,7 @@
 		"reasoning": 637,
 		"totalTokens": 315769,
 		"costTotal": 0.048351649999999996,
-		"models": [
-			"zai-org/GLM-5.3-Flash"
-		]
+		"models": ["zai-org/GLM-5.3-Flash"]
 	},
 	"children": [
 		{
@@ -28,9 +26,7 @@
 			"reasoning": 0,
 			"totalTokens": 97936,
 			"costTotal": 0.034145619999999995,
-			"models": [
-				"moonshotai/Kimi-K2.7-Code"
-			],
+			"models": ["moonshotai/Kimi-K2.7-Code"],
 			"role": "unknown"
 		},
 		{
@@ -43,9 +39,7 @@
 			"reasoning": 0,
 			"totalTokens": 5658,
 			"costTotal": 0.0015460499999999998,
-			"models": [
-				"moonshotai/Kimi-K2.7-Code"
-			],
+			"models": ["moonshotai/Kimi-K2.7-Code"],
 			"role": "unknown"
 		},
 		{
@@ -58,9 +52,7 @@
 			"reasoning": 2822,
 			"totalTokens": 103739,
 			"costTotal": 0.07623628399999999,
-			"models": [
-				"deepseek-ai/DeepSeek-V4-Pro-0813"
-			],
+			"models": ["deepseek-ai/DeepSeek-V4-Pro-0813"],
 			"role": "unknown"
 		}
 	],
