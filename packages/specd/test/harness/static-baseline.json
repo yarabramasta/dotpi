@@ -1,0 +1,303 @@
+{
+	"tools": {
+		"count": 21,
+		"totalSchemaBytes": 13728,
+		"totalSchemaTokensEst": 3432,
+		"totalDescriptionBytes": 4847,
+		"perTool": [
+			{
+				"name": "specd_configure_sink",
+				"schemaBytes": 1954,
+				"schemaTokensEst": 489,
+				"descriptionBytes": 458
+			},
+			{
+				"name": "specd_create_item",
+				"schemaBytes": 1306,
+				"schemaTokensEst": 327,
+				"descriptionBytes": 185
+			},
+			{
+				"name": "specd_query",
+				"schemaBytes": 1138,
+				"schemaTokensEst": 285,
+				"descriptionBytes": 248
+			},
+			{
+				"name": "specd_append_event",
+				"schemaBytes": 1068,
+				"schemaTokensEst": 267,
+				"descriptionBytes": 311
+			},
+			{
+				"name": "specd_export",
+				"schemaBytes": 830,
+				"schemaTokensEst": 208,
+				"descriptionBytes": 208
+			},
+			{
+				"name": "specd_open_pr",
+				"schemaBytes": 771,
+				"schemaTokensEst": 193,
+				"descriptionBytes": 385
+			},
+			{
+				"name": "specd_register_store",
+				"schemaBytes": 661,
+				"schemaTokensEst": 165,
+				"descriptionBytes": 180
+			},
+			{
+				"name": "specd_remove_link",
+				"schemaBytes": 646,
+				"schemaTokensEst": 162,
+				"descriptionBytes": 294
+			},
+			{
+				"name": "specd_consistency",
+				"schemaBytes": 557,
+				"schemaTokensEst": 139,
+				"descriptionBytes": 326
+			},
+			{
+				"name": "specd_schedule",
+				"schemaBytes": 544,
+				"schemaTokensEst": 136,
+				"descriptionBytes": 308
+			},
+			{
+				"name": "specd_promote",
+				"schemaBytes": 541,
+				"schemaTokensEst": 135,
+				"descriptionBytes": 233
+			},
+			{
+				"name": "specd_import_apply",
+				"schemaBytes": 495,
+				"schemaTokensEst": 124,
+				"descriptionBytes": 198
+			},
+			{
+				"name": "specd_import_revert",
+				"schemaBytes": 479,
+				"schemaTokensEst": 120,
+				"descriptionBytes": 285
+			},
+			{
+				"name": "specd_import_preview",
+				"schemaBytes": 433,
+				"schemaTokensEst": 108,
+				"descriptionBytes": 208
+			},
+			{
+				"name": "specd_create_worktree",
+				"schemaBytes": 428,
+				"schemaTokensEst": 107,
+				"descriptionBytes": 246
+			},
+			{
+				"name": "specd_add_link",
+				"schemaBytes": 417,
+				"schemaTokensEst": 104,
+				"descriptionBytes": 68
+			},
+			{
+				"name": "specd_watch_checks",
+				"schemaBytes": 380,
+				"schemaTokensEst": 95,
+				"descriptionBytes": 201
+			},
+			{
+				"name": "specd_add_reference",
+				"schemaBytes": 369,
+				"schemaTokensEst": 92,
+				"descriptionBytes": 148
+			},
+			{
+				"name": "specd_store_status",
+				"schemaBytes": 261,
+				"schemaTokensEst": 65,
+				"descriptionBytes": 168
+			},
+			{
+				"name": "specd_show",
+				"schemaBytes": 252,
+				"schemaTokensEst": 63,
+				"descriptionBytes": 81
+			},
+			{
+				"name": "specd_dashboard",
+				"schemaBytes": 198,
+				"schemaTokensEst": 50,
+				"descriptionBytes": 108
+			}
+		]
+	},
+	"prompts": {
+		"HELP": 2095,
+		"ADOPT_SNIPPET": 645,
+		"START_PROMPT": 5071,
+		"CONSTITUTION_PROMPT": 633,
+		"CLARIFY_PROMPT": 849,
+		"PLAN_ENTRY_PROMPT": 707,
+		"TASKS_ENTRY_PROMPT": 878,
+		"RUN_PROMPT": 3391,
+		"DIAGNOSE_PROMPT": 1718,
+		"RUN_WAVES_PROMPT": 637,
+		"CONVERGE_PROMPT": 854,
+		"SINK_PROMPT": 1415,
+		"PAUSE_PROMPT": 326,
+		"REVIEW_PROMPT": 690,
+		"ANALYZE_PROMPT": 790,
+		"CONNECT_PROMPT_GITHUB": 448
+	},
+	"payloads": {
+		"show": {
+			"events5": 570,
+			"events20": 1335,
+			"events40": 2355
+		},
+		"dashboard": 382,
+		"queryInsight": 271
+	},
+	"refusals": [
+		{
+			"gate": "export",
+			"scenario": "task linked to approved spec",
+			"ok": true,
+			"reason": ""
+		},
+		{
+			"gate": "export",
+			"scenario": "task linked to unapproved spec",
+			"ok": false,
+			"reason": "The spec spec-0002 is not approved yet. Get the spec approved before exporting its tasks."
+		},
+		{
+			"gate": "export",
+			"scenario": "task without spec link",
+			"ok": false,
+			"reason": "task-0003 is not linked to a spec yet. Link it first: specd_add_link from=task-0003 to=<spec id> kind=part-of."
+		},
+		{
+			"gate": "spec-creation",
+			"scenario": "no cycle",
+			"ok": false,
+			"reason": "Specs live inside cycles. Create the cycle first (specd_create_item kind=cycle), record the explore decision on it, then create the spec with cycle=<cycle id>."
+		},
+		{
+			"gate": "spec-creation",
+			"scenario": "cycle without explore decision",
+			"ok": false,
+			"reason": "No explore decision recorded on cycle-0001 yet. Ask the explore question (\"any unknowns worth researching first?\"), record the answer with specd_append_event(type=explore.decided, payload={decision: \"go\" | \"needs-clarification\" | \"stop\"}), then create the spec."
+		},
+		{
+			"gate": "spec-creation",
+			"scenario": "cycle with go decision",
+			"ok": true,
+			"reason": ""
+		},
+		{
+			"gate": "start-work",
+			"scenario": "unknown task",
+			"ok": false,
+			"reason": "Unknown item: task-9999."
+		},
+		{
+			"gate": "start-work",
+			"scenario": "non-task item",
+			"ok": false,
+			"reason": "Only tasks run through the execution seam, and spec-0001 is a spec."
+		},
+		{
+			"gate": "start-work",
+			"scenario": "unchecked checklist on linked spec",
+			"ok": false,
+			"reason": "Requirements checklist checklist-0001 has 2 unchecked item(s) out of 2. The reviewer must check them (via /spec review) before implementation runs."
+		},
+		{
+			"gate": "start-work",
+			"scenario": "all checklist items checked, no overlap",
+			"ok": true,
+			"reason": ""
+		},
+		{
+			"gate": "start-work",
+			"scenario": "overlapping in-progress task",
+			"ok": false,
+			"reason": "Requirements checklist checklist-0001 has 2 unchecked item(s) out of 2. The reviewer must check them (via /spec review) before implementation runs."
+		},
+		{
+			"gate": "start-work",
+			"scenario": "disjoint scope, spec checklist still unchecked",
+			"ok": false,
+			"reason": "Requirements checklist checklist-0001 has 2 unchecked item(s) out of 2. The reviewer must check them (via /spec review) before implementation runs."
+		},
+		{
+			"gate": "complete-work",
+			"scenario": "no review yet",
+			"ok": false,
+			"reason": "task-0001 has no review yet. Spawn a reviewer subagent over the implemented work and record its verdict: specd_append_event(type=review.completed, payload={passed: true|false, findings: [...]})."
+		},
+		{
+			"gate": "complete-work",
+			"scenario": "failing review, no diagnosis",
+			"ok": false,
+			"reason": "The latest review of task-0001 did not pass (or recorded no verdict). Diagnose first — /spec diagnose task-0001 (record diagnosis.recorded with the symptom, root cause, and whether the spec itself was wrong) — then fix, re-run the reviewer, and record a passing review.completed before completing."
+		},
+		{
+			"gate": "complete-work",
+			"scenario": "failing review + diagnosis, still no passing review",
+			"ok": false,
+			"reason": "The latest review of task-0001 did not pass (or recorded no verdict). Diagnose first — /spec diagnose task-0001 (record diagnosis.recorded with the symptom, root cause, and whether the spec itself was wrong) — then fix, re-run the reviewer, and record a passing review.completed before completing."
+		},
+		{
+			"gate": "complete-work",
+			"scenario": "passing review after failure + diagnosis",
+			"ok": true,
+			"reason": ""
+		},
+		{
+			"gate": "complete-work",
+			"scenario": "specGap diagnosis, spec not yet revised",
+			"ok": false,
+			"reason": "The latest diagnosis of task-0001 says the spec itself was wrong. Revise spec-0001 first (specd_append_event type=body.updated on the spec) so the fix and the spec stay aligned, then complete."
+		},
+		{
+			"gate": "complete-work",
+			"scenario": "specGap diagnosis, spec revised after",
+			"ok": true,
+			"reason": ""
+		},
+		{
+			"gate": "diagnosis-target",
+			"scenario": "draft task",
+			"ok": false,
+			"reason": "diagnosis.recorded belongs to an in-progress task — task-0001 is a task in draft. Run /spec diagnose while the work is open."
+		},
+		{
+			"gate": "diagnosis-target",
+			"scenario": "in-progress task",
+			"ok": true,
+			"reason": ""
+		},
+		{
+			"gate": "diagnosis-target",
+			"scenario": "spec item",
+			"ok": false,
+			"reason": "diagnosis.recorded belongs to an in-progress task — spec-0001 is a spec in approved. Run /spec diagnose while the work is open."
+		},
+		{
+			"gate": "checklists-clear",
+			"scenario": "unchecked checklist items",
+			"ok": false,
+			"reason": "Requirements checklist checklist-0001 has 2 unchecked item(s) out of 2. The reviewer must check them (via /spec review) before implementation runs."
+		},
+		{
+			"gate": "checklists-clear",
+			"scenario": "all checklist items checked",
+			"ok": true,
+			"reason": ""
+		}
+	]
+}
