@@ -34,7 +34,7 @@ sessions that never run /spec commands still know the specd conventions:
 
 \`\`\`markdown
 ## specd
-- Run specd_store_status before non-trivial work; check for a spec or task covering it.
+- Run specd_store(action=status) before non-trivial work; check for a spec or task covering it.
 - Never hand-edit the store (.spec/store.db or the registered external store) — specd tools only; refusals are correct.
 - Conventional commits type(scope): subject; the specd/ branch prefix is the tool namespace.
 - Ad-hoc work outside specd is fine — /spec converge will fold it into the store later.
@@ -50,7 +50,7 @@ ${idea}
 
 Follow the fast-path flow. The specd tools enforce the gates — never work around them.
 
-0. STORE CHECK — call specd_store_status. If a store exists, continue. If not, ask me where it should live (ask-user-question): External specd-managed (zero footprint, register with specd_register_store type=external storePath=~/.pi/agent/stores/{repo-name}) · External git repo (shareable, type=external-git) · In this repo (.spec/ gitignored, the default) · In this repo (.spec/ committed, type=in-repo). Then add .spec/ to .gitignore if in-repo and gitignored.
+0. STORE CHECK — call specd_store(action=status). If a store exists, continue. If not, ask me where it should live (ask-user-question): External specd-managed (zero footprint, register with specd_store(action=register, type=external, storePath=~/.pi/agent/stores/{repo-name})) · External git repo (shareable, specd_store(action=register, type=external-git)) · In this repo (.spec/ gitignored, the default) · In this repo (.spec/ committed, type=in-repo). Then add .spec/ to .gitignore if in-repo and gitignored.
 
 1. CYCLE — create it: specd_create_item(kind=cycle, title=<short idea>).
 2. EXPLORE — ask me once: "any unknowns worth researching first?" If yes, run one web research query and record findings on the cycle: specd_append_event(item=<cycle id>, type=evidence.added, payload={finding}). Then record my decision: specd_append_event(item=<cycle id>, type=explore.decided, payload={decision:"go"|"needs-clarification"|"stop", reason}). A documented "stop" ends the cycle; "needs-clarification" loops more research; only "go" proceeds.
@@ -71,7 +71,7 @@ VALID ITEM KINDS are enumerated by the tool's kind parameter.
 
 export const CONSTITUTION_PROMPT = `Create/review/update the constitution (the product layer's anchor):
 
-1. specd_query(kind="constitution") — check if one exists.
+1. specd_read(view=query, kind="constitution") — check if one exists.
 2. If none: interview me for the product purpose + principles, then specd_create_item(kind="constitution", title=…, body=…).
 3. If one exists: show it, ask what to change (principles, purpose, scope), record specd_append_event(item=<id>, type="body.updated", payload={body: <revised>}).
 4. Re-check: specd_consistency() — every plan should anchor to the constitution.
@@ -82,7 +82,7 @@ export const CLARIFY_PROMPT = (
 	specId: string,
 ) => `Targeted clarification loop on the spec ${specId}:
 
-1. specd_show(item=${specId}) — read the current spec body and its event history.
+1. specd_read(view=show, item=${specId}) — read the current spec body and its event history.
 2. Ask me which focus area to clarify (scope boundary, acceptance criteria, requirements, out of scope) or accept free-form questions.
 3. For each answer: specd_append_event(item=${specId}, type="body.updated", payload={body: <revised spec body>}) — the spec body evolves in place.
 4. Record significant answers as evidence: specd_append_event(item=${specId}, type="evidence.added", payload={finding: "…"}).
@@ -95,7 +95,7 @@ export const PLAN_ENTRY_PROMPT = (
 	specId: string,
 ) => `Plan the approved spec ${specId} (standalone re-entry):
 
-1. specd_show(item=${specId}) — verify it is approved (the gates require it before tasks can export).
+1. specd_read(view=show, item=${specId}) — verify it is approved (the gates require it before tasks can export).
 2. Interview me for the technical approach: core language/framework, data model, architecture constraints, dependencies.
 3. specd_create_item(kind="plan", title=…, body=<technical approach>) linked part-of ${specId}.
 4. Record each technical decision: specd_append_event(item=<plan id>, type="decision.made", payload={decision}).
@@ -106,7 +106,7 @@ export const TASKS_ENTRY_PROMPT = (
 	specId: string,
 ) => `Break the approved+planned spec ${specId} into tasks:
 
-1. specd_show(item=${specId}) — verify it is approved and has a linked plan.
+1. specd_read(view=show, item=${specId}) — verify it is approved and has a linked plan.
 2. Interview me for the task breakdown: what are the 1–3 work items, their conventional types (feat/fix/chore/docs), path scopes, and [P] parallel markers? Phrase every acceptance criterion as a verifiable goal — a test to write, a command to run, an observable outcome — never an imperative like "make it work".
 3. specd_create_item(kind="task", title=…, body=<acceptance criteria>, path_scope=…, extra={type:"feat"}) each, linked part-of ${specId}.
 4. Verify with specd_schedule(spec=${specId}) — waves, parallelism, serialization.
@@ -116,7 +116,7 @@ export const RUN_PROMPT = (
 	task: string,
 ) => `Run the task ${task} through the execution seam (checklist-gated, reviewer-signed):
 
-1. specd_show(item=${task}) — read the task body (acceptance criteria), path scope, and the linked spec for context. If the history ends with work.paused, read that capsule and resume from it.
+1. specd_read(view=show, item=${task}) — read the task body (acceptance criteria), path scope, and the linked spec for context. If the history ends with work.paused, read that capsule and resume from it.
 2. specd_create_worktree(item=${task}) — get the isolated worktree path and convention branch (specd/<task-id>-<slug>). Never reuse another task's worktree.
 3. specd_append_event(item=${task}, type=work.started) — the gate refuses unmet preconditions (unchecked checklists, overlapping in-progress scope); never work around refusals.
 4. Spawn ONE worker subagent (subagent tool, agent=worker) in the worktree cwd with a brief containing:
@@ -139,7 +139,7 @@ export const DIAGNOSE_PROMPT = (
 	symptom?: string,
 ) => `Run the diagnose/fix loop for ${task}${symptom ? ` — reported symptom: ${symptom}` : ""}:
 
-1. specd_show(item=${task}) — read the task, its linked spec, and the history: failing review.completed findings, failing CI checks, and any earlier diagnosis.recorded events.
+1. specd_read(view=show, item=${task}) — read the task, its linked spec, and the history: failing review.completed findings, failing CI checks, and any earlier diagnosis.recorded events.
 2. REPRODUCE — run the failing evidence yourself in the task's worktree (the failing test, build, or check) until you can state the symptom precisely. Do not fix yet.
 3. ROOT CAUSE — trace the failure to its cause, then judge: is the code wrong, or the spec? A bug that reveals a spec gap (wrong requirement, missing constraint, wrong acceptance criterion) is a specGap.
 4. RECORD — specd_append_event(item=${task}, type=diagnosis.recorded, payload={symptom, rootCause, evidence: […], specGap: true|false}).
@@ -158,7 +158,7 @@ export const CONVERGE_PROMPT = (
 	scope: string,
 ) => `Run a convergence assessment for ${scope} (append-only; fixes at source):
 
-1. specd_show(item=${scope}) and list its tasks with statuses (specd_dashboard). Mechanical pass: specd_consistency(item=${scope}).
+1. specd_read(view=show, item=${scope}) and list its tasks with statuses (specd_read(view=dashboard)). Mechanical pass: specd_consistency(item=${scope}).
 2. Assess gaps: requirements in the spec with no covering task, tasks not done, work discovered during execution that the spec now implies, decisions that contradict the spec.
 3. For each real gap, create the missing work: specd_create_item(kind=task, …) linked part-of the spec — new work is APPENDED, never silently folded into existing tasks.
 4. Record the assessment: specd_append_event(item=${scope}, type=convergence.assessed, payload={done: true|false, gaps: [...]}).
@@ -203,7 +203,7 @@ export const REVIEW_PROMPT = (
 	id: string,
 ) => `Review the requirements checklist ${id}:
 
-1. specd_show(item=${id}) — read the checklist items and which are already checked.
+1. specd_read(view=show, item=${id}) — read the checklist items and which are already checked.
 2. Present each unchecked item to me (ask-user-question) and ask whether it passes as a requirements-quality criterion — is the requirement testable, unambiguous, complete?
 3. For each item I approve: specd_append_event(item=${id}, type=checklist.item.checked, payload={index: <n>}). Checked items are reviewer decisions about requirements quality — they are NOT implementation work, and implementation is blocked while any remain unchecked.
 4. When every item is checked, confirm the checklist is complete and offer the next step.`;

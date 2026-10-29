@@ -179,15 +179,15 @@ export function registerCommands(pi: ExtensionAPI): void {
 				}
 				if (mode === "preview") {
 					pi.sendUserMessage(
-						`Run specd_import_preview(source=${JSON.stringify(source)}) and summarize what would be imported.`,
+						`Run specd_import(mode="preview", source=${JSON.stringify(source)}) and summarize what would be imported.`,
 					);
 				} else if (mode === "apply") {
 					pi.sendUserMessage(
-						`Run specd_import_apply(source=${JSON.stringify(source)}, apply=true). Confirm idempotency by re-running the preview after.`,
+						`Run specd_import(mode="apply", source=${JSON.stringify(source)}, apply=true). Confirm idempotency by re-running the preview after.`,
 					);
 				} else if (mode === "revert") {
 					pi.sendUserMessage(
-						`Run specd_import_revert() to list known import batches, show me the list, and revert only the batch I name (specd_import_revert(batch=<id>)). After reverting, run /spec doctor to confirm the store is clean.`,
+						`Run specd_import(mode="revert") to list known import batches, show me the list, and revert only the batch I name (specd_import(mode="revert", batch=<id>)). After reverting, run /spec doctor to confirm the store is clean.`,
 					);
 				} else {
 					ctx.ui.notify(

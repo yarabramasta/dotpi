@@ -7,12 +7,12 @@ This guide is for the AI agent operating specd tools. Follow these rules.
 Before any specd operation, verify a store exists:
 
 ```
-specd_store_status
+specd_store(action=status)
 ```
 
 - If a store is registered or found at `.spec/store.db` → proceed.
 - If not → ask the user where it should live using `ask_user_question`:
-  1. External — specd-managed (zero footprint): register with `specd_register_store(type="external", storePath="~/.pi/agent/stores/{repo-name}")`
+  1. External — specd-managed (zero footprint): register with `specd_store(action="register", type="external", storePath="~/.pi/agent/stores/{repo-name}")`
   2. External — git repo (shareable): same but `type="external-git"`
   3. In this repo (`.spec/`, gitignored): the default, no registration needed
   4. In this repo (`.spec/`, committed): `type="in-repo"`
@@ -106,7 +106,7 @@ name the exact missing piece.
 ## Scope collision
 
 When the start gate refuses due to scope collision:
-- Check which task is in-progress and what its scope is: `specd_show(item=<in-progress-task-id>)`
+- Check which task is in-progress and what its scope is: `specd_read(view="show", item=<in-progress-task-id>)`
 - If the current task's scope genuinely overlaps → the collision is correct. Wait for the other task to complete, or pause it.
 - If the scopes don't actually overlap → the task may need an explicit path scope (unscoped tasks collide with everything). Ask the user for the correct scope, then `specd_append_event(item=<task>, type="body.updated", payload={path_scope: "..."})`.
 
@@ -114,17 +114,16 @@ When the start gate refuses due to scope collision:
 
 When the store has references to other stores (D11):
 
-- `specd_query(store="all")` searches local + referenced stores
+- `specd_read(view="query", store="all")` searches local + referenced stores
 - Items from referenced stores are READ-ONLY — never append events to them
-- `specd_show` searches referenced stores when the item is not found locally
-- Referenced items are annotated with their source store
+- `specd_read(view="show", item=<id>)` searches referenced stores when the item is not found locally, and annotates referenced items with their source store
 
 ## Error handling
 
 When a tool returns an error:
 
 1. Read the error message — it contains the reason and often the fix
-2. Check the store state: `specd_show` or `specd_dashboard`
+2. Check the store state: `specd_read(view="show", item=<id>)` or `specd_read(view="dashboard")`
 3. If the error is unexpected (not a gate refusal), report it to the user
 4. Never silently retry or ignore errors
 

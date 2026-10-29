@@ -42,15 +42,15 @@ The agent handles the full seam: worktree, worker, reviewer, PR. You review the 
 | Review fails | `/spec diagnose <task>` — diagnose, record, fix, re-review. The gate requires the diagnosis |
 | CI fails on the task's PR | Same loop: `/spec diagnose <task>` |
 | Scope collision | Another task is in-progress with overlapping files |
-| Unknown item | Use specd_query to find the right id |
+| Unknown item | Use specd_read(view="query") to find the right id |
 
 ## Querying the store
 
 ```
-specd_query(kind="task", status="exported")
-specd_query(of="spec-0001", insight=true)
-specd_query(q="login route")
-specd_query(kind="product")
+specd_read(view="query", kind="task", status="exported")
+specd_read(view="query", of="spec-0001", insight=true)
+specd_read(view="query", q="login route")
+specd_read(view="query", kind="product")
 ```
 
 The insight mode gives one-line digests. For a single match, it adds the full event history and link list.
@@ -92,8 +92,8 @@ These are doors into the pipeline at any stage. The gates still enforce ordering
 Every decision, every approval, every state transition is recorded as an append-only event. When you come back to a project after weeks:
 
 1. `/spec` — the dashboard shows the current state of everything
-2. `specd_query(of="epic-0001")` — what's connected to this epic?
-3. `specd_show spec-0001` — what did we decide and why?
+2. `specd_read(view="query", of="epic-0001")` — what's connected to this epic?
+3. `specd_read(view="show", item="spec-0001")` — what did we decide and why?
 4. `/spec doctor` — is the store healthy?
 
 The store remembers what you decided even when you don't.
