@@ -65,6 +65,7 @@ export interface MappedLink {
  * body marker. Mis-guesses are re-classifiable via kind.reclassified. */
 const TYPE_TO_KIND: Readonly<Record<string, MappedItemKind>> = {
 	plan: "plan",
+	spec: "spec",
 	decision: "application",
 	research: "application",
 	spike: "application",
