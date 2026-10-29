@@ -184,6 +184,30 @@ describe("start gate (work.started)", () => {
 		});
 		expect(checkCanStartWork(t.store, unscoped.id).ok).toBe(false);
 	});
+
+	it("a paused task does not block the start gate", async () => {
+		t = await makeStore();
+		const { taskId } = await makeApprovedCycle();
+		appendEvent(t.store, { item: taskId, type: "work.started", actor: "test" });
+		appendEvent(t.store, {
+			item: taskId,
+			type: "work.paused",
+			payload: { nextStep: "awaiting its spec round" },
+			actor: "test",
+		});
+		// Paused: last event is work.paused — no concurrent worker, no clash.
+		const other = createItem(t.store, {
+			kind: "task",
+			title: "Second task",
+			body: "",
+			pathScope: "src/auth/**",
+			actor: "test",
+		});
+		expect(checkCanStartWork(t.store, other.id).ok).toBe(true);
+		// Resumed: the last event flips back — the clash returns.
+		appendEvent(t.store, { item: taskId, type: "work.resumed", actor: "test" });
+		expect(checkCanStartWork(t.store, other.id).ok).toBe(false);
+	});
 });
 
 describe("completion gate (work.completed)", () => {

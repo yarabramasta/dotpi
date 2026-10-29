@@ -157,7 +157,14 @@ export function checkCanStartWork(
 	if (!checklists.ok) return checklists;
 
 	const inProgress = listItems(store, { status: "in-progress" }).filter(
-		(t) => t.id !== taskId && t.kind === "task",
+		(t) =>
+			t.id !== taskId &&
+			t.kind === "task" &&
+			// A paused task holds no concurrent worker (work.paused keeps the
+			// projected status at in-progress — pause is capsule-only by design),
+			// so it must not block the start gate despite the refusal text
+			// pointing at pause as the remedy.
+			history(store, t.id).at(-1)?.type !== "work.paused",
 	);
 	const clash = inProgress.find((t) =>
 		pathScopesOverlap(t.path_scope, task.path_scope),
