@@ -4,6 +4,15 @@
 **Audience:** specd/dotpi maintainers debugging a stale required-tool name in a worker/reviewer spawn  
 **Runtime cost:** no model calls, no writes to `~/.pi` or `node_modules` beyond read-only imports from the installed `pi-subagents` package
 
+## Environment
+
+Two `pi-subagents` copies exist and this runbook targets exactly one of them:
+
+- **Repo pin (0.70.0)** — declared in `package.json` / `pnpm-lock.yaml`, installed under `node_modules/` for repo-side tests. No `bundle/` directory; internals live under `src/` behind package exports (`pi-subagents/child-tool-plan`, registry at `src/agents/runtime-agent-registry.js`). The scripts below will NOT run against this copy unchanged.
+- **Installed runtime (0.84.0)** — `~/.pi/agent/npm/node_modules/pi-subagents`, the copy the live parent `pi` process loads. Has the `bundle/` chunk layout the scripts import. This is the repro target, because the bug is about the live parent process.
+
+If your installed copy differs, adjust `SUBAGENTS` and the import paths — the chunk layout is version-specific.
+
 ## Goal
 
 Reproduce and locate where a live `pi` parent session reuses a stale required-tool set after the extension or agent definition that supplied the name has been renamed/removed.
@@ -23,7 +32,7 @@ The stale required-tool set is read from the **`pi-subagents` runtime agent regi
 
 This matches the 2026-10-29 lingua-lair-core symptom: after `cbc3afa` merged the specd tool surface, a still-running parent session spawned workers that still carried the pre-merge tool names.
 
-## What the launch resolved (executed 2026-10-29)
+## What the launch resolved (executed 2026-10-29 against the installed 0.84.0 runtime copy)
 
 Warm parent process, extension source already rewritten to `v2` (`stale_repro_y`):
 
@@ -66,7 +75,7 @@ Fresh process loading the updated extension source:
 ### Scripted repro
 
 1. Save the two files below to `/tmp`.
-2. Adjust `SUBAGENTS` if `pi-subagents` is installed somewhere other than `~/.pi/agent/npm/node_modules/pi-subagents`.
+2. Adjust `SUBAGENTS` if `pi-subagents` is installed somewhere other than `~/.pi/agent/npm/node_modules/pi-subagents`. The scripts import the installed **0.84.0** runtime's `bundle/` chunk layout; the repo-pinned copy (0.70.0, under `node_modules/`) has no `bundle/` and different internals — point `SUBAGENTS` at the installed copy (see Environment), never at `node_modules`.
 3. Run:
 
 ```bash
@@ -212,7 +221,8 @@ console.log(JSON.stringify({
 ## Conclusion
 
 - **Pinned cause:** `pi-subagents` keeps runtime-registered agents in a process-local registry keyed by the live `pi` session. When an extension renames or removes a tool, the parent session does not re-evaluate the runtime agent definition on the next spawn, so the child launch reuses a stale `tools` allowlist.
-- **Local mitigation (already applied in dotpi):** pin `agent/agents/specd-worker.md` and `agent/agents/specd-reviewer.md` with an explicit `tools:` snapshot, and add a `dotpi doctor` guard that resolves each agent definition against the current tool surface. This catches stale names before they reach a spawn.
+- **Local mitigation (designed; pending merge):** pin `agent/agents/specd-worker.md` and `agent/agents/specd-reviewer.md` with an explicit `tools:` snapshot, and add a frontmatter guard test that resolves each agent definition against the current tool surface. This lands with task-0006 (branch `specd/fix/task-0006-pin-specd-agent-contracts`, unmerged at the time of writing — on the current base only `specd-reviewer.md` carries a `tools:` allowlist; `specd-worker.md` does not yet). It catches stale names before they reach a spawn.
+- **Interim operational mitigation:** restart the parent `pi` session (fresh process) after any extension tool-surface change before spawning children — a fresh process reloads extensions and rebuilds the runtime registry, exactly as the fresh-process phase above demonstrates.
 - **Upstream:** this is a `nicobailon/pi-subagents` bug. Draft issue text below can be filed.
 
 ## Upstream draft issue
@@ -221,7 +231,7 @@ console.log(JSON.stringify({
 
 **Repository:** `https://github.com/nicobailon/pi-subagents`
 
-**Environment:** `pi-subagents` 0.84.0, Node 22+
+**Environment:** `pi-subagents` 0.84.0 (installed runtime copy, `bundle/` chunk layout — the minimal script targets that copy; the repo-pinned 0.70.0 has no `bundle/` and different internals, so adapt import paths for other versions), Node 22+
 
 **Steps to reproduce:**
 
