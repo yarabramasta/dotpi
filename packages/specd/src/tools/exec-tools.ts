@@ -201,7 +201,7 @@ export function registerExecTools(pi: ExtensionAPI): void {
 			}
 			const sinkNote = sinkPush ? ` Sink: ${sinkPush}.` : "";
 			return text(
-				`Worktree ready.\n- path: ${worktreePath}\n- branch: ${branch}\n- status: ${current?.status ?? "?"}${sinkNote}\n\nSpawn the worker in cwd=${worktreePath} (subagent tool, agent=worker, worktree=false — the worker inherits the prepared worktree).`,
+				`Worktree ready.\n- path: ${worktreePath}\n- branch: ${branch}\n- status: ${current?.status ?? "?"}${sinkNote}\n\nSpawn the worker in cwd=${worktreePath} (subagent tool, agent=specd-worker, worktree=false — the worker inherits the prepared worktree).`,
 				{ path: worktreePath, branch, status: current?.status ?? "?" },
 			);
 		},
