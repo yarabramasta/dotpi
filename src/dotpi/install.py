@@ -180,6 +180,10 @@ def safe_or_cherry_install(args: argparse.Namespace, root: Path, target: Path) -
         )
 
     json_sources = direct_json_sources(root)
+    agent_defs_dir = root / "agent" / "agents"
+    agent_docs = (
+        sorted(agent_defs_dir.glob("*.md")) if agent_defs_dir.is_dir() else []
+    )
     previews = [
         preview
         for source in json_sources
@@ -187,6 +191,12 @@ def safe_or_cherry_install(args: argparse.Namespace, root: Path, target: Path) -
     ]
     print("JSON changes:")
     print("".join(previews) if previews else "  none")
+    if agent_docs:
+        print("Agent definitions:")
+        for doc in agent_docs:
+            destination = target / "agent" / "agents" / doc.name
+            state = "update" if destination.exists() else "create"
+            print(f"  {state} agent/agents/{doc.name}")
     config_paths = [
         source.relative_to(root)
         for source in json_sources
@@ -195,6 +205,8 @@ def safe_or_cherry_install(args: argparse.Namespace, root: Path, target: Path) -
     if args.dry_run:
         print("Dry run: no files changed.")
         print(f"Would back up {len(config_paths)} existing JSON files.")
+        if agent_docs:
+            print(f"Would copy {len(agent_docs)} agent definition file(s).")
         print("Would copy extensions: " + (", ".join(selected) if selected else "none"))
         return
     require_confirmation(args, f"Install mode={args.mode} to {target}")
@@ -205,6 +217,10 @@ def safe_or_cherry_install(args: argparse.Namespace, root: Path, target: Path) -
         source.relative_to(root): snapshot_file(target / source.relative_to(root))
         for source in json_sources
     }
+    for doc in agent_docs:
+        snapshots[Path("agent") / "agents" / doc.name] = snapshot_file(
+            target / "agent" / "agents" / doc.name
+        )
     created_dirs: list[Path] = []
     overwritten_names: list[str] = []
     try:
@@ -212,6 +228,9 @@ def safe_or_cherry_install(args: argparse.Namespace, root: Path, target: Path) -
             relative = source.relative_to(root)
             destination = target / relative
             atomic_write(destination, source.read_bytes(), mode(source))
+        for doc in agent_docs:
+            destination = target / "agent" / "agents" / doc.name
+            atomic_write(destination, doc.read_bytes(), mode(doc))
         for name in selected:
             destination = target / "agent" / "extensions" / name
             if destination.exists():
@@ -293,51 +312,69 @@ def clean_install(args: argparse.Namespace, root: Path, target: Path) -> None:
             if args.no_extensions
             else "Would copy every extension."
         )
-        print("Validation plus Pi smoke run after copying.")
+        print("Validation plus Pi smoke run before swapping the target.")
         return
     require_confirmation(args, f"Clean install to {target}")
-    if target.exists():
-        create_backup(target, [Path(".")], "before-clean-install")
-    had_target = target.exists()
     rollback_root = Path(tempfile.mkdtemp(prefix="dotpi-clean-rollback-"))
+    staging = rollback_root / "staging"
+    swapped = False
     try:
-        if had_target:
-            shutil.copytree(target, rollback_root / "old", symlinks=True)
-        if target.exists():
-            remove_entry(target)
-        target.mkdir(parents=True, exist_ok=True)
+        staging_agent = staging / "agent"
+        staging_agent.mkdir(parents=True)
         for entry in sorted(source_agent.iterdir()):
             if entry.name == "auth.json" and not include_auth:
                 continue
-            copy_entry(entry, target / "agent" / entry.name)
+            copy_entry(entry, staging_agent / entry.name)
         if not args.no_extensions:
-            extensions_target = target / "agent" / "extensions"
+            extensions_target = staging_agent / "extensions"
             for name, source in extension_sources(root).items():
                 copy_entry(source, extensions_target / name)
         if include_auth:
-            set_private(target / AUTH)
-        rebuild_dependencies(target)
+            set_private(staging_agent / AUTH)
+        rebuild_dependencies(staging)
         validate_target(
-            target,
+            staging,
             [path.relative_to(root) for path in direct_json_sources(root)],
             [] if args.no_extensions else list(extension_sources(root)),
         )
-        smoke(target)
-    except DotpiError:
-        if target.exists():
+        # Stage-validate-swap: the Pi runtime (agent/bin, agent/install) lives
+        # inside the target tree, so the live target must survive until the
+        # new tree passes the smoke run — deleting it first destroys the
+        # launcher the smoke test launches (and the running installation).
+        smoke(staging)
+        had_target = target.exists()
+        if had_target:
+            create_backup(target, [Path(".")], "before-clean-install")
+            shutil.copytree(target, rollback_root / "old", symlinks=True)
             remove_entry(target)
-        old = rollback_root / "old"
-        if old.exists():
-            shutil.copytree(old, target, symlinks=True)
-        warn("clean install rolled back")
+        shutil.copytree(staging, target, symlinks=True)
+        swapped = True
+        # Preserve unmanaged target entries the repo does not provide: the
+        # runtime itself (bin, install, npm) and session history. Clean
+        # semantics govern dotpi-managed content, not the host runtime.
+        if had_target:
+            old_agent = rollback_root / "old" / "agent"
+            if old_agent.is_dir():
+                for entry in sorted(old_agent.iterdir()):
+                    if not (target / "agent" / entry.name).exists():
+                        copy_entry(entry, target / "agent" / entry.name)
+    except DotpiError:
+        if swapped:
+            if target.exists():
+                remove_entry(target)
+            old = rollback_root / "old"
+            if old.exists():
+                shutil.copytree(old, target, symlinks=True)
+            warn("clean install rolled back")
         raise
     except OSError as error:
-        if target.exists():
-            remove_entry(target)
-        old = rollback_root / "old"
-        if old.exists():
-            shutil.copytree(old, target, symlinks=True)
-        warn("clean install rolled back")
+        if swapped:
+            if target.exists():
+                remove_entry(target)
+            old = rollback_root / "old"
+            if old.exists():
+                shutil.copytree(old, target, symlinks=True)
+            warn("clean install rolled back")
         die(f"clean install failed: {error}")
     finally:
         shutil.rmtree(rollback_root, ignore_errors=True)

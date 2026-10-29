@@ -112,6 +112,11 @@ def build_parser() -> argparse.ArgumentParser:
         "-s", "--settings", action="store_true", help="review settings.json"
     )
     sync.add_argument("-M", "--models", action="store_true", help="review models.json")
+    sync.add_argument(
+        "--agents",
+        action="store_true",
+        help="also mirror agent/agents/*.md definitions",
+    )
     sync_action = sync.add_mutually_exclusive_group()
     sync_action.add_argument(
         "-A", "--apply", action="store_true", help="apply reviewed, conflict-free files"

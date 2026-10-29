@@ -26,6 +26,17 @@ def sync_path_specs(args: argparse.Namespace) -> list[tuple[str, Path]]:
     return selected
 
 
+def agent_doc_specs(root: Path) -> list[tuple[str, Path]]:
+    """Dotpi-authored agent definitions mirrored by sync --agents (-A)."""
+    agents_dir = root / "agent" / "agents"
+    if not agents_dir.is_dir():
+        return []
+    return [
+        (f"agents/{doc.name}", Path("agent") / "agents" / doc.name)
+        for doc in sorted(agents_dir.glob("*.md"))
+    ]
+
+
 def provider_projection(
     value: Any, path: tuple[str, ...] = ()
 ) -> dict[tuple[str, ...], Any]:
@@ -170,6 +181,42 @@ def sync_command(args: argparse.Namespace) -> None:
             changes.append(
                 (name, relative, destination, source.read_bytes(), mode(destination))
             )
+    if args.agents:
+        for name, relative in agent_doc_specs(root):
+            source = root / relative
+            destination = target / relative
+            content = source.read_bytes()
+            if not destination.exists():
+                status = "WARN"
+                message = "created on apply"
+            elif destination.is_symlink() or not destination.is_file():
+                reports.append(
+                    {
+                        "name": name,
+                        "status": "FAIL",
+                        "message": "target is not a regular file",
+                        "changes": [],
+                        "provider_conflicts": [],
+                    }
+                )
+                continue
+            elif destination.read_bytes() != content:
+                status = "WARN"
+                message = "differs; updated on apply"
+            else:
+                status = "PASS"
+                message = "unchanged"
+            reports.append(
+                {
+                    "name": name,
+                    "status": status,
+                    "message": message,
+                    "changes": [],
+                    "provider_conflicts": [],
+                }
+            )
+            if status == "WARN":
+                changes.append((name, relative, destination, content, mode(source)))
     overall = (
         "BLOCKED"
         if provider_blocked
