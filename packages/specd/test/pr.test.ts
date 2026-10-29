@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import { openPr, watchChecks } from "../src/sinks/github/pr.js";
 import type { GhRunner } from "../src/sinks/github/runner.js";
-import { appendEvent, createItem } from "../src/store/store.js";
+import { appendEvent, createItem, history } from "../src/store/store.js";
 import { makeStore, type TestStore } from "./helpers.js";
 
 /** Offline contract tests for the PR seam (plan-0006 slice 2): review-gate
@@ -80,6 +80,13 @@ describe("openPr (review-gated PR creation)", () => {
 				number: "7",
 				url: "https://github.com/acme/app/pull/7",
 			});
+			const events = history(ts.store, taskId);
+			expect(events.some((e) => e.type === "pr.created")).toBe(true);
+			const completed = events.filter((e) => e.type === "work.completed");
+			expect(completed.length).toBe(1);
+			expect(JSON.parse(completed[0]?.payload ?? "{}")).toEqual({
+				pr: "https://github.com/acme/app/pull/7",
+			});
 			const create = state.log.find((a) => a[0] === "pr" && a[1] === "create");
 			expect(create).toContain("--base");
 			expect(create).toContain("main");
@@ -135,7 +142,7 @@ describe("openPr (review-gated PR creation)", () => {
 		}
 	});
 
-	it("returns the existing PR instead of creating a duplicate", async () => {
+	it("returns the existing PR instead of creating a duplicate and still records pr.created + work.completed", async () => {
 		const ts = await makeStore();
 		try {
 			const taskId = await reviewedTask(ts.store);
@@ -158,6 +165,13 @@ describe("openPr (review-gated PR creation)", () => {
 			expect(state.log.some((a) => a[0] === "pr" && a[1] === "create")).toBe(
 				false,
 			);
+			const events = history(ts.store, taskId);
+			expect(events.some((e) => e.type === "pr.created")).toBe(true);
+			const completed = events.filter((e) => e.type === "work.completed");
+			expect(completed.length).toBe(1);
+			expect(JSON.parse(completed[0]?.payload ?? "{}")).toEqual({
+				pr: "https://github.com/acme/app/pull/5",
+			});
 		} finally {
 			ts.cleanup();
 		}
@@ -262,6 +276,24 @@ describe("watchChecks (single non-blocking poll, D3)", () => {
 			await expect(
 				watchChecks(ts.store, runner, "/repo", ts.id),
 			).rejects.toThrow(/no pull requests found/);
+		} finally {
+			ts.cleanup();
+		}
+	});
+
+	it("maps exit 1 with 'no checks reported' to pending (no CI configured)", async () => {
+		const ts = await seededTask();
+		try {
+			const runner: GhRunner = async () => {
+				throw Object.assign(new Error("Command failed: gh pr checks"), {
+					code: 1,
+					stdout: "no checks reported",
+				});
+			};
+			expect(await watchChecks(ts.store, runner, "/repo", ts.id)).toEqual({
+				failing: [],
+				state: "pending",
+			});
 		} finally {
 			ts.cleanup();
 		}
