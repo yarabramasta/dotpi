@@ -279,6 +279,11 @@ describe("specd_start_work", () => {
 			);
 			const text = res.content[0]?.text ?? "";
 			expect(text).toContain("Worktree ready");
+			expect(text).toContain(
+				'subagent({ agent: "specd-worker", async: true, timeoutMs: 5400000 })',
+			);
+			expect(text).toMatch(/child gets no specd store tools/i);
+			expect(text).toMatch(/parent records all specd events/i);
 			expect(res.details?.path).toBe(worktreePath(dir, taskId));
 			expect(existsSync(worktreePath(dir, taskId))).toBe(true);
 			const events = (await taskHistory(dir, taskId)).filter(
