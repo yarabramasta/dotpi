@@ -351,13 +351,21 @@ def clean_install(args: argparse.Namespace, root: Path, target: Path) -> None:
         swapped = True
         # Preserve unmanaged target entries the repo does not provide: the
         # runtime itself (bin, install, npm) and session history. Clean
-        # semantics govern dotpi-managed content, not the host runtime.
+        # semantics govern dotpi-managed content, not the host runtime. These
+        # are copied verbatim — bypassing COPY_IGNORE — because npm-installed
+        # package trees (agent/npm/node_modules) are host state, not repo
+        # content, and dropping them breaks every installed pi package.
         if had_target:
             old_agent = rollback_root / "old" / "agent"
             if old_agent.is_dir():
                 for entry in sorted(old_agent.iterdir()):
-                    if not (target / "agent" / entry.name).exists():
-                        copy_entry(entry, target / "agent" / entry.name)
+                    destination = target / "agent" / entry.name
+                    if destination.exists():
+                        continue
+                    if entry.is_dir():
+                        shutil.copytree(entry, destination, symlinks=True)
+                    else:
+                        copy_entry(entry, destination)
     except DotpiError:
         if swapped:
             if target.exists():

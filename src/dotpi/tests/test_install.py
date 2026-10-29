@@ -43,11 +43,13 @@ class CleanInstallTests(unittest.TestCase):
         (agent / "bin").mkdir(parents=True)
         (agent / "install").mkdir()
         (agent / "sessions").mkdir()
+        (agent / "npm" / "node_modules" / "pkg").mkdir(parents=True)
         stub = agent / "bin" / "pi"
         stub.write_text(STUB_PI)
         stub.chmod(0o755)
         (agent / "install" / "current-version").write_text("1.0.0\n")
         (agent / "sessions" / "seed.jsonl").write_text("{}\n")
+        (agent / "npm" / "node_modules" / "pkg" / "index.js").write_text("{}\n")
         return target, stub
 
     def test_clean_install_preserves_runtime_and_installs_agents(self):
@@ -68,6 +70,17 @@ class CleanInstallTests(unittest.TestCase):
                 (target / "agent" / "install" / "current-version").is_file()
             )
             self.assertTrue((target / "agent" / "sessions" / "seed.jsonl").is_file())
+            self.assertTrue(
+                (
+                    target
+                    / "agent"
+                    / "npm"
+                    / "node_modules"
+                    / "pkg"
+                    / "index.js"
+                ).is_file(),
+                "npm package trees are host state — COPY_IGNORE must not drop them",
+            )
             # the smoke run actually launched the stub
             self.assertTrue(stub.is_file())
 
