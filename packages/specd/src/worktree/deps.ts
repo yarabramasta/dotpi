@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { existsSync, lstatSync, readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 
 export type DepManager =
 	| "npm/yarn/bun"
@@ -201,11 +201,13 @@ export function planDepActions(
 	const rows: DepRow[] = [];
 
 	for (const hit of hits) {
+		const rel = relative(worktreeDir, hit.dir);
+		const primaryHitDir = join(primaryDir, rel);
 		switch (hit.manager) {
 			case "npm/yarn/bun":
 			case "composer":
 			case "cocoapods": {
-				const match = lockfileMatches(hit.manager, primaryDir, hit.dir);
+				const match = lockfileMatches(hit.manager, primaryHitDir, hit.dir);
 				if (match === "match" && !ci) {
 					rows.push({
 						...hit,
