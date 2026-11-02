@@ -121,8 +121,22 @@ describe("worktree dependency dedup", () => {
 			const dir = makeFixture();
 			touch(dir, "package.json", "{}");
 			touch(dir, "node_modules/nested/package.json", "{}");
+			touch(dir, "dist/ignored/package.json", "{}");
+			touch(dir, "build/ignored/package.json", "{}");
+			touch(dir, "src/out/ignored/package.json", "{}");
+			touch(dir, ".git/ignored/package.json", "{}");
+			touch(dir, "coverage/nested/package.json", "{}");
+			touch(dir, ".astro/nested/package.json", "{}");
 			const hits = detectEcosystems(dir);
 			expect(hits).toEqual([{ manager: "npm/yarn/bun", dir }]);
+		});
+
+		it("skips .gradle cache directories", () => {
+			const dir = makeFixture();
+			touch(dir, "settings.gradle", "");
+			touch(dir, ".gradle/nested/settings.gradle", "");
+			const hits = detectEcosystems(dir);
+			expect(hits).toEqual([{ manager: "gradle", dir }]);
 		});
 	});
 
