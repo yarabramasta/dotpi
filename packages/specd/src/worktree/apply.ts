@@ -24,7 +24,7 @@ export interface DedupOptions {
 	execFileSync?: ExecFileSync;
 }
 
-function rowInIgnoredDir(dir: string, worktreeDir: string): boolean {
+export function rowInIgnoredDir(dir: string, worktreeDir: string): boolean {
 	let cursor = dir;
 	while (cursor !== worktreeDir && cursor.length > worktreeDir.length) {
 		if (IGNORED_DIRS.includes(basename(cursor))) return true;
@@ -145,7 +145,7 @@ function installLine(
 	return `installed — ${reason} (${cmd} ${args.join(" ")})`;
 }
 
-function applyRow(
+export function applyRow(
 	row: DepRow,
 	primaryDir: string,
 	worktreeDir: string,

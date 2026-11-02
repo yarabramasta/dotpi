@@ -130,6 +130,14 @@ describe("worktree dependency dedup", () => {
 			const hits = detectEcosystems(dir);
 			expect(hits).toEqual([{ manager: "npm/yarn/bun", dir }]);
 		});
+
+		it("skips .gradle cache directories", () => {
+			const dir = makeFixture();
+			touch(dir, "settings.gradle", "");
+			touch(dir, ".gradle/nested/settings.gradle", "");
+			const hits = detectEcosystems(dir);
+			expect(hits).toEqual([{ manager: "gradle", dir }]);
+		});
 	});
 
 	describe("lockfileMatches", () => {

@@ -39,6 +39,7 @@ export const IGNORED_DIRS: string[] = [
 	".svn",
 	".hg",
 	// IDE / editor
+	".gradle",
 	".idea",
 	".vscode",
 	// Build outputs

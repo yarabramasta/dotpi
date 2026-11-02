@@ -15,9 +15,12 @@ import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+	applyRow,
 	dedupDependencies,
 	resolvePrimaryWorktree,
+	rowInIgnoredDir,
 } from "../src/worktree/apply.js";
+import type { DepRow } from "../src/worktree/deps.js";
 
 describe("worktree dependency dedup application", () => {
 	const dirs: string[] = [];
@@ -89,6 +92,43 @@ describe("worktree dependency dedup application", () => {
 			expect(() => resolvePrimaryWorktree("/cwd", exec)).toThrow(
 				/No worktree entries found/,
 			);
+		});
+	});
+
+	describe("ignored directory guard", () => {
+		it("flags a row dir inside an ignored directory", () => {
+			const worktree = makeFixture();
+			expect(rowInIgnoredDir(join(worktree, ".gradle", "foo"), worktree)).toBe(
+				true,
+			);
+			expect(
+				rowInIgnoredDir(join(worktree, "build", "node_modules"), worktree),
+			).toBe(true);
+			expect(rowInIgnoredDir(join(worktree, "src", "app"), worktree)).toBe(
+				false,
+			);
+		});
+
+		it("refuses to apply a row whose dir is inside an ignored directory", () => {
+			const primary = makeFixture();
+			const worktree = makeFixture();
+			const { exec, calls } = fakeExec({});
+			const row: DepRow = {
+				manager: "npm/yarn/bun",
+				dir: join(worktree, ".gradle", "foo"),
+				action: "link",
+				reason: "lockfiles match",
+			};
+
+			const result = applyRow(row, primary, worktree, {
+				execFileSync: exec,
+			});
+
+			expect(result.line).toBe(
+				"npm/yarn/bun: skipped — refused: row dir is inside an ignored directory",
+			);
+			expect(result.error).toBeUndefined();
+			expect(calls).toHaveLength(0);
 		});
 	});
 
