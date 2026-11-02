@@ -8,7 +8,7 @@ My Pi configuration kept as code, mirroring `~/.pi`. It is not a generic package
 manager — it is a reproducible dotfiles-style setup with guardrails. Two halves:
 
 - `src/dotpi/` — Python installer/manager (`./dotpi` shell launcher → `python3 -m dotpi`)
-- `packages/` — TypeScript Pi extensions: `specd`, `grill`, `jina`, `android-cli`, `wandb`
+- `packages/` — TypeScript Pi extensions: `specd`, `grill`, `android-cli`, `wandb`
 - `.agents/skills/` — vendored agent skills (`karpathy-guidelines`, `write-good-docs`, `flatten-fake-layers`); pi discovers project `.agents/skills/` natively
 
 `agent/` holds the mirrored Pi config (`settings.json`, `models.json`, example

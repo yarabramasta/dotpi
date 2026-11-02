@@ -1,0 +1,5 @@
+{
+	"jinaApiKey": "$JINA_API_KEY",
+	"allowBrowserCookies": true,
+	"browserCookies": { "browser": "brave" }
+}
