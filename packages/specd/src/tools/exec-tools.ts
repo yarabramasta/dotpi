@@ -21,6 +21,10 @@ import {
 	linkedItems,
 	type SpecdStore,
 } from "../store/store.js";
+import {
+	dedupDependencies,
+	resolvePrimaryWorktree,
+} from "../worktree/apply.js";
 import { openSpecd, text } from "./store-tools.js";
 
 function slugify(title: string): string {
@@ -162,8 +166,13 @@ export function registerExecTools(pi: ExtensionAPI): void {
 			);
 			if (alreadyStarted && existsSync(worktreePath)) {
 				const current = getItem(store, params.item);
+				const { summary } = dedupDependencies(
+					resolvePrimaryWorktree(ctx.cwd),
+					worktreePath,
+					{ ci: Boolean(process.env.CI) },
+				);
 				return text(
-					`Work already started. Reusing existing worktree.\n- path: ${worktreePath}\n- branch: ${branch}\n- status: ${current?.status ?? "?"}`,
+					`Work already started. Reusing existing worktree.\n- path: ${worktreePath}\n- branch: ${branch}\n- status: ${current?.status ?? "?"}\n\nDependencies:\n${summary}`,
 					{ path: worktreePath, branch, status: current?.status ?? "?" },
 				);
 			}
@@ -189,6 +198,12 @@ export function registerExecTools(pi: ExtensionAPI): void {
 				return text(`Worktree creation failed: ${msg}`);
 			}
 
+			const dedup = dedupDependencies(
+				resolvePrimaryWorktree(ctx.cwd),
+				worktreePath,
+				{ ci: Boolean(process.env.CI) },
+			);
+
 			appendEvent(store, {
 				item: params.item,
 				type: "work.started",
@@ -203,8 +218,11 @@ export function registerExecTools(pi: ExtensionAPI): void {
 				sinkPush = `push failed: ${e instanceof Error ? e.message : String(e)}`;
 			}
 			const sinkNote = sinkPush ? ` Sink: ${sinkPush}.` : "";
+			const depNote = dedup.summary
+				? `\n\nDependencies:\n${dedup.summary}`
+				: "";
 			return text(
-				`Worktree ready.\n- path: ${worktreePath}\n- branch: ${branch}\n- status: ${current?.status ?? "?"}${sinkNote}\n\nSpawn the worker with the prepared worktree as cwd:\n\nsubagent({ agent: "specd-worker", async: true, timeoutMs: 5400000 })\n\nThe child gets no specd store tools; the parent records all specd events (gates, events, review, PR).`,
+				`Worktree ready.\n- path: ${worktreePath}\n- branch: ${branch}\n- status: ${current?.status ?? "?"}${sinkNote}${depNote}\n\nSpawn the worker with the prepared worktree as cwd:\n\nsubagent({ agent: "specd-worker", async: true, timeoutMs: 5400000 })\n\nThe child gets no specd store tools; the parent records all specd events (gates, events, review, PR).`,
 				{ path: worktreePath, branch, status: current?.status ?? "?" },
 			);
 		},

@@ -27,14 +27,76 @@ export interface EcosystemHit {
 	dir: string;
 }
 
-const IGNORED_DIRS = new Set([
+/**
+ * Directory names that detectEcosystems and apply.ts must never enter or
+ * mutate. Dependency-managed dirs (node_modules, vendor, Pods) are
+ * deliberately excluded because they are the actual targets of the plan.
+ * Match is by directory NAME anywhere in the scanned tree.
+ */
+export const IGNORED_DIRS: string[] = [
+	// VCS
 	".git",
+	".svn",
+	".hg",
+	// IDE / editor
+	".idea",
+	".vscode",
+	// Build outputs
+	"build",
+	"dist",
+	"out",
+	".next",
+	".nuxt",
+	".output",
+	".svelte-kit",
+	"target",
+	"bin",
+	"obj",
+	".build",
+	"DerivedData",
+	".dart_tool",
+	// Package-manager / cache dirs (not the dep dirs we manage)
+	".npm",
+	".pnpm-store",
+	".yarn", // Berry cache/releases
+	".bun",
+	".cache",
+	".turbo",
+	".parcel-cache",
+	".vite",
+	".rollup.cache",
+	// Test / tool caches
+	"coverage",
+	".nyc_output",
+	".pytest_cache",
+	".mypy_cache",
+	".ruff_cache",
+	"__pycache__",
+	".tox",
+	".venv",
+	"venv",
+	// Meta-framework / deploy-tooling ephemeral state
+	".astro",
+	".docusaurus",
+	".expo",
+	".solid",
+	".vercel",
+	".netlify",
+	".wrangler",
+	".metro",
+	".stackblitz",
+	".symlinks",
+	"ephemeral",
+	"xcuserdata",
+];
+
+// Scan-time skip set: generic ignored dirs plus the dependency dirs we manage
+// (we never want to recursively inspect the inside of a node_modules).
+const SCAN_IGNORED_DIRS = new Set([
+	...IGNORED_DIRS,
 	"node_modules",
 	"Pods",
 	"vendor",
-	"build",
-	"dist",
-	".turbo",
 ]);
 
 function sha256(filePath: string): string {
@@ -110,7 +172,7 @@ export function detectEcosystems(root: string): EcosystemHit[] {
 		}
 
 		for (const name of entries) {
-			if (IGNORED_DIRS.has(name)) continue;
+			if (SCAN_IGNORED_DIRS.has(name)) continue;
 			const child = join(dir, name);
 			const st = lstatSync(child, { throwIfNoEntry: false });
 			if (st?.isDirectory()) walk(child);
