@@ -39,7 +39,7 @@ Full flag reference, install modes, and online-install recipes:
 ```
 
 Extensions are selectable (`-e`/`-n`); without filters,
-interactive mode shows menus. Extensions: `specd`, `grill`, `jina`,
+interactive mode shows menus. Extensions: `specd`, `grill`,
 `android-cli`, `wandb` — see each package's README for what it does.
 
 ## What gets installed
@@ -71,7 +71,6 @@ Jina key from the [Jina AI API dashboard](https://jina.ai/api-dashboard/).
 packages/               extensions (pnpm workspace; real sources)
   specd/                Spec-driven development extension (pi-specd)
   grill/                Socratic planning extension (pi-grill)
-  jina/                 Jina web tools (pi-jina-web)
   android-cli/          Android tooling extension (pi-android-cli)
   wandb/                W&B custom provider extension (pi-wandb-inference)
 agent/                  mirrors ~/.pi/agent (installer source)
@@ -98,7 +97,7 @@ pi install git:github.com/yarabramasta/dotpi@v1   # pin a ref
 ## Development workflow
 
 This repo uses `specd` for its own planning and execution. `grill`,
-`jina`, `android-cli`, and `wandb` are installable Pi extensions under
+`android-cli`, and `wandb` are installable Pi extensions under
 `packages/`, just like `specd`.
 
 ## Dev workflow
@@ -117,7 +116,7 @@ python3 -m unittest discover -s src -t src   # dotpi CLI tests
 ```sh
 ref=PINNED_COMMIT   # review the ref first; never pipe unreviewed shell
 curl -fsSL "https://raw.githubusercontent.com/yarabramasta/dotpi/${ref}/dotpi" | \
-  DOTPI_REF="$ref" sh -s -- install --mode=safe --extension jina --yes
+  DOTPI_REF="$ref" sh -s -- install --mode=safe --extension specd --yes
 ```
 
 `--yes` is required because piped input is non-interactive. The safer
