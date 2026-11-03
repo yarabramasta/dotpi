@@ -99,6 +99,14 @@ export function registerPrTools(pi: ExtensionAPI): void {
 				report.state === "failed"
 					? ` Diagnose before fixing: /spec diagnose ${params.item}.`
 					: "";
+			// Best-effort reconcile after every poll: merged PR → pr.merged +
+			// Done lane push. Sync failure must never fail the check poll.
+			try {
+				const { syncExportedTasks } = await import("../sinks/sync.js");
+				await syncExportedTasks(store);
+			} catch {
+				/* best-effort */
+			}
 			return text(`CI checks ${report.state}${failing}.${hint}`, { ...report });
 		},
 	});
