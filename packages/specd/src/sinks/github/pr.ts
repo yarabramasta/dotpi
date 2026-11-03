@@ -3,6 +3,7 @@ import { checkCanCompleteWork } from "../../pipeline/gates.js";
 import {
 	appendEvent,
 	getItem,
+	history,
 	parseJsonLoose,
 	type SpecdStore,
 } from "../../store/store.js";
@@ -14,6 +15,19 @@ import type { GhRunner } from "./runner.js";
  * (board placement) — PRs are code-hosting concerns, so the frozen M1
  * contract is untouched (D2). All gh access runs through the injectable
  * runner so tests stay offline. */
+
+/** Extract an issue-number externalRef from the latest task.exported event.
+ * Only numeric refs count as issue numbers (e.g. GitHub issues); other sinks
+ * like the null sink use task ids and get no Closes trailer. */
+function issueNumber(store: SpecdStore, taskId: string): string | undefined {
+	const exported = history(store, taskId)
+		.filter((e) => e.type === "task.exported")
+		.pop();
+	if (!exported) return undefined;
+	const payload = parseJsonLoose<{ externalRef?: string }>(exported.payload);
+	const ref = payload?.externalRef ?? "";
+	return /^\d+$/.test(ref) ? ref : undefined;
+}
 
 function appendPrCompleted(
 	store: SpecdStore,
@@ -112,7 +126,11 @@ export async function openPr(
 		);
 	}
 
-	const body = await writeTempBody(input.summary ?? task.title);
+	const prose = input.summary ?? task.title;
+	const trailer = issueNumber(store, input.taskId);
+	const body = await writeTempBody(
+		trailer ? `${prose}\n\nCloses #${trailer}` : prose,
+	);
 	try {
 		const created = await gh([
 			"pr",

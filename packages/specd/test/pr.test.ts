@@ -1,13 +1,64 @@
 import { readFile } from "node:fs/promises";
-import { describe, expect, it } from "vitest";
+import type {
+	ExtensionAPI,
+	ExtensionContext,
+} from "@earendil-works/pi-coding-agent";
+import { describe, expect, it, vi } from "vitest";
+import { saveSinkSetup } from "../src/sinks/config.js";
+import type { SinkAdapter } from "../src/sinks/contract.js";
 import { openPr, watchChecks } from "../src/sinks/github/pr.js";
-import type { GhRunner } from "../src/sinks/github/runner.js";
+import { type GhRunner, realGhRunner } from "../src/sinks/github/runner.js";
+import { tryResolveAdapter } from "../src/sinks/resolve.js";
+import * as sync from "../src/sinks/sync.js";
 import { appendEvent, createItem, history } from "../src/store/store.js";
+import { registerPrTools } from "../src/tools/pr-tools.js";
 import { makeStore, type TestStore } from "./helpers.js";
+
+vi.mock("../src/sinks/github/runner.js", () => ({
+	realGhRunner: vi.fn(),
+}));
+
+vi.mock("../src/sinks/resolve.js", () => ({
+	tryResolveAdapter: vi.fn(),
+}));
+
+const mockRunner = vi.mocked(realGhRunner);
+const mockTryResolveAdapter = vi.mocked(tryResolveAdapter);
 
 /** Offline contract tests for the PR seam (plan-0006 slice 2): review-gate
  * reuse (D4/F2), octocat argv shape (--body-file), idempotent re-open,
  * and the exit-code → check-state mapping (D3: 0 pass / 1 fail / 8 pending). */
+
+interface CapturedToolDef {
+	name: string;
+	execute: (
+		toolCallId: string,
+		params: Record<string, unknown>,
+		signal: unknown,
+		onUpdate: unknown,
+		ctx: ExtensionContext,
+	) => Promise<{
+		content: Array<{ type: string; text: string }>;
+		details?: Record<string, unknown>;
+	}>;
+}
+
+function capturePrTool(name: string): CapturedToolDef {
+	const defs: CapturedToolDef[] = [];
+	const fakePi = {
+		registerTool(def: CapturedToolDef) {
+			defs.push(def);
+		},
+	} as unknown as ExtensionAPI;
+	registerPrTools(fakePi);
+	const found = defs.find((d) => d.name === name);
+	if (!found) throw new Error(`tool ${name} not registered`);
+	return found;
+}
+
+function fakeCtx(cwd: string): ExtensionContext {
+	return { cwd } as unknown as ExtensionContext;
+}
 
 interface PrState {
 	defaultBranch?: string;
@@ -195,6 +246,75 @@ describe("openPr (review-gated PR creation)", () => {
 			ts.cleanup();
 		}
 	});
+
+	it("appends a Closes # trailer for a task exported to an issue number", async () => {
+		const ts = await makeStore();
+		try {
+			const taskId = await reviewedTask(ts.store);
+			appendEvent(ts.store, {
+				item: taskId,
+				type: "task.exported",
+				payload: { sink: "github", externalRef: "42" },
+				actor: "test",
+			});
+			const state: PrState = { log: [] };
+			await openPr(ts.store, prRunner(state), "/repo", { taskId });
+			expect(state.bodyViaFile).toBe("Add login route\n\nCloses #42");
+		} finally {
+			ts.cleanup();
+		}
+	});
+
+	it("omits the Closes trailer when the task was never exported", async () => {
+		const ts = await makeStore();
+		try {
+			const taskId = await reviewedTask(ts.store);
+			const state: PrState = { log: [] };
+			await openPr(ts.store, prRunner(state), "/repo", { taskId });
+			expect(state.bodyViaFile).toBe("Add login route");
+		} finally {
+			ts.cleanup();
+		}
+	});
+
+	it("omits the Closes trailer when exported to a non-issue sink", async () => {
+		const ts = await makeStore();
+		try {
+			const taskId = await reviewedTask(ts.store);
+			appendEvent(ts.store, {
+				item: taskId,
+				type: "task.exported",
+				payload: { sink: "null", externalRef: taskId },
+				actor: "test",
+			});
+			const state: PrState = { log: [] };
+			await openPr(ts.store, prRunner(state), "/repo", { taskId });
+			expect(state.bodyViaFile).toBe("Add login route");
+		} finally {
+			ts.cleanup();
+		}
+	});
+
+	it("appends the trailer to a custom summary body", async () => {
+		const ts = await makeStore();
+		try {
+			const taskId = await reviewedTask(ts.store);
+			appendEvent(ts.store, {
+				item: taskId,
+				type: "task.exported",
+				payload: { sink: "github", externalRef: "7" },
+				actor: "test",
+			});
+			const state: PrState = { log: [] };
+			await openPr(ts.store, prRunner(state), "/repo", {
+				taskId,
+				summary: "Custom summary body",
+			});
+			expect(state.bodyViaFile).toBe("Custom summary body\n\nCloses #7");
+		} finally {
+			ts.cleanup();
+		}
+	});
 });
 
 describe("watchChecks (single non-blocking poll, D3)", () => {
@@ -294,6 +414,205 @@ describe("watchChecks (single non-blocking poll, D3)", () => {
 				failing: [],
 				state: "pending",
 			});
+		} finally {
+			ts.cleanup();
+		}
+	});
+});
+
+describe("openPr Closes-trailer edge cases", () => {
+	it("uses the latest export event when multiple exports exist", async () => {
+		const ts = await makeStore();
+		try {
+			const taskId = await reviewedTask(ts.store);
+			appendEvent(ts.store, {
+				item: taskId,
+				type: "task.exported",
+				payload: { sink: "github", externalRef: "1" },
+				actor: "test",
+			});
+			appendEvent(ts.store, {
+				item: taskId,
+				type: "task.exported",
+				payload: { sink: "github", externalRef: "99" },
+				actor: "test",
+			});
+			const state: PrState = { log: [] };
+			await openPr(ts.store, prRunner(state), "/repo", { taskId });
+			expect(state.bodyViaFile).toBe("Add login route\n\nCloses #99");
+		} finally {
+			ts.cleanup();
+		}
+	});
+});
+
+describe("syncExportedTasks merge reconcile", () => {
+	it("records pr.merged and pushes the mapped Done lane when the PR merged", async () => {
+		const ts = await makeStore();
+		try {
+			saveSinkSetup(
+				ts.store,
+				{
+					workspace: { owner: "acme", projectNumber: 1 },
+					lanes: ["Backlog", "Ready", "In progress", "In review", "Done"],
+					labels: [],
+					naming: "",
+					statusMap: { done: "Completed", "in-review": "Review" },
+				},
+				"github",
+			);
+			const taskId = await reviewedTask(ts.store);
+			appendEvent(ts.store, {
+				item: taskId,
+				type: "task.exported",
+				payload: { sink: "github", externalRef: "42" },
+				actor: "test",
+			});
+			appendEvent(ts.store, {
+				item: taskId,
+				type: "pr.created",
+				payload: {
+					url: "https://github.com/acme/app/pull/7",
+					branch: "specd/feat/task-0001-add-login-route",
+				},
+				actor: "test",
+			});
+			appendEvent(ts.store, {
+				item: taskId,
+				type: "work.completed",
+				payload: { pr: "https://github.com/acme/app/pull/7" },
+				actor: "test",
+			});
+			const updateStatus = vi.fn().mockResolvedValue(undefined);
+			mockTryResolveAdapter.mockReturnValue({
+				readBack: vi.fn().mockResolvedValue({ state: "open" }),
+				readPrState: vi.fn().mockResolvedValue("merged"),
+				updateStatus,
+			} as unknown as SinkAdapter);
+			const synced = await sync.syncExportedTasks(ts.store);
+			expect(synced).toBe(1);
+			expect(
+				history(ts.store, taskId).some((e) => e.type === "pr.merged"),
+			).toBe(true);
+			expect(updateStatus).toHaveBeenCalledTimes(1);
+			expect(updateStatus).toHaveBeenCalledWith("42", "Completed");
+		} finally {
+			ts.cleanup();
+		}
+	});
+
+	it("honors the in-review pseudo-state before the PR merges", async () => {
+		const ts = await makeStore();
+		try {
+			saveSinkSetup(
+				ts.store,
+				{
+					workspace: { owner: "acme", projectNumber: 1 },
+					lanes: ["Backlog", "Ready", "In progress", "In review", "Done"],
+					labels: [],
+					naming: "",
+					statusMap: { done: "Completed", "in-review": "Review" },
+				},
+				"github",
+			);
+			const taskId = await reviewedTask(ts.store);
+			appendEvent(ts.store, {
+				item: taskId,
+				type: "task.exported",
+				payload: { sink: "github", externalRef: "42" },
+				actor: "test",
+			});
+			appendEvent(ts.store, {
+				item: taskId,
+				type: "pr.created",
+				payload: {
+					url: "https://github.com/acme/app/pull/7",
+					branch: "specd/feat/task-0001-add-login-route",
+				},
+				actor: "test",
+			});
+			appendEvent(ts.store, {
+				item: taskId,
+				type: "work.completed",
+				payload: { pr: "https://github.com/acme/app/pull/7" },
+				actor: "test",
+			});
+			const updateStatus = vi.fn().mockResolvedValue(undefined);
+			mockTryResolveAdapter.mockReturnValue({
+				readBack: vi.fn().mockResolvedValue({ state: "open" }),
+				readPrState: vi.fn().mockResolvedValue("open"),
+				updateStatus,
+			} as unknown as SinkAdapter);
+			await sync.syncExportedTasks(ts.store);
+			expect(updateStatus).not.toHaveBeenCalled();
+		} finally {
+			ts.cleanup();
+		}
+	});
+});
+
+describe("specd_watch_checks triggers best-effort reconcile", () => {
+	async function seededExportedTask(
+		store: TestStore["store"],
+	): Promise<string> {
+		const taskId = await reviewedTask(store);
+		appendEvent(store, {
+			item: taskId,
+			type: "task.exported",
+			payload: { sink: "github", externalRef: "42" },
+			actor: "test",
+		});
+		return taskId;
+	}
+
+	it("runs syncExportedTasks after a successful check poll", async () => {
+		const ts = await makeStore();
+		try {
+			const taskId = await seededExportedTask(ts.store);
+			mockRunner.mockResolvedValue({
+				stdout: JSON.stringify([{ name: "test", bucket: "pass" }]),
+				stderr: "",
+			});
+			const spy = vi.spyOn(sync, "syncExportedTasks").mockResolvedValue(1);
+			const tool = capturePrTool("specd_watch_checks");
+			const result = await tool.execute(
+				"t1",
+				{ item: taskId },
+				undefined,
+				undefined,
+				fakeCtx(ts.dir),
+			);
+			expect(result.content[0]?.text).toMatch(/CI checks passed/);
+			expect(spy).toHaveBeenCalledTimes(1);
+		} finally {
+			ts.cleanup();
+		}
+	});
+
+	it("isolates sync failures from the check poll result", async () => {
+		const ts = await makeStore();
+		try {
+			const taskId = await seededExportedTask(ts.store);
+			mockRunner.mockResolvedValue({
+				stdout: JSON.stringify([{ name: "test", bucket: "pass" }]),
+				stderr: "",
+			});
+			const spy = vi
+				.spyOn(sync, "syncExportedTasks")
+				.mockRejectedValue(new Error("sink unreachable"));
+			const tool = capturePrTool("specd_watch_checks");
+			await expect(
+				tool.execute(
+					"t1",
+					{ item: taskId },
+					undefined,
+					undefined,
+					fakeCtx(ts.dir),
+				),
+			).resolves.toMatchObject({
+				content: [{ type: "text", text: expect.stringContaining("passed") }],
+			});
+			expect(spy).toHaveBeenCalledTimes(1);
 		} finally {
 			ts.cleanup();
 		}
