@@ -62,6 +62,10 @@ export const ONBOARDING: Record<string, SinkOnboarding> = {
 
 export const SINK_IDS = Object.keys(ONBOARDING);
 
+/** Board-side automation workflows (closed→Done, merged→Done, auto-add)
+ * are UI-only; point operators at the manual runbook. */
+const GITHUB_BOARD_RUNBOOK = "docs/runbook-github-board-automation.md";
+
 /** Probe one sink's readiness: real adapter probe when the sink is
  * configured, credential-presence fallback when it isn't yet. ghRunner is
  * injectable so tests run offline. */
@@ -79,7 +83,8 @@ export async function probeSink(
 			return {
 				ok: false,
 				detail:
-					"gh authenticated check skipped — project owner/number not stored yet (/spec sink or first export sets them).",
+					"gh authenticated check skipped — project owner/number not stored yet (/spec sink or first export sets them). " +
+					`Board-side automation runbook: ${GITHUB_BOARD_RUNBOOK}.`,
 			};
 		}
 		const adapter = createGithubAdapter(
@@ -91,7 +96,11 @@ export async function probeSink(
 			},
 			ghRunner ?? realGhRunner,
 		);
-		return adapter.verify();
+		const verify = await adapter.verify();
+		return {
+			...verify,
+			detail: `${verify.detail} Board-side automation runbook: ${GITHUB_BOARD_RUNBOOK}.`,
+		};
 	}
 	const adapter = tryResolveAdapter(store, id);
 	if (adapter) return adapter.verify();
