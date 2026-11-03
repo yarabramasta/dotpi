@@ -343,4 +343,85 @@ describe("consistency check", () => {
 			),
 		).toBe(false);
 	});
+
+	it("warns when an approved spec has linked tasks with no task.exported event", async () => {
+		t = await makeStore();
+		const spec = createItem(t.store, { kind: "spec", title: "S", actor: "t" });
+		appendEvent(t.store, { item: spec.id, type: "spec.approved", actor: "t" });
+		const plan = createItem(t.store, { kind: "plan", title: "P", actor: "t" });
+		addLink(t.store, plan.id, spec.id, "part-of");
+		const t1 = createItem(t.store, {
+			kind: "task",
+			title: "T1",
+			actor: "t",
+		});
+		const t2 = createItem(t.store, {
+			kind: "task",
+			title: "T2",
+			actor: "t",
+		});
+		addLink(t.store, t1.id, spec.id, "part-of");
+		addLink(t.store, t2.id, spec.id, "part-of");
+
+		const findings = checkConsistency(t.store);
+		const finding = findings.find(
+			(f) => f.rule === "approved-spec-unexported-tasks",
+		);
+		expect(finding).toBeDefined();
+		expect(finding?.severity).toBe("warning");
+		expect(finding?.item).toBe(spec.id);
+		expect(finding?.message).toContain(spec.id);
+		expect(finding?.message).toContain(t1.id);
+		expect(finding?.message).toContain(t2.id);
+	});
+
+	it("does not warn about exported tasks or unapproved specs", async () => {
+		t = await makeStore();
+		const approved = createItem(t.store, {
+			kind: "spec",
+			title: "Approved",
+			actor: "t",
+		});
+		appendEvent(t.store, {
+			item: approved.id,
+			type: "spec.approved",
+			actor: "t",
+		});
+		const plan = createItem(t.store, {
+			kind: "plan",
+			title: "Plan",
+			actor: "t",
+		});
+		addLink(t.store, plan.id, approved.id, "part-of");
+		const exported = createItem(t.store, {
+			kind: "task",
+			title: "Exported",
+			actor: "t",
+		});
+		addLink(t.store, exported.id, approved.id, "part-of");
+		appendEvent(t.store, {
+			item: exported.id,
+			type: "task.exported",
+			payload: { sink: "null", externalRef: "x", url: "y" },
+			actor: "t",
+		});
+
+		const draft = createItem(t.store, {
+			kind: "spec",
+			title: "Draft",
+			actor: "t",
+		});
+		const draftTask = createItem(t.store, {
+			kind: "task",
+			title: "DraftTask",
+			actor: "t",
+		});
+		addLink(t.store, draftTask.id, draft.id, "part-of");
+
+		expect(
+			checkConsistency(t.store).some(
+				(f) => f.rule === "approved-spec-unexported-tasks",
+			),
+		).toBe(false);
+	});
 });

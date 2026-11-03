@@ -1,6 +1,7 @@
 import {
 	childItems,
 	getItem,
+	history,
 	type ItemRow,
 	listItems,
 	relatedItems,
@@ -137,6 +138,17 @@ export function checkConsistency(
 				rule: "spec-without-tasks",
 				item: spec.id,
 				message: `Approved spec ${spec.id} has no tasks yet.`,
+			});
+		}
+		const unexported = specTasks.filter(
+			(t) => !history(store, t.id).some((e) => e.type === "task.exported"),
+		);
+		if (spec.status === "approved" && unexported.length > 0) {
+			findings.push({
+				severity: "warning",
+				rule: "approved-spec-unexported-tasks",
+				item: spec.id,
+				message: `Approved spec ${spec.id} has ${unexported.length} task(s) not yet exported: ${unexported.map((t) => t.id).join(", ")}.`,
 			});
 		}
 		for (const cl of related.filter((i) => i.kind === "checklist")) {
