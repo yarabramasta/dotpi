@@ -5,6 +5,7 @@ import {
 	mkdirSync,
 	mkdtempSync,
 	readFileSync,
+	realpathSync,
 	rmSync,
 	writeFileSync,
 } from "node:fs";
@@ -109,7 +110,7 @@ describe("migrate to external store", () => {
 		expect(repoGitignore).not.toContain("!.spec/");
 
 		const externalStore = await openStore(repoDir);
-		expect(externalStore.dir).toBe(storePath);
+		expect(externalStore.dir).toBe(realpathSync(storePath));
 
 		const items = (
 			externalStore.db.prepare("SELECT COUNT(*) AS n FROM items").get() as {
