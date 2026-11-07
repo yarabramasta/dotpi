@@ -48,7 +48,7 @@ Path: `~/.pi/agent/stores/<repo-name>/` (recommended) or any absolute path.
 ~/.pi/agent/stores/<repo-name>/
 ├── .specd-store.yaml  (marker)
 ├── .gitignore         (* / !.gitignore / !events.jsonl)
-├── events.jsonl       (tracked only in an external-git store's own repo)
+├── events.jsonl       (tracked in the external store's own git repo; external-git adds a remote)
 └── store.db           (gitignored, rebuilt from events)
 ```
 
@@ -89,7 +89,7 @@ Use this procedure for dotpi, lingua-lair, stoa, or any repo with an existing in
 2. Migrate:
 
    ```sh
-   specd_store(action="migrate", storePath="/absolute/path/to/~/.pi/agent/stores/<repo-name>")
+   specd_store(action="migrate", storePath="/Users/<you>/.pi/agent/stores/<repo-name>")
    ```
 
    What it does:
@@ -112,10 +112,20 @@ Use this procedure for dotpi, lingua-lair, stoa, or any repo with an existing in
 ### Verification checklist
 
 - [ ] `specd_store(action="status")` shows `type=external` and the expected path.
-- [ ] `specd_read(view="dashboard")` shows the same item/event/link counts as before migration.
+- [ ] `specd_read(view="dashboard")` shows the item status summary; migration itself verifies item/event/link counts internally and refuses on mismatch.
 - [ ] The repo root has no `.spec/` directory.
-- [ ] `git status --porcelain` in the repo is clean.
+- [ ] `git status --porcelain` in the repo shows only `.gitignore` modified and `.spec/` deleted.
 - [ ] The external store has a git commit `migrate specd store events` (`git -C <store> log --oneline`).
+
+### Commit the cleanup
+
+Run this once from the code repo:
+
+```sh
+git add -A && git commit -m "chore: migrate specd store to external"
+```
+
+This is the one intentional dirty moment of migration. After this commit the code repo is clean again and everyday specd commands will not touch it.
 
 ### Per-repo commands
 
@@ -147,9 +157,9 @@ specd_store(action="migrate", storePath="/Users/<you>/.pi/agent/stores/stoa")
 
 ## Zero-dirty-tree guarantee
 
-For every placement mode:
+For every placement mode during normal operation:
 
 - **In-repo**: specd writes only under `.spec/`. Only `.spec/.gitignore` may be tracked; all other store files are gitignored.
 - **External / external-git**: specd writes only inside the configured external directory. The code repo is untouched.
 
-No specd operation — event append, migration, or store registration — dirties the code repo's working tree. The registry file itself lives outside the repo.
+Event appends, store registration, and everyday specd commands do not dirty the code repo's working tree. The registry file itself lives outside the repo. Migration is the exception: it intentionally deletes `.spec/` and edits the repo root `.gitignore`, leaving the tree dirty until the operator runs the commit step above.

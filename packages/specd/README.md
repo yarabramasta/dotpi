@@ -103,7 +103,7 @@ You can inspect it at any time:
 ```
 
 Store placement options and the migration runbook:
-[docs/store-placement.md](../docs/store-placement.md).
+[docs/store-placement.md](../../docs/store-placement.md).
 
 Optionally, promote items to readable markdown files in the repo:
 
@@ -141,4 +141,4 @@ external directory. Your repo stays clean.
 | [Architecture](docs/architecture.md) | How specd works: event-sourced store, gates, zero footprint |
 | [Agent guide](docs/agent-guide.md) | For AI agents operating specd: gates, naming, error handling |
 | [Storage guide](docs/storage-guide.md) | Scenarios, setup, and disaster recovery for the store |
-| [Store placement](docs/store-placement.md) | Where the store lives, when to choose each mode, and how to migrate |
+| [Store placement](../../docs/store-placement.md) | Where the store lives, when to choose each mode, and how to migrate |

@@ -91,7 +91,7 @@ your-repo/                                ← zero specd files
 ~/.pi/agent/stores/{repo-name}/           ← the store
 ├── .gitignore                            ← in the store, not the repo
 ├── .specd-store.yaml                     ← marker
-├── events.jsonl                          ← machine-local (external) or tracked in the store repo (external-git)
+├── events.jsonl                          ← tracked in the external store's own git repo; external-git adds a remote
 └── store.db                              ← gitignored
 ```
 

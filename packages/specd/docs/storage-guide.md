@@ -61,7 +61,7 @@ ZERO specd-related files.
 ~/.pi/agent/stores/my-android-app/
 ├── .specd-store.yaml   (marker)
 ├── .gitignore          (in the external store)
-├── events.jsonl        (machine-local unless you set up external-git)
+├── events.jsonl        (tracked in the external store's own git repo; external-git adds a remote)
 └── store.db            (gitignored, rebuilt from events)
 ```
 
@@ -179,8 +179,8 @@ store URL in your notes).
 - `events.jsonl` — machine-local in in-repo stores
 
 In an in-repo store, only `.spec/.gitignore` may be tracked. In external
-stores, `events.jsonl` may be committed to the external store's own git
-repo when using `external-git`.
+stores, `events.jsonl` is tracked in the external store's own git repo;
+`external-git` adds a remote.
 
 ## Child-session write guard (no-specd-store-writes)
 
