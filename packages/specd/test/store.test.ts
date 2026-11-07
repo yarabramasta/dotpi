@@ -1,3 +1,6 @@
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
 	addLink,
@@ -310,5 +313,18 @@ describe("specd store", () => {
 		expect(item?.status).toBe("approved");
 		expect(item?.title).toBe("Auth");
 		again.db.close();
+	});
+
+	it("writes in-repo .gitignore that ignores store files", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "specd-gitignore-"));
+		try {
+			const store = await openStore(dir);
+			store.db.close();
+			const gitignore = readFileSync(join(dir, ".spec", ".gitignore"), "utf8");
+			expect(gitignore).toBe("*\n!.gitignore\n");
+			expect(gitignore).not.toContain("!events.jsonl");
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
 	});
 });

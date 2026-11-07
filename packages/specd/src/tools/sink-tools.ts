@@ -59,11 +59,11 @@ export function registerSinkTools(pi: ExtensionAPI): void {
 		name: "specd_store",
 		label: "Manage specd store registration",
 		description:
-			"Manage specd store registration and references. action=status checks registration; action=register (type, storePath, remote) registers a location; action=reference (store) adds a read-only reference.",
-		promptSnippet: "Check, register, or reference a specd store",
+			"Manage specd store registration and references. action=status checks registration; action=register (type, storePath, remote) registers a location; action=reference (store) adds a read-only reference; action=migrate (storePath) moves an in-repo store to an external store.",
+		promptSnippet: "Check, register, reference, or migrate a specd store",
 		parameters: Type.Object({
 			action: Type.String({
-				description: '"status" | "register" | "reference".',
+				description: '"status" | "register" | "reference" | "migrate".',
 			}),
 			type: Type.Optional(
 				Type.String({
@@ -87,7 +87,11 @@ export function registerSinkTools(pi: ExtensionAPI): void {
 			),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-			const action = params.action as "status" | "register" | "reference";
+			const action = params.action as
+				| "status"
+				| "register"
+				| "reference"
+				| "migrate";
 
 			// ----- status -----
 			if (action === "status") {
@@ -108,14 +112,15 @@ export function registerSinkTools(pi: ExtensionAPI): void {
 				}
 				if (inRepo) {
 					return text(
-						"Store found at .spec/store.db (in-repo, not registered).",
+						"Store found at .spec/store.db (in-repo, not registered).\n" +
+							"External is the recommended default for new repos; in-repo remains supported — store files are machine-local.",
 					);
 				}
 				return text(
 					"No specd store found for this repo. Ask the user where it should live:\n" +
-						"1. External — specd-managed (zero footprint)\n" +
+						"1. External — specd-managed (zero footprint) ← recommended default for new repos\n" +
 						"2. External — git repo (shareable, versioned)\n" +
-						"3. In this repo (.spec/, gitignored)\n" +
+						"3. In this repo (.spec/, gitignored) — supported, machine-local\n" +
 						"4. In this repo (.spec/, committed)\n" +
 						'Then register it with specd_store(action="register").',
 				);
@@ -142,6 +147,23 @@ export function registerSinkTools(pi: ExtensionAPI): void {
 				registerStore(ctx.cwd, entry);
 				return text(
 					`Registered: ${ctx.cwd} → ${params.type}${params.storePath ? ` (${params.storePath})` : ""}`,
+				);
+			}
+
+			// ----- migrate -----
+			if (action === "migrate") {
+				assertParentContext(ctx);
+				if (!params.storePath) {
+					return text("migrate action requires storePath=<absolute-path>.");
+				}
+				const { migrateToExternalStore } = await import(
+					"../store/migrate-external.js"
+				);
+				const result = migrateToExternalStore(ctx.cwd, params.storePath);
+				return text(
+					result.alreadyMigrated
+						? `Store already migrated to ${result.storePath}.`
+						: `Migrated specd store to ${result.storePath}. The in-repo .spec/ directory has been removed.`,
 				);
 			}
 

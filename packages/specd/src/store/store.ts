@@ -140,7 +140,8 @@ export async function openStore(cwd: string): Promise<SpecdStore> {
 	mkdirSync(dir, { recursive: true });
 	try {
 		// db mode (default): store.db is rebuilt from events.jsonl on demand.
-		writeFileSync(join(dir, ".gitignore"), "*\n!.gitignore\n!events.jsonl\n", {
+		// In-repo store files are machine-local; only .gitignore itself is tracked.
+		writeFileSync(join(dir, ".gitignore"), "*\n!.gitignore\n", {
 			flag: "wx",
 		});
 	} catch (err) {
@@ -262,7 +263,7 @@ function assertWritable(store: SpecdStore): void {
 // not the events.jsonl WAL. A replay rebuilds items and events but does
 // not restore hand-created links. Upgrade path: event-source links
 // (link.added/link.removed events) or persist links to a sidecar jsonl.
-function replayEventsJsonl(db: DatabaseSync, jsonlPath: string): void {
+export function replayEventsJsonl(db: DatabaseSync, jsonlPath: string): void {
 	const raw = readFileSync(jsonlPath, "utf-8");
 	const lines = raw.split("\n").filter((line) => line.trim() !== "");
 	type Seed = {
