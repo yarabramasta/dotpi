@@ -133,7 +133,7 @@ Migrate it to an external store. See
 |---|---|
 | In-repo (machine-local) | The events are lost. Restore `.spec/` from a backup or start fresh |
 | External git repo | Clone the code repo → clone the store repo → register → the store auto-rebuilds |
-| External (no git) | The store is lost. Start fresh |
+| External (no remote) | The store is lost. Start fresh |
 
 **The event log is your backup.** As long as the events survive, the
 store can be rebuilt.
