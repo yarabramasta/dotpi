@@ -418,6 +418,26 @@ describe("watchChecks (single non-blocking poll, D3)", () => {
 			ts.cleanup();
 		}
 	});
+
+	it("maps exit 1 with 'no checks reported' on stderr to pending (no CI configured)", async () => {
+		const ts = await seededTask();
+		try {
+			const runner: GhRunner = async () => {
+				throw Object.assign(new Error("Command failed: gh pr checks"), {
+					code: 1,
+					stdout: "",
+					stderr:
+						"no checks reported on the 'specd/feat/task-0001-add-login-route' branch",
+				});
+			};
+			expect(await watchChecks(ts.store, runner, "/repo", ts.id)).toEqual({
+				failing: [],
+				state: "pending",
+			});
+		} finally {
+			ts.cleanup();
+		}
+	});
 });
 
 describe("openPr Closes-trailer edge cases", () => {

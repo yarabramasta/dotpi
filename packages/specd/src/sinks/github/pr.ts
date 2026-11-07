@@ -209,7 +209,8 @@ export async function watchChecks(
 		};
 		code = typeof e.code === "number" ? e.code : 1;
 		stdout = e.stdout ?? "";
-		if (code === 1 && NO_CHECKS_REPORTED.test(stdout)) {
+		const output = `${stdout}\n${e.stderr ?? ""}`;
+		if (code === 1 && NO_CHECKS_REPORTED.test(output)) {
 			return { failing: [], state: "pending" };
 		}
 		if (!(code in CHECK_EXIT)) {
