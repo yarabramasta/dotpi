@@ -11,6 +11,7 @@ import { dirname, join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { createExternalStore } from "./external.js";
 import {
+	isSpecdStore,
 	lookupStore,
 	registerStore,
 	type StoreRegistryEntry,
@@ -112,16 +113,19 @@ function commitExternalEvents(storePath: string): void {
  *
  * Algorithm (verify-before-flip):
  * 1. Short-circuit if already migrated (external registry + no `.spec/`).
- * 2. Create the external store directory, marker, and git repo.
- * 3. Copy the source `events.jsonl` WAL into the external dir and replay it.
- * 4. Copy the `links` table — links are not event-sourced, so replay alone
+ * 2. Refuse if the target directory already looks like a specd store.
+ * 3. Create the external store directory, marker, and git repo.
+ * 4. Copy the source `events.jsonl` WAL into the external dir and replay it.
+ * 5. Copy the `links` table — links are not event-sourced, so replay alone
  *    cannot restore them.
- * 5. Verify item/event/link counts and projected statuses match the source.
+ * 6. Verify item/event/link counts and projected statuses match the source.
  *    On mismatch: throw, leave `.spec/` intact, and remove the incomplete
  *    external store.
- * 6. Flip the registry to external, remove `.spec/`, strip `!.spec/` from the
+ * 7. Commit the migrated `events.jsonl` in the external store's own git repo
+ *    BEFORE flipping the registry, so a commit failure cannot delete an
+ *    already-registered store.
+ * 8. Flip the registry to external, remove `.spec/`, strip `!.spec/` from the
  *    repo `.gitignore`.
- * 7. Commit the migrated `events.jsonl` in the external store's git repo.
  */
 export function migrateToExternalStore(
 	repoPath: string,
@@ -141,13 +145,19 @@ export function migrateToExternalStore(
 		return {
 			migrated: false,
 			alreadyMigrated: true,
-			storePath: resolvedStore,
+			storePath: entry.storePath ?? resolvedStore,
 		};
 	}
 
 	if (!existsSync(sourceEventsPath)) {
 		throw new Error(
 			`No in-repo events.jsonl at ${sourceEventsPath}; nothing to migrate.`,
+		);
+	}
+
+	if (isSpecdStore(resolvedStore)) {
+		throw new Error(
+			`Migration refused: ${resolvedStore} already holds a specd store; migration would destroy it. Remove the target directory to retry.`,
 		);
 	}
 
@@ -207,16 +217,32 @@ export function migrateToExternalStore(
 		);
 	}
 
-	// 6. Verified: flip registry, remove old store, clean up repo .gitignore.
-	registerStore(resolvedRepo, {
-		type: "external",
-		storePath: resolvedStore,
-	} as StoreRegistryEntry);
-	rmSync(specDir, { recursive: true, force: true });
-	stripSpecReinclusion(resolvedRepo);
+	// 6. Commit migrated events BEFORE destructive flip. If commit fails,
+	// clean up the target while `.spec/` and registry remain intact.
+	try {
+		commitExternalEvents(resolvedStore);
+	} catch (err) {
+		rmSync(resolvedStore, { recursive: true, force: true });
+		const reason = err instanceof Error ? err.message : String(err);
+		throw new Error(
+			`Migration refused: could not commit migrated events in external store (${reason}).`,
+		);
+	}
 
-	// 7. Commit migrated events in the external store's own git repo.
-	commitExternalEvents(resolvedStore);
+	// 7. Verified and committed: flip registry, remove old store, clean repo.
+	try {
+		registerStore(resolvedRepo, {
+			type: "external",
+			storePath: resolvedStore,
+		} as StoreRegistryEntry);
+		rmSync(specDir, { recursive: true, force: true });
+		stripSpecReinclusion(resolvedRepo);
+	} catch (err) {
+		const reason = err instanceof Error ? err.message : String(err);
+		console.warn(
+			`specd migration completed but post-flip cleanup failed for ${resolvedRepo}: ${reason}`,
+		);
+	}
 
 	return {
 		migrated: true,

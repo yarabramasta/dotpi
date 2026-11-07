@@ -1,6 +1,8 @@
 import { execSync } from "node:child_process";
 import {
+	chmodSync,
 	existsSync,
+	mkdirSync,
 	mkdtempSync,
 	readFileSync,
 	rmSync,
@@ -8,6 +10,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { migrateToExternalStore } from "../src/store/migrate-external.js";
 import { lookupStore } from "../src/store/registry.js";
@@ -83,7 +86,7 @@ describe("migrate to external store", () => {
 		addLink(store, task.id, spec.id, "part-of");
 		store.db.close();
 
-		return { repoDir };
+		return { repoDir, specId: spec.id, taskId: task.id };
 	}
 
 	it("migrates counts and statuses, removes .spec/, strips .gitignore", async () => {
@@ -182,5 +185,66 @@ describe("migrate to external store", () => {
 
 		const gitignore = readFileSync(join(repoDir, ".gitignore"), "utf8");
 		expect(gitignore).not.toContain("!.spec/");
+	});
+
+	it("refuses to migrate when target already holds a specd store", async () => {
+		const { repoDir } = await seededRepo();
+		const storePath = join(repoDir, "..", "external-store");
+		dirs.push(storePath);
+		mkdirSync(storePath, { recursive: true });
+
+		writeFileSync(
+			join(storePath, ".specd-store.yaml"),
+			"type: specd-store\nversion: 1\nrepo: other\n",
+		);
+
+		expect(() => migrateToExternalStore(repoDir, storePath)).toThrow(
+			/already holds a specd store/,
+		);
+		expect(existsSync(join(repoDir, ".spec"))).toBe(true);
+		expect(
+			readFileSync(join(storePath, ".specd-store.yaml"), "utf8"),
+		).toContain("repo: other");
+		expect(lookupStore(repoDir)?.type).not.toBe("external");
+	});
+
+	it("commits before flip and leaves .spec/ intact on commit failure", async () => {
+		const { repoDir } = await seededRepo();
+		const storePath = join(repoDir, "..", "external-store");
+		dirs.push(storePath);
+		mkdirSync(storePath, { recursive: true });
+
+		execSync("git init", { cwd: storePath, stdio: "ignore" });
+		writeFileSync(
+			join(storePath, ".git", "hooks", "prepare-commit-msg"),
+			'#!/bin/sh\nif grep -q "migrate specd store events" "$1"; then exit 1; fi\n',
+		);
+		chmodSync(join(storePath, ".git", "hooks", "prepare-commit-msg"), 0o755);
+
+		expect(() => migrateToExternalStore(repoDir, storePath)).toThrow(
+			/could not commit migrated events/,
+		);
+		expect(existsSync(join(repoDir, ".spec"))).toBe(true);
+		expect(lookupStore(repoDir)?.type).not.toBe("external");
+		expect(existsSync(storePath)).toBe(false);
+	});
+
+	it("refuses to migrate when source and replayed target statuses differ", async () => {
+		const { repoDir, taskId } = await seededRepo();
+		const storePath = join(repoDir, "..", "external-store");
+		dirs.push(storePath);
+
+		const sourceDb = new DatabaseSync(join(repoDir, ".spec", "store.db"));
+		sourceDb
+			.prepare("UPDATE items SET status = ? WHERE id = ?")
+			.run("done", taskId);
+		sourceDb.close();
+
+		expect(() => migrateToExternalStore(repoDir, storePath)).toThrow(
+			/source and target store contents do not match/,
+		);
+		expect(existsSync(join(repoDir, ".spec"))).toBe(true);
+		expect(lookupStore(repoDir)?.type).not.toBe("external");
+		expect(existsSync(storePath)).toBe(false);
 	});
 });
