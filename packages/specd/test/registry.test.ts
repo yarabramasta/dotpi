@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -63,34 +63,37 @@ describe("store registry references", () => {
 		const repo = mkdtempSync(join(tmpdir(), "specd-repo-"));
 		const ref = mkdtempSync(join(tmpdir(), "specd-ref-"));
 		dirs.push(repo, ref);
+		const canonicalRef = realpathSync.native(ref);
+		const canonicalRepo = realpathSync.native(repo);
 
 		registerStore(repo, { type: "in-repo" });
 		const relativeRef = relative(process.cwd(), ref);
 		const result = addStoreReference(repo, relativeRef);
 
-		expect(result).toEqual({ ok: true, refs: [ref] });
-		expect(resolveReferenceStores(repo)).toEqual([ref]);
+		expect(result).toEqual({ ok: true, refs: [canonicalRef] });
+		expect(resolveReferenceStores(repo)).toEqual([canonicalRef]);
 		expect(
 			JSON.parse(
 				readFileSync(
 					join(process.env.PI_CODING_AGENT_DIR as string, "specd-stores.json"),
 					"utf-8",
 				),
-			)[repo].references,
-		).toEqual([ref]);
+			)[canonicalRepo].references,
+		).toEqual([canonicalRef]);
 	});
 
 	it("rejects duplicate references", () => {
 		const repo = mkdtempSync(join(tmpdir(), "specd-repo-"));
 		const ref = mkdtempSync(join(tmpdir(), "specd-ref-"));
 		dirs.push(repo, ref);
+		const canonicalRef = realpathSync.native(ref);
 
 		registerStore(repo, { type: "in-repo" });
 		addStoreReference(repo, ref);
 		const second = addStoreReference(repo, ref);
 
 		expect(second).toEqual({ ok: false, reason: "reference already exists" });
-		expect(resolveReferenceStores(repo)).toEqual([ref]);
+		expect(resolveReferenceStores(repo)).toEqual([canonicalRef]);
 	});
 
 	it("rejects self-reference", () => {

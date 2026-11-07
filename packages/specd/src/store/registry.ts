@@ -1,4 +1,11 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import {
+	existsSync,
+	mkdirSync,
+	readFileSync,
+	realpathSync,
+	writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
@@ -60,40 +67,76 @@ export function writeRegistry(registry: StoreRegistry): void {
 	writeFileSync(path, `${JSON.stringify(registry, null, 2)}\n`);
 }
 
+/** Resolve a repo path to a stable, absolute, symlink-resolved key. */
+function canonicalRepoPath(repoPath: string): string {
+	const abs = resolve(repoPath);
+	try {
+		return realpathSync.native(abs);
+	} catch {
+		return abs;
+	}
+}
+
 /** Register a repo → store mapping. The repo path is resolved to an
- * absolute path for stable lookup. */
+ * absolute, canonical path for stable lookup. */
 export function registerStore(
 	repoPath: string,
 	entry: StoreRegistryEntry,
 ): void {
 	const registry = readRegistry();
-	registry[resolve(repoPath)] = entry;
+	registry[canonicalRepoPath(repoPath)] = entry;
 	writeRegistry(registry);
 }
 
 /** Look up the registry entry for a repo. Returns undefined if not
  * registered. */
 export function lookupStore(repoPath: string): StoreRegistryEntry | undefined {
-	return readRegistry()[resolve(repoPath)];
+	return readRegistry()[canonicalRepoPath(repoPath)];
 }
 
 /** Remove a registry entry (e.g. after a reset). */
 export function unregisterStore(repoPath: string): void {
 	const registry = readRegistry();
-	delete registry[resolve(repoPath)];
+	delete registry[canonicalRepoPath(repoPath)];
 	writeRegistry(registry);
 }
 
-/** Resolve the store directory for a repo: registry first, then the
- * default in-repo path. Returns the absolute path to the store
- * directory (which contains store.db). */
-export function resolveStoreDir(repoPath: string): string {
+/** If cwd is inside a linked git worktree, return the absolute path to the
+ * main repository checkout. Otherwise return undefined. */
+function resolveMainRepoFromWorktree(cwd: string): string | undefined {
+	try {
+		const output = execFileSync(
+			"git",
+			["rev-parse", "--git-dir", "--git-common-dir"],
+			{
+				cwd,
+				encoding: "utf-8",
+				timeout: 5000,
+				stdio: ["ignore", "pipe", "ignore"],
+			},
+		);
+		const [gitDir = "", commonDir = ""] = output.split("\n");
+		if (!gitDir || !commonDir) return undefined;
+		const absGitDir = resolve(cwd, gitDir.trim());
+		const absCommonDir = resolve(cwd, commonDir.trim());
+		if (absGitDir === absCommonDir) return undefined;
+		return dirname(absCommonDir);
+	} catch {
+		return undefined;
+	}
+}
+
+/** Resolve the store directory for cwd: map a linked git worktree back to
+ * its main repository, then registry first, then the default in-repo path.
+ * Returns the absolute path to the store directory (which contains store.db). */
+export function resolveStoreDir(cwd: string): string {
+	const repoPath = resolveMainRepoFromWorktree(cwd) ?? cwd;
 	const entry = lookupStore(repoPath);
 	if (entry?.storePath) {
-		return resolve(entry.storePath);
+		return canonicalRepoPath(resolve(entry.storePath));
 	}
 	// Default: in-repo
-	return join(resolve(repoPath), ".spec");
+	return join(canonicalRepoPath(repoPath), ".spec");
 }
 
 function expandHome(input: string): string {
@@ -107,7 +150,7 @@ function expandHome(input: string): string {
 export function resolveReferenceStores(repoPath: string): string[] {
 	const entry = lookupStore(repoPath);
 	if (!entry?.references) return [];
-	return entry.references.map((ref) => resolve(expandHome(ref)));
+	return entry.references.map((ref) => canonicalRepoPath(expandHome(ref)));
 }
 
 /** Walk the reference graph starting from a store directory and return
@@ -136,8 +179,8 @@ export function addStoreReference(
 	repoPath: string,
 	refPath: string,
 ): { ok: true; refs: string[] } | { ok: false; reason: string } {
-	const absRepo = resolve(repoPath);
-	const absRef = resolve(expandHome(refPath));
+	const absRepo = canonicalRepoPath(repoPath);
+	const absRef = canonicalRepoPath(expandHome(refPath));
 	const selfDir = resolveStoreDir(absRepo);
 
 	if (absRef === selfDir) {
