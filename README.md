@@ -100,6 +100,9 @@ This repo uses `specd` for its own planning and execution. `grill`,
 `android-cli`, and `wandb` are installable Pi extensions under
 `packages/`, just like `specd`.
 
+See [docs/store-placement.md](docs/store-placement.md) for where specd
+keeps its store and how to migrate an existing in-repo store.
+
 ## Dev workflow
 
 ```sh

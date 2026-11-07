@@ -5,15 +5,24 @@ set it up for your situation.
 
 ## The two files that matter
 
-| File | What it is | Git status |
-|---|---|---|
-| `events.jsonl` | The source of truth — one JSON line per event (decisions, approvals, state changes) | **Committed** — text, mergeable, diffable |
-| `store.db` | The derived projection — a SQLite database computed by replaying the events | **Gitignored** — binary, rebuilt from the events |
+| File | What it is |
+|---|---|
+| `events.jsonl` | The source of truth — one JSON line per event (decisions, approvals, state changes) |
+| `store.db` | The derived projection — a SQLite database computed by replaying the events |
 
 You version the source (events), not the build output (the database). This
 is the event-sourcing pattern applied to version control.
 
-## The three storage modes
+For the current placement modes, see [Store placement and migration](../../docs/store-placement.md).
+In-repo stores are machine-local: only `.spec/.gitignore` may be tracked;
+`events.jsonl`, `store.db`, and transient files are gitignored. External
+stores live outside the repo and are registered in the machine-local
+`~/.pi/agent/specd-stores.json` file.
+
+## Markdown mirror modes
+
+These modes control where readable markdown mirrors go. They are separate
+from the store placement modes.
 
 | Mode | Where md mirrors live | Use case |
 |---|---|---|
@@ -21,61 +30,56 @@ is the event-sourcing pattern applied to version control.
 | `md-inrepo` | `docs/specd/<id>.md` in the repo | Sharing specs in PRs |
 | `md-external` | A directory you choose | Cross-repo scenarios |
 
-The mode controls where **markdown mirrors** go — the store and events
-are always present regardless of mode.
-
 ## Where the store lives
 
 When you run `/spec start` in a repo without a store, specd asks:
 
-### Option 1 — In this repo (default)
+### Option 1 — In this repo
 
-The store lives at `.spec/store.db` inside the repo. The `.gitignore`
-ignores the database but commits the events.
+The store lives at `.spec/` inside the repo. The `.gitignore` inside
+`.spec/` ignores every file except itself, so no store data is committed.
 
-```
+```text
 .spec/
-├── .gitignore          (ignores store.db, WAL, SHM)
-├── events.jsonl        (committed — the audit trail)
+├── .gitignore          (committed; ignores everything in this directory)
+├── events.jsonl        (gitignored — machine-local)
 └── store.db            (gitignored — rebuilt from events)
 ```
 
-**Best for**: your own repos where you want the planning history versioned
-with the code.
+**Best for**: a constraint that forces the store inside the repo.
 
-**After a Mac wipe**: clone the repo → the events are there → the store is
-rebuilt automatically. Nothing is lost.
+**After a Mac wipe**: the events are lost because they are not committed.
+Restore `.spec/events.jsonl` from a backup or migrate to an external store
+before moving machines.
 
 ### Option 2 — External, specd-managed (zero footprint)
 
 The store lives at `~/.pi/agent/stores/{repo-name}/`. Your repo has
 ZERO specd-related files.
 
-```
+```text
 ~/.pi/agent/stores/my-android-app/
 ├── .specd-store.yaml   (marker)
-├── .gitignore
-├── events.jsonl
-└── store.db
+├── .gitignore          (in the external store)
+├── events.jsonl        (tracked in the external store's own git repo; external-git adds a remote)
+└── store.db            (gitignored, rebuilt from events)
 ```
 
-**Best for**: the "senior won't allow it" scenario — your repo stays
-completely clean.
+**Best for**: the default for new repos — your repo stays clean.
 
 **After a Mac wipe**: the events are in the external directory, which is
-NOT in the repo. You need a separate backup (or the external dir should
-be a git repo — see Option 3).
+NOT in the repo. Back it up separately or use Option 3.
 
 ### Option 3 — External, git repo (shareable)
 
 The store lives as its own git repository. Push it to GitHub, clone it on
-any machine. Multiple repos can share one store.
+any machine. Multiple repos can share one store by referencing it.
 
-```
+```text
 ~/.pi/agent/stores/my-product-specd/     ← this IS a git repo
 ├── .specd-store.yaml
 ├── .gitignore
-├── events.jsonl                          ← committed to this repo
+├── events.jsonl                          ← committed to the external store repo
 └── store.db                              ← gitignored
 
 backend-api      → references this store
@@ -83,9 +87,7 @@ android-app      → references this store
 ios-app          → references this store
 ```
 
-**Best for**: team scenarios (multiple developers share specs via
-push/pull), multi-repo products (one knowledge base, multiple code repos),
-and the "senior won't allow it" scenario (zero footprint + versioned).
+**Best for**: team scenarios, multi-repo products, and zero-footprint needs.
 
 **After a Mac wipe**: clone the code repo, clone the store repo (you need
 to know its URL), run `/spec connect` or register manually. The store is
@@ -95,12 +97,12 @@ rebuilt from the events.
 
 ### "I'm starting a new personal project"
 
-Use **Option 1** (in-repo). The events travel with the repo. Simple.
+Use **Option 2** (external, specd-managed). The repo stays clean.
 
 ### "I'm working on someone else's repo and can't add files"
 
-Use **Option 3** (external git repo). Your repo stays clean. The store
-is versioned separately.
+Use **Option 2** or **Option 3** (external / external-git). Your repo
+stays clean and the store is outside it.
 
 ### "I'm building a multi-repo product"
 
@@ -118,16 +120,20 @@ register. Spec changes are reviewable via PRs.
 Use **Option 2** (external, managed). Zero footprint, easy to delete
 (`rm -rf ~/.pi/agent/stores/{repo-name}/`).
 
+### "I have an old in-repo store with committed events.jsonl"
+
+Migrate it to an external store. See
+[Store placement and migration](../../docs/store-placement.md).
+
 ## Disaster recovery
 
 ### "I wiped my Mac and cloned my repo"
 
 | Store location | What to do |
 |---|---|
-| In-repo (committed) | Clone the repo → the events are there → the store auto-rebuilds |
-| In-repo (gitignored) | The events are lost. Restore from backup or start fresh |
+| In-repo (machine-local) | The events are lost. Restore `.spec/` from a backup or start fresh |
 | External git repo | Clone the code repo → clone the store repo → register → the store auto-rebuilds |
-| External (no git) | The store is lost. Start fresh |
+| External (no remote) | The store is lost. Start fresh |
 
 **The event log is your backup.** As long as the events survive, the
 store can be rebuilt.
@@ -136,8 +142,8 @@ store can be rebuilt.
 
 1. Clone the code repo
 2. If the store is external-git: clone the store repo too
-3. Run `/spec connect` or register the store path
-4. `openStore` replays the events if store.db is missing
+3. Register the store with `specd_store(action="register")`
+4. `openStore` replays `events.jsonl` if `store.db` is missing
 5. Everything is back
 
 ### "I want to share my store with a teammate"
@@ -165,13 +171,16 @@ The mapping between repos and stores lives at
 This file is machine-local. After a wipe, re-register (or include the
 store URL in your notes).
 
-## What specd does NOT commit
+## What specd does NOT commit to the code repo
 
 - `store.db` — binary, derived, rebuilt from events
 - `store.db-wal` — transient SQLite write-ahead log
 - `store.db-shm` — transient SQLite shared memory
+- `events.jsonl` — machine-local in in-repo stores
 
-Everything else (events, md mirrors, the marker file) can be committed.
+In an in-repo store, only `.spec/.gitignore` may be tracked. In external
+stores, `events.jsonl` is tracked in the external store's own git repo;
+`external-git` adds a remote.
 
 ## Child-session write guard (no-specd-store-writes)
 
@@ -191,9 +200,8 @@ All mutating specd tools (`specd_append_event`, `specd_create_item`,
 calls whose cwd is a task worktree with a `no-specd-store-writes` error
 that tells the child to report results to the parent session, which
 records all specd events. Reads stay open from child contexts — children
-may inspect the store they resolve (a child in a task worktree resolves
-its own fresh `.spec` copy there; committed in-repo stores resolve via
-the repo). The two slash-command write paths (`/spec storage`,
+may inspect the store because worktrees resolve back to the same store
+as the main checkout. The two slash-command write paths (`/spec storage`,
 `/spec export`) are deliberately unguarded: slash commands exist only in
 the parent TUI, which spawned children do not have.
 
