@@ -90,10 +90,10 @@ the pipeline. Issues are created with conventional-commit titles
 
 ## The store
 
-All items, events, and decisions live in `.spec/store.db` — a SQLite
-database that's gitignored by default. The store is the single source of
-truth: every approval, every rejection, every decision is recorded as an
-append-only event.
+All items, events, and decisions live in an event-sourced SQLite
+database. The default in-repo location is `.spec/store.db`; the store can
+also live outside the repo at a registered external path. Every approval,
+every rejection, every decision is recorded as an append-only event.
 
 You can inspect it at any time:
 
@@ -102,11 +102,17 @@ You can inspect it at any time:
 /spec query      # search items
 ```
 
+Store placement options and the migration runbook:
+[docs/store-placement.md](../docs/store-placement.md).
+
 Optionally, promote items to readable markdown files in the repo:
 
 ```sh
 /spec storage md-inrepo
 ```
+
+Note: `md-inrepo` controls where readable **markdown mirrors** go. It is
+separate from the store placement mode.
 
 ## Naming
 
@@ -135,3 +141,4 @@ external directory. Your repo stays clean.
 | [Architecture](docs/architecture.md) | How specd works: event-sourced store, gates, zero footprint |
 | [Agent guide](docs/agent-guide.md) | For AI agents operating specd: gates, naming, error handling |
 | [Storage guide](docs/storage-guide.md) | Scenarios, setup, and disaster recovery for the store |
+| [Store placement](docs/store-placement.md) | Where the store lives, when to choose each mode, and how to migrate |

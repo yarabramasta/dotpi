@@ -6,17 +6,19 @@ This guide is for the AI agent operating specd tools. Follow these rules.
 
 Before any specd operation, verify a store exists:
 
-```
-specd_store(action=status)
+```text
+specd_store(action="status")
 ```
 
 - If a store is registered or found at `.spec/store.db` → proceed.
 - If not → ask the user where it should live using `ask_user_question`:
-  1. External — specd-managed (zero footprint): register with `specd_store(action="register", type="external", storePath="~/.pi/agent/stores/{repo-name}")`
+  1. External — specd-managed (zero footprint): register with `specd_store(action="register", type="external", storePath="~/.pi/agent/stores/{repo-name}")` (recommended default for new repos)
   2. External — git repo (shareable): same but `type="external-git"`
-  3. In this repo (`.spec/`, gitignored): the default, no registration needed
-  4. In this repo (`.spec/`, committed): `type="in-repo"`
-- Then add `.spec/` to `.gitignore` if in-repo and gitignored.
+  3. In this repo (`.spec/`, machine-local): `type="in-repo"`
+- In-repo is supported, but `events.jsonl` is not committed. If the repo
+  still has a tracked `.spec/events.jsonl` from an older setup, point the
+  user at [Store placement and migration](../../docs/store-placement.md)
+  to migrate.
 
 ## Item kinds
 

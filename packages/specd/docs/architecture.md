@@ -22,10 +22,12 @@ specd takes a different approach.
 
 ## The event-sourced store
 
-All items, events, and decisions live in a **SQLite database**
-(`.spec/store.db`). Every action is an **append-only event**:
+All items, events, and decisions live in a **SQLite database** inside a
+specd store. The default in-repo location is `.spec/store.db`; the store
+can also live outside the repo at a registered external path. Every
+action is an **append-only event**:
 
-```
+```text
 created → explore.decided → question.answered → spec.approved →
 decision.made → task.exported → work.started → review.completed →
 pr.created → work.completed
@@ -64,47 +66,48 @@ happens in the tool's execute function, not in the prompt.
 
 ## Store location and footprint
 
-specd supports two store locations, and the "zero footprint" claim depends
-on which one you use:
+specd supports three placement modes. See [Store placement and
+migration](../../docs/store-placement.md) for the migration runbook; the
+summary here is:
 
 ### In-repo store (`.spec/` inside the repo)
 
-```
+```text
 .spec/
-├── .gitignore          ← committed (tells git to ignore store.db)
-├── events.jsonl        ← committed (the audit trail, text, mergeable)
+├── .gitignore          ← committed (tells git to ignore everything else)
+├── events.jsonl        ← gitignored (machine-local)
 └── store.db            ← gitignored (rebuilt from events)
 ```
 
-The senior reviewing the repo **sees** `.spec/` with a `.gitignore` and an
-`events.jsonl`. This is visible footprint — fine for your own repos, not
-for the "senior won't allow it" scenario.
+The only tracked file is `.gitignore`. This mode is supported but
+machine-local — `events.jsonl` is not committed.
 
 ### External store (the zero-footprint option)
 
-The store lives OUTSIDE the repo as its own git repository:
+The store lives OUTSIDE the repo:
 
-```
+```text
 your-repo/                                ← zero specd files
-~/.pi/agent/stores/{repo-name}/           ← the store (its own git repo)
-├── .gitignore                            ← in the store repo, not yours
-├── .specd-store.yaml                     ← in the store repo
-├── events.jsonl                          ← in the store repo
+~/.pi/agent/stores/{repo-name}/           ← the store
+├── .gitignore                            ← in the store, not the repo
+├── .specd-store.yaml                     ← marker
+├── events.jsonl                          ← machine-local (external) or tracked in the store repo (external-git)
 └── store.db                              ← gitignored
 ```
 
-The senior reviewing your repo sees **nothing**. The store, its git
-history, its events — all live in a separate repository. This is the
-"senior won't allow it" solution.
+The repo stays clean. External is the recommended default for new repos.
+Use `external-git` when you need the store to be its own cloneable,
+shareable git repo.
 
 ### Choosing
 
-| Scenario | Use |
+|Scenario|Use|
 |---|---|
-| Your own repo, team shares specs | In-repo (committed) |
-| Your own repo, private planning | In-repo (gitignore events too) |
-| Someone else's repo, "senior says no" | **External** |
-| Multi-repo product (shared knowledge) | **External** (one store, multiple repos) |
+|New repo, personal/solo|`external`|
+|New repo, team sharing|`external-git`|
+|Constraint forces store inside repo|`in-repo` (machine-local)|
+|Someone else's repo, "senior says no"|`external` or `external-git`|
+|Multi-repo product (shared knowledge)|`external-git` (one store, multiple repos)|
 
 ## The execution seam
 
