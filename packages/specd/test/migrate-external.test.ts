@@ -1,5 +1,6 @@
 import { execSync } from "node:child_process";
 import {
+	appendFileSync,
 	chmodSync,
 	existsSync,
 	mkdirSync,
@@ -161,20 +162,71 @@ describe("migrate to external store", () => {
 		expect(existsSync(join(repoDir, ".spec"))).toBe(false);
 	});
 
-	it("refuses to migrate when events.jsonl does not replay to matching counts", async () => {
+	it("refuses to migrate when source db has events absent from events.jsonl", async () => {
 		const { repoDir } = await seededRepo();
 		const storePath = join(repoDir, "..", "external-store");
 		dirs.push(storePath);
 
+		const sourceDb = new DatabaseSync(join(repoDir, ".spec", "store.db"));
+		sourceDb
+			.prepare(
+				"INSERT INTO items (id, kind, title, status, body, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+			)
+			.run(
+				"db-ahead-spec-001",
+				"spec",
+				"Db ahead spec",
+				"draft",
+				"",
+				"2024-01-01T00:00:00.000Z",
+				"2024-01-01T00:00:00.000Z",
+			);
+		sourceDb
+			.prepare(
+				"INSERT INTO events (id, item, type, payload, at, actor) VALUES (?, ?, ?, ?, ?, ?)",
+			)
+			.run(
+				0,
+				"db-ahead-spec-001",
+				"created",
+				JSON.stringify({
+					kind: "spec",
+					title: "Db ahead spec",
+					body: "",
+					pathScope: null,
+					phase: null,
+					parallel: false,
+				}),
+				"2024-01-01T00:00:00.000Z",
+				"test",
+			);
+		sourceDb.close();
+
+		// Add a valid jsonl-only event so counts match (4 vs 4) but id sets differ.
 		const eventsPath = join(repoDir, ".spec", "events.jsonl");
-		const lines = readFileSync(eventsPath, "utf8").split("\n").filter(Boolean);
-		// Truncate to one event so replay creates fewer items/events.
-		writeFileSync(eventsPath, `${lines[0]}\n`);
+		const jsonlOnly = JSON.stringify({
+			id: 100,
+			item: "jsonl-only-spec-001",
+			type: "created",
+			payload: JSON.stringify({
+				kind: "spec",
+				title: "Jsonl-only spec",
+				body: "",
+				pathScope: null,
+				phase: null,
+				parallel: false,
+			}),
+			at: "2024-01-01T00:00:00.000Z",
+			actor: "test",
+			batch: null,
+		});
+		appendFileSync(eventsPath, `${jsonlOnly}\n`);
 
 		expect(() => migrateToExternalStore(repoDir, storePath)).toThrow(
-			/Migration refused/,
+			/1 event exists only in the stale store\.db and is not in events\.jsonl/,
 		);
 		expect(existsSync(join(repoDir, ".spec"))).toBe(true);
+		expect(existsSync(storePath)).toBe(false);
 	});
 
 	it("strips !.spec/ from repo .gitignore when present", async () => {
@@ -230,22 +282,88 @@ describe("migrate to external store", () => {
 		expect(existsSync(storePath)).toBe(false);
 	});
 
-	it("refuses to migrate when source and replayed target statuses differ", async () => {
-		const { repoDir, taskId } = await seededRepo();
+	it("warns and migrates when source store.db is stale (jsonl superset)", async () => {
+		const { repoDir } = await seededRepo();
 		const storePath = join(repoDir, "..", "external-store");
 		dirs.push(storePath);
 
-		const sourceDb = new DatabaseSync(join(repoDir, ".spec", "store.db"));
-		sourceDb
-			.prepare("UPDATE items SET status = ? WHERE id = ?")
-			.run("done", taskId);
-		sourceDb.close();
+		const eventsPath = join(repoDir, ".spec", "events.jsonl");
+		const extra =
+			JSON.stringify({
+				id: 100,
+				item: "spec-0003",
+				type: "created",
+				payload: JSON.stringify({
+					kind: "spec",
+					title: "Extra spec",
+					body: "",
+					pathScope: null,
+					phase: null,
+					parallel: false,
+				}),
+				at: "2024-01-01T00:00:00.000Z",
+				actor: "test",
+				batch: null,
+			}) +
+			"\n" +
+			JSON.stringify({
+				id: 101,
+				item: "spec-0003",
+				type: "spec.approved",
+				payload: "{}",
+				at: "2024-01-01T00:00:01.000Z",
+				actor: "test",
+				batch: null,
+			}) +
+			"\n";
+		appendFileSync(eventsPath, extra);
+
+		const result = migrateToExternalStore(repoDir, storePath);
+		expect(result.migrated).toBe(true);
+		expect(result.warning).toMatch(/source store\.db was stale/);
+		expect(result.warning).toMatch(/events\.jsonl is authoritative/);
+		expect(existsSync(join(repoDir, ".spec"))).toBe(false);
+		expect(existsSync(storePath)).toBe(true);
+
+		const targetDb = new DatabaseSync(join(storePath, "store.db"), {
+			readOnly: true,
+		});
+		const items = (
+			targetDb.prepare("SELECT COUNT(*) AS n FROM items").get() as {
+				n: number;
+			}
+		).n;
+		const events = (
+			targetDb.prepare("SELECT COUNT(*) AS n FROM events").get() as {
+				n: number;
+			}
+		).n;
+		targetDb.close();
+		expect(items).toBe(3);
+		expect(events).toBe(5);
+	});
+
+	it("refuses to migrate when events.jsonl contains an invalid event", async () => {
+		const { repoDir } = await seededRepo();
+		const storePath = join(repoDir, "..", "external-store");
+		dirs.push(storePath);
+
+		const eventsPath = join(repoDir, ".spec", "events.jsonl");
+		const invalid = JSON.stringify({
+			id: 100,
+			item: "missing-spec-001",
+			type: "spec.approved",
+			payload: "{}",
+			at: "2024-01-01T00:00:00.000Z",
+			actor: "test",
+			batch: null,
+		});
+		appendFileSync(eventsPath, `${invalid}\n`);
 
 		expect(() => migrateToExternalStore(repoDir, storePath)).toThrow(
-			/source and target store contents do not match/,
+			/Migration refused/,
 		);
 		expect(existsSync(join(repoDir, ".spec"))).toBe(true);
-		expect(lookupStore(repoDir)?.type).not.toBe("external");
 		expect(existsSync(storePath)).toBe(false);
 	});
 });

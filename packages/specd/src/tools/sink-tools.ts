@@ -160,10 +160,11 @@ export function registerSinkTools(pi: ExtensionAPI): void {
 					"../store/migrate-external.js"
 				);
 				const result = migrateToExternalStore(ctx.cwd, params.storePath);
+				const base = result.alreadyMigrated
+					? `Store already migrated to ${result.storePath}.`
+					: `Migrated specd store to ${result.storePath}. The in-repo .spec/ directory has been removed.`;
 				return text(
-					result.alreadyMigrated
-						? `Store already migrated to ${result.storePath}.`
-						: `Migrated specd store to ${result.storePath}. The in-repo .spec/ directory has been removed.`,
+					result.warning ? `${base}\nWarning: ${result.warning}` : base,
 				);
 			}
 

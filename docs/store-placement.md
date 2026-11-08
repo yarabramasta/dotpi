@@ -117,6 +117,8 @@ Use this procedure for dotpi, lingua-lair, stoa, or any repo with an existing in
 - [ ] `git status --porcelain` in the repo shows only `.gitignore` modified and `.spec/` deleted.
 - [ ] The external store has a git commit `migrate specd store events` (`git -C <store> log --oneline`).
 
+A stale `store.db` warning is expected for repos that pulled `events.jsonl` across machines (for example, via git) while `store.db` stayed machine-local. In that case `events.jsonl` will have events the old `store.db` does not know about, and the migration will warn that it is discarding the stale `store.db`. `events.jsonl` is authoritative; safe migrations proceed.
+
 ### Commit the cleanup
 
 Run this once from the code repo:

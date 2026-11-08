@@ -3,10 +3,12 @@ import {
 	cpSync,
 	existsSync,
 	mkdirSync,
+	mkdtempSync,
 	readFileSync,
 	rmSync,
 	writeFileSync,
 } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { createExternalStore } from "./external.js";
@@ -23,6 +25,8 @@ export interface MigrationResult {
 	migrated: boolean;
 	alreadyMigrated: boolean;
 	storePath: string;
+	/** Present when the source store.db was behind events.jsonl. */
+	warning?: string;
 }
 
 interface StoreCounts {
@@ -60,6 +64,52 @@ function openSourceDb(specDir: string): DatabaseSync {
 		throw new Error(`No source store at ${dbPath}`);
 	}
 	return new DatabaseSync(dbPath);
+}
+
+function readEventIds(db: DatabaseSync): Set<number> {
+	// SAFETY: SELECT id returns a numeric id column; shape is guaranteed by query.
+	const rows = db
+		.prepare("SELECT id FROM events ORDER BY id")
+		.all() as unknown as Array<{ id: number }>;
+	return new Set(rows.map((r) => r.id));
+}
+
+function dbAheadCount(
+	sourceDb: DatabaseSync,
+	expectedDb: DatabaseSync,
+): number {
+	const sourceIds = readEventIds(sourceDb);
+	const expectedIds = readEventIds(expectedDb);
+	let count = 0;
+	for (const id of sourceIds) {
+		if (!expectedIds.has(id)) count++;
+	}
+	return count;
+}
+
+interface ExpectedStore {
+	db: DatabaseSync;
+	dir: string;
+}
+
+/** Build the expected state by replaying events.jsonl in a temp dir and
+ * copying links (links are not event-sourced). */
+function buildExpectedStore(
+	sourceEventsPath: string,
+	linksSource: DatabaseSync,
+): ExpectedStore {
+	const dir = mkdtempSync(join(tmpdir(), "specd-verify-"));
+	const eventsPath = join(dir, "events.jsonl");
+	cpSync(sourceEventsPath, eventsPath);
+	const db = new DatabaseSync(join(dir, "store.db"));
+	applySchema(db);
+	replayEventsJsonl(db, eventsPath);
+	copyLinks(linksSource, db);
+	db.prepare("INSERT OR IGNORE INTO meta (key, value) VALUES (?, ?)").run(
+		"schema_version",
+		SCHEMA_VERSION,
+	);
+	return { db, dir };
 }
 
 function copyLinks(sourceDb: DatabaseSync, targetDb: DatabaseSync): void {
@@ -192,29 +242,69 @@ export function migrateToExternalStore(
 	}
 
 	// 5. Verify BEFORE destroying anything.
-	const sourceVerifyDb = openSourceDb(specDir);
-	const targetVerifyDb = new DatabaseSync(join(resolvedStore, "store.db"), {
-		readOnly: true,
-	});
-	const sourceCounts = readCounts(sourceVerifyDb);
-	const targetCounts = readCounts(targetVerifyDb);
-	sourceVerifyDb.close();
-	targetVerifyDb.close();
+	let warning: string | undefined;
+	try {
+		const sourceVerifyDb = openSourceDb(specDir);
+		const expectedStore = buildExpectedStore(sourceEventsPath, sourceVerifyDb);
+		const targetVerifyDb = new DatabaseSync(join(resolvedStore, "store.db"), {
+			readOnly: true,
+		});
 
-	if (
-		sourceCounts.items !== targetCounts.items ||
-		sourceCounts.events !== targetCounts.events ||
-		sourceCounts.links !== targetCounts.links ||
-		sourceCounts.statuses !== targetCounts.statuses
-	) {
-		// Refuse to delete `.spec/`; clean up the incomplete external store.
+		try {
+			// 5a. Copy/race guard: target must match the expected replay of events.jsonl.
+			//    Same source events.jsonl replayed twice by the same machinery; catches
+			//    jsonl mutation or partial copy between the two copies, not db divergence.
+			const expectedCounts = readCounts(expectedStore.db);
+			const targetCounts = readCounts(targetVerifyDb);
+
+			if (
+				expectedCounts.items !== targetCounts.items ||
+				expectedCounts.events !== targetCounts.events ||
+				expectedCounts.links !== targetCounts.links ||
+				expectedCounts.statuses !== targetCounts.statuses
+			) {
+				rmSync(resolvedStore, { recursive: true, force: true });
+				throw new Error(
+					`Migration refused: target store does not match events.jsonl replay. ` +
+						`items ${expectedCounts.items} vs ${targetCounts.items}, ` +
+						`events ${expectedCounts.events} vs ${targetCounts.events}, ` +
+						`links ${expectedCounts.links} vs ${targetCounts.links}.`,
+				);
+			}
+
+			// 5b. Safety: data loss if source db has events absent from events.jsonl.
+			const lostCount = dbAheadCount(sourceVerifyDb, expectedStore.db);
+			if (lostCount > 0) {
+				rmSync(resolvedStore, { recursive: true, force: true });
+				throw new Error(
+					`Migration refused: ${lostCount} ${lostCount === 1 ? "event exists" : "events exist"} ` +
+						`only in the stale store.db and ${lostCount === 1 ? "is" : "are"} not in events.jsonl — ` +
+						`migration would lose ${lostCount === 1 ? "it" : "them"}.`,
+				);
+			}
+
+			// 5c. Stale-but-safe: jsonl is a strict superset of the source db.
+			const sourceIds = readEventIds(sourceVerifyDb);
+			const expectedIds = readEventIds(expectedStore.db);
+			let staleCount = 0;
+			for (const id of expectedIds) {
+				if (!sourceIds.has(id)) staleCount++;
+			}
+			if (staleCount > 0) {
+				warning =
+					`source store.db was stale: ${staleCount} ` +
+					`${staleCount === 1 ? "event" : "events"} behind events.jsonl; ` +
+					`events.jsonl is authoritative; stale db discarded with .spec/`;
+			}
+		} finally {
+			sourceVerifyDb.close();
+			expectedStore.db.close();
+			targetVerifyDb.close();
+			rmSync(expectedStore.dir, { recursive: true, force: true });
+		}
+	} catch (err) {
 		rmSync(resolvedStore, { recursive: true, force: true });
-		throw new Error(
-			`Migration refused: source and target store contents do not match. ` +
-				`items ${sourceCounts.items} vs ${targetCounts.items}, ` +
-				`events ${sourceCounts.events} vs ${targetCounts.events}, ` +
-				`links ${sourceCounts.links} vs ${targetCounts.links}.`,
-		);
+		throw err;
 	}
 
 	// 6. Commit migrated events BEFORE destructive flip. If commit fails,
@@ -248,5 +338,6 @@ export function migrateToExternalStore(
 		migrated: true,
 		alreadyMigrated: false,
 		storePath: resolvedStore,
+		warning,
 	};
 }
