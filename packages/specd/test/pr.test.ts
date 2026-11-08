@@ -132,7 +132,12 @@ describe("openPr (review-gated PR creation)", () => {
 				url: "https://github.com/acme/app/pull/7",
 			});
 			const events = history(ts.store, taskId);
-			expect(events.some((e) => e.type === "pr.created")).toBe(true);
+			const prCreated = events.find((e) => e.type === "pr.created");
+			expect(prCreated).toBeDefined();
+			expect(JSON.parse(prCreated?.payload ?? "{}")).toEqual({
+				url: "https://github.com/acme/app/pull/7",
+				branch: "specd/feat/task-0001-add-login-route",
+			});
 			const completed = events.filter((e) => e.type === "work.completed");
 			expect(completed.length).toBe(1);
 			expect(JSON.parse(completed[0]?.payload ?? "{}")).toEqual({
@@ -217,7 +222,12 @@ describe("openPr (review-gated PR creation)", () => {
 				false,
 			);
 			const events = history(ts.store, taskId);
-			expect(events.some((e) => e.type === "pr.created")).toBe(true);
+			const prCreated = events.find((e) => e.type === "pr.created");
+			expect(prCreated).toBeDefined();
+			expect(JSON.parse(prCreated?.payload ?? "{}")).toEqual({
+				url: "https://github.com/acme/app/pull/5",
+				branch: "specd/feat/task-0001-add-login-route",
+			});
 			const completed = events.filter((e) => e.type === "work.completed");
 			expect(completed.length).toBe(1);
 			expect(JSON.parse(completed[0]?.payload ?? "{}")).toEqual({
@@ -260,6 +270,14 @@ describe("openPr (review-gated PR creation)", () => {
 			const state: PrState = { log: [] };
 			await openPr(ts.store, prRunner(state), "/repo", { taskId });
 			expect(state.bodyViaFile).toBe("Add login route\n\nCloses #42");
+			const prCreated = history(ts.store, taskId).find(
+				(e) => e.type === "pr.created",
+			);
+			expect(JSON.parse(prCreated?.payload ?? "{}")).toEqual({
+				url: "https://github.com/acme/app/pull/7",
+				branch: "specd/feat/task-0001-add-login-route",
+				issue: "42",
+			});
 		} finally {
 			ts.cleanup();
 		}
@@ -272,6 +290,13 @@ describe("openPr (review-gated PR creation)", () => {
 			const state: PrState = { log: [] };
 			await openPr(ts.store, prRunner(state), "/repo", { taskId });
 			expect(state.bodyViaFile).toBe("Add login route");
+			const prCreated = history(ts.store, taskId).find(
+				(e) => e.type === "pr.created",
+			);
+			expect(JSON.parse(prCreated?.payload ?? "{}")).toEqual({
+				url: "https://github.com/acme/app/pull/7",
+				branch: "specd/feat/task-0001-add-login-route",
+			});
 		} finally {
 			ts.cleanup();
 		}
@@ -290,6 +315,13 @@ describe("openPr (review-gated PR creation)", () => {
 			const state: PrState = { log: [] };
 			await openPr(ts.store, prRunner(state), "/repo", { taskId });
 			expect(state.bodyViaFile).toBe("Add login route");
+			const prCreated = history(ts.store, taskId).find(
+				(e) => e.type === "pr.created",
+			);
+			expect(JSON.parse(prCreated?.payload ?? "{}")).toEqual({
+				url: "https://github.com/acme/app/pull/7",
+				branch: "specd/feat/task-0001-add-login-route",
+			});
 		} finally {
 			ts.cleanup();
 		}
@@ -311,6 +343,14 @@ describe("openPr (review-gated PR creation)", () => {
 				summary: "Custom summary body",
 			});
 			expect(state.bodyViaFile).toBe("Custom summary body\n\nCloses #7");
+			const prCreated = history(ts.store, taskId).find(
+				(e) => e.type === "pr.created",
+			);
+			expect(JSON.parse(prCreated?.payload ?? "{}")).toEqual({
+				url: "https://github.com/acme/app/pull/7",
+				branch: "specd/feat/task-0001-add-login-route",
+				issue: "7",
+			});
 		} finally {
 			ts.cleanup();
 		}
