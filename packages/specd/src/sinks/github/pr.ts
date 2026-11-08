@@ -34,11 +34,12 @@ function appendPrCompleted(
 	item: string,
 	url: string,
 	branch: string,
+	issue?: string,
 ): void {
 	appendEvent(store, {
 		item,
 		type: "pr.created",
-		payload: { url, branch },
+		payload: issue ? { url, branch, issue } : { url, branch },
 		actor: "agent",
 	});
 	appendEvent(store, {
@@ -84,6 +85,7 @@ export async function openPr(
 		ccTypeOf(store, task.id),
 	);
 	const title = ccTitle(store, task.id, task.title);
+	const trailer = issueNumber(store, input.taskId);
 
 	// Idempotency: an open PR for this branch wins over a duplicate.
 	const listed = parseJsonLoose<Array<{ number?: number; url?: string }>>(
@@ -104,7 +106,7 @@ export async function openPr(
 	);
 	const existing = (listed ?? [])[0];
 	if (existing?.url && existing.number !== undefined) {
-		appendPrCompleted(store, input.taskId, existing.url, branch);
+		appendPrCompleted(store, input.taskId, existing.url, branch, trailer);
 		return {
 			branch,
 			created: false,
@@ -127,7 +129,6 @@ export async function openPr(
 	}
 
 	const prose = input.summary ?? task.title;
-	const trailer = issueNumber(store, input.taskId);
 	const body = await writeTempBody(
 		trailer ? `${prose}\n\nCloses #${trailer}` : prose,
 	);
@@ -151,7 +152,7 @@ export async function openPr(
 			);
 		}
 		const number = url.split("/pull/").at(-1) ?? "";
-		appendPrCompleted(store, input.taskId, url, branch);
+		appendPrCompleted(store, input.taskId, url, branch, trailer);
 		return { branch, created: true, number, url };
 	} finally {
 		await body.cleanup();
