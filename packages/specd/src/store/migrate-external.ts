@@ -13,6 +13,7 @@ import { dirname, join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { createExternalStore } from "./external.js";
 import {
+	expandHome,
 	isSpecdStore,
 	lookupStore,
 	registerStore,
@@ -182,7 +183,7 @@ export function migrateToExternalStore(
 	storePath: string,
 ): MigrationResult {
 	const resolvedRepo = resolve(repoPath);
-	const resolvedStore = resolve(storePath);
+	const resolvedStore = resolve(expandHome(storePath));
 	const specDir = join(resolvedRepo, ".spec");
 	const sourceEventsPath = join(specDir, "events.jsonl");
 

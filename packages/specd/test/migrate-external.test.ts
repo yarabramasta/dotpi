@@ -10,8 +10,8 @@ import {
 	rmSync,
 	writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { homedir, tmpdir } from "node:os";
+import { join, relative } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { migrateToExternalStore } from "../src/store/migrate-external.js";
@@ -365,5 +365,20 @@ describe("migrate to external store", () => {
 		);
 		expect(existsSync(join(repoDir, ".spec"))).toBe(true);
 		expect(existsSync(storePath)).toBe(false);
+	});
+
+	it("expands ~ in storePath to $HOME", async () => {
+		const { repoDir } = await seededRepo();
+		const target = mkdtempSync(join(homedir(), "specd-migrate-home-XXXXXX"));
+		dirs.push(target);
+		const rel = relative(homedir(), target);
+
+		const result = migrateToExternalStore(repoDir, `~/${rel}`);
+
+		expect(result.migrated).toBe(true);
+		expect(result.storePath).toBe(target);
+		expect(existsSync(target)).toBe(true);
+		expect(existsSync(join(target, ".specd-store.yaml"))).toBe(true);
+		expect(lookupStore(repoDir)?.storePath).toBe(target);
 	});
 });

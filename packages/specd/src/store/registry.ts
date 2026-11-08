@@ -139,7 +139,7 @@ export function resolveStoreDir(cwd: string): string {
 	return join(canonicalRepoPath(repoPath), ".spec");
 }
 
-function expandHome(input: string): string {
+export function expandHome(input: string): string {
 	if (input.startsWith("~/")) return join(homedir(), input.slice(2));
 	if (input === "~") return homedir();
 	return input;

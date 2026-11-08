@@ -13,8 +13,10 @@ import {
 } from "../sinks/config.js";
 import type { PlanWorkspace } from "../sinks/contract.js";
 import { resolveAdapter } from "../sinks/resolve.js";
+import { ensureExternalStore } from "../store/external.js";
 import {
 	addStoreReference,
+	expandHome,
 	isSpecdStore,
 	lookupStore,
 	registerStore,
@@ -121,7 +123,6 @@ export function registerSinkTools(pi: ExtensionAPI): void {
 						"1. External — specd-managed (zero footprint) ← recommended default for new repos\n" +
 						"2. External — git repo (shareable, versioned)\n" +
 						"3. In this repo (.spec/, gitignored) — supported, machine-local\n" +
-						"4. In this repo (.spec/, committed)\n" +
 						'Then register it with specd_store(action="register").',
 				);
 			}
@@ -137,16 +138,23 @@ export function registerSinkTools(pi: ExtensionAPI): void {
 				const entry: StoreRegistryEntry = {
 					type: params.type as StoreRegistryEntry["type"],
 				};
-				if (params.storePath) entry.storePath = params.storePath;
+				let storePath: string | undefined;
+				if (params.storePath) {
+					storePath = expandHome(params.storePath);
+					entry.storePath = storePath;
+				}
 				if (params.remote) entry.remote = params.remote;
-				if (params.type !== "in-repo" && !params.storePath) {
+				if (params.type !== "in-repo" && !storePath) {
 					return text(
 						`External stores need a storePath. Got type=${params.type} without a path.`,
 					);
 				}
+				if (entry.type === "external" || entry.type === "external-git") {
+					ensureExternalStore(storePath as string, ctx.cwd);
+				}
 				registerStore(ctx.cwd, entry);
 				return text(
-					`Registered: ${ctx.cwd} → ${params.type}${params.storePath ? ` (${params.storePath})` : ""}`,
+					`Registered: ${ctx.cwd} → ${params.type}${storePath ? ` (${storePath})` : ""}`,
 				);
 			}
 
