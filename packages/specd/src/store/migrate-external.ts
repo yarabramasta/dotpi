@@ -242,62 +242,69 @@ export function migrateToExternalStore(
 	}
 
 	// 5. Verify BEFORE destroying anything.
-	const sourceVerifyDb = openSourceDb(specDir);
-	const expectedStore = buildExpectedStore(sourceEventsPath, sourceVerifyDb);
-	const targetVerifyDb = new DatabaseSync(join(resolvedStore, "store.db"), {
-		readOnly: true,
-	});
-
 	let warning: string | undefined;
 	try {
-		// 5a. Integrity: target must match the expected replay of events.jsonl.
-		const expectedCounts = readCounts(expectedStore.db);
-		const targetCounts = readCounts(targetVerifyDb);
+		const sourceVerifyDb = openSourceDb(specDir);
+		const expectedStore = buildExpectedStore(sourceEventsPath, sourceVerifyDb);
+		const targetVerifyDb = new DatabaseSync(join(resolvedStore, "store.db"), {
+			readOnly: true,
+		});
 
-		if (
-			expectedCounts.items !== targetCounts.items ||
-			expectedCounts.events !== targetCounts.events ||
-			expectedCounts.links !== targetCounts.links ||
-			expectedCounts.statuses !== targetCounts.statuses
-		) {
-			rmSync(resolvedStore, { recursive: true, force: true });
-			throw new Error(
-				`Migration refused: target store does not match events.jsonl replay. ` +
-					`items ${expectedCounts.items} vs ${targetCounts.items}, ` +
-					`events ${expectedCounts.events} vs ${targetCounts.events}, ` +
-					`links ${expectedCounts.links} vs ${targetCounts.links}.`,
-			);
-		}
+		try {
+			// 5a. Copy/race guard: target must match the expected replay of events.jsonl.
+			//    Same source events.jsonl replayed twice by the same machinery; catches
+			//    jsonl mutation or partial copy between the two copies, not db divergence.
+			const expectedCounts = readCounts(expectedStore.db);
+			const targetCounts = readCounts(targetVerifyDb);
 
-		// 5b. Safety: data loss if source db has events absent from events.jsonl.
-		const lostCount = dbAheadCount(sourceVerifyDb, expectedStore.db);
-		if (lostCount > 0) {
-			rmSync(resolvedStore, { recursive: true, force: true });
-			throw new Error(
-				`Migration refused: ${lostCount} ${lostCount === 1 ? "event exists" : "events exist"} ` +
-					`only in the stale store.db and ${lostCount === 1 ? "is" : "are"} not in events.jsonl — ` +
-					`migration would lose ${lostCount === 1 ? "it" : "them"}.`,
-			);
-		}
+			if (
+				expectedCounts.items !== targetCounts.items ||
+				expectedCounts.events !== targetCounts.events ||
+				expectedCounts.links !== targetCounts.links ||
+				expectedCounts.statuses !== targetCounts.statuses
+			) {
+				rmSync(resolvedStore, { recursive: true, force: true });
+				throw new Error(
+					`Migration refused: target store does not match events.jsonl replay. ` +
+						`items ${expectedCounts.items} vs ${targetCounts.items}, ` +
+						`events ${expectedCounts.events} vs ${targetCounts.events}, ` +
+						`links ${expectedCounts.links} vs ${targetCounts.links}.`,
+				);
+			}
 
-		// 5c. Stale-but-safe: jsonl is a strict superset of the source db.
-		const sourceIds = readEventIds(sourceVerifyDb);
-		const expectedIds = readEventIds(expectedStore.db);
-		let staleCount = 0;
-		for (const id of expectedIds) {
-			if (!sourceIds.has(id)) staleCount++;
+			// 5b. Safety: data loss if source db has events absent from events.jsonl.
+			const lostCount = dbAheadCount(sourceVerifyDb, expectedStore.db);
+			if (lostCount > 0) {
+				rmSync(resolvedStore, { recursive: true, force: true });
+				throw new Error(
+					`Migration refused: ${lostCount} ${lostCount === 1 ? "event exists" : "events exist"} ` +
+						`only in the stale store.db and ${lostCount === 1 ? "is" : "are"} not in events.jsonl — ` +
+						`migration would lose ${lostCount === 1 ? "it" : "them"}.`,
+				);
+			}
+
+			// 5c. Stale-but-safe: jsonl is a strict superset of the source db.
+			const sourceIds = readEventIds(sourceVerifyDb);
+			const expectedIds = readEventIds(expectedStore.db);
+			let staleCount = 0;
+			for (const id of expectedIds) {
+				if (!sourceIds.has(id)) staleCount++;
+			}
+			if (staleCount > 0) {
+				warning =
+					`source store.db was stale: ${staleCount} ` +
+					`${staleCount === 1 ? "event" : "events"} behind events.jsonl; ` +
+					`events.jsonl is authoritative; stale db discarded with .spec/`;
+			}
+		} finally {
+			sourceVerifyDb.close();
+			expectedStore.db.close();
+			targetVerifyDb.close();
+			rmSync(expectedStore.dir, { recursive: true, force: true });
 		}
-		if (staleCount > 0) {
-			warning =
-				`source store.db was stale: ${staleCount} ` +
-				`${staleCount === 1 ? "event" : "events"} behind events.jsonl; ` +
-				`events.jsonl is authoritative; stale db discarded with .spec/`;
-		}
-	} finally {
-		sourceVerifyDb.close();
-		expectedStore.db.close();
-		targetVerifyDb.close();
-		rmSync(expectedStore.dir, { recursive: true, force: true });
+	} catch (err) {
+		rmSync(resolvedStore, { recursive: true, force: true });
+		throw err;
 	}
 
 	// 6. Commit migrated events BEFORE destructive flip. If commit fails,

@@ -186,7 +186,7 @@ describe("migrate to external store", () => {
 				"INSERT INTO events (id, item, type, payload, at, actor) VALUES (?, ?, ?, ?, ?, ?)",
 			)
 			.run(
-				100,
+				0,
 				"db-ahead-spec-001",
 				"created",
 				JSON.stringify({
@@ -201,6 +201,26 @@ describe("migrate to external store", () => {
 				"test",
 			);
 		sourceDb.close();
+
+		// Add a valid jsonl-only event so counts match (4 vs 4) but id sets differ.
+		const eventsPath = join(repoDir, ".spec", "events.jsonl");
+		const jsonlOnly = JSON.stringify({
+			id: 100,
+			item: "jsonl-only-spec-001",
+			type: "created",
+			payload: JSON.stringify({
+				kind: "spec",
+				title: "Jsonl-only spec",
+				body: "",
+				pathScope: null,
+				phase: null,
+				parallel: false,
+			}),
+			at: "2024-01-01T00:00:00.000Z",
+			actor: "test",
+			batch: null,
+		});
+		appendFileSync(eventsPath, `${jsonlOnly}\n`);
 
 		expect(() => migrateToExternalStore(repoDir, storePath)).toThrow(
 			/1 event exists only in the stale store\.db and is not in events\.jsonl/,
@@ -323,7 +343,7 @@ describe("migrate to external store", () => {
 		expect(events).toBe(5);
 	});
 
-	it("refuses to migrate when events.jsonl does not replay to expected state", async () => {
+	it("refuses to migrate when events.jsonl contains an invalid event", async () => {
 		const { repoDir } = await seededRepo();
 		const storePath = join(repoDir, "..", "external-store");
 		dirs.push(storePath);
