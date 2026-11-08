@@ -202,6 +202,12 @@ describe("openPr (review-gated PR creation)", () => {
 		const ts = await makeStore();
 		try {
 			const taskId = await reviewedTask(ts.store);
+			appendEvent(ts.store, {
+				item: taskId,
+				type: "task.exported",
+				payload: { sink: "github", externalRef: "42" },
+				actor: "test",
+			});
 			const state: PrState = {
 				existing: {
 					number: 5,
@@ -227,6 +233,7 @@ describe("openPr (review-gated PR creation)", () => {
 			expect(JSON.parse(prCreated?.payload ?? "{}")).toEqual({
 				url: "https://github.com/acme/app/pull/5",
 				branch: "specd/feat/task-0001-add-login-route",
+				issue: "42",
 			});
 			const completed = events.filter((e) => e.type === "work.completed");
 			expect(completed.length).toBe(1);
