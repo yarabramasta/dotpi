@@ -32,7 +32,6 @@ MANIFEST
 *.manifest
 *.spec
 # specd store dir shares the name; re-include it
-!.spec/
 
 # Installer logs
 pip-log.txt
