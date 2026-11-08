@@ -2,5 +2,6 @@
 	"jinaApiKey": "$JINA_API_KEY",
 	"allowBrowserCookies": true,
 	"browserCookies": { "browser": "brave" },
-	"fetchRouting": { "allowRemoteHostedProviders": true }
+	"fetchRouting": { "allowRemoteHostedProviders": true },
+	"summaryModel": "wandb/zai-org/GLM-5.3-Flash:medium"
 }
