@@ -23,12 +23,13 @@
 					"id": "zai-org/GLM-5.3-Flash",
 					"reasoning": true,
 					"thinkingLevelMap": {
-						"minimal": null,
-						"low": null,
-						"medium": null,
+						"off": null,
+						"minimal": "enabled",
+						"low": "enabled",
+						"medium": "enabled",
 						"high": "enabled",
-						"xhigh": null,
-						"max": null
+						"xhigh": "enabled",
+						"max": "enabled"
 					},
 					"input": [
 						"text",
@@ -43,15 +44,38 @@
 					}
 				},
 				{
+					"id": "zai-org/GLM-5.3",
+					"reasoning": true,
+					"thinkingLevelMap": {
+						"off": null,
+						"minimal": "enabled",
+						"low": "enabled",
+						"medium": "enabled",
+						"high": "enabled",
+						"xhigh": "enabled",
+						"max": "enabled"
+					},
+					"input": [
+						"text"
+					],
+					"contextWindow": 1000000,
+					"cost": {
+						"input": 0.75,
+						"output": 3.0,
+						"cacheRead": 0.19,
+						"cacheWrite": 0
+					}
+				},
+				{
 					"id": "ibm-granite/granite-4.2-8b",
 					"reasoning": true,
 					"thinkingLevelMap": {
-						"minimal": null,
-						"low": null,
-						"medium": null,
+						"minimal": "enabled",
+						"low": "enabled",
+						"medium": "enabled",
 						"high": "enabled",
-						"xhigh": null,
-						"max": null
+						"xhigh": "enabled",
+						"max": "enabled"
 					},
 					"input": [
 						"text"
@@ -68,12 +92,12 @@
 					"id": "Qwen/Qwen3.8-27B",
 					"reasoning": true,
 					"thinkingLevelMap": {
-						"minimal": null,
-						"low": null,
-						"medium": null,
-						"high": "enabled",
-						"xhigh": null,
-						"max": null
+						"minimal": "low",
+						"low": "low",
+						"medium": "medium",
+						"high": "xhigh",
+						"xhigh": "xhigh",
+						"max": "xhigh"
 					},
 					"input": [
 						"text",
@@ -85,18 +109,25 @@
 						"output": 3.0,
 						"cacheRead": 0.15,
 						"cacheWrite": 0
+					},
+					"compat": {
+						"chatTemplateKwargs": {
+							"reasoning_effort": {
+								"$var": "thinking.effort"
+							}
+						}
 					}
 				},
 				{
 					"id": "deepseek-ai/DeepSeek-V4-Pro-0813",
 					"reasoning": true,
 					"thinkingLevelMap": {
-						"minimal": null,
-						"low": null,
-						"medium": null,
+						"minimal": "enabled",
+						"low": "enabled",
+						"medium": "enabled",
 						"high": "enabled",
-						"xhigh": null,
-						"max": null
+						"xhigh": "enabled",
+						"max": "enabled"
 					},
 					"input": [
 						"text"
@@ -110,15 +141,37 @@
 					}
 				},
 				{
+					"id": "deepseek-ai/DeepSeek-V4.1-Flash-1017",
+					"reasoning": true,
+					"thinkingLevelMap": {
+						"minimal": "enabled",
+						"low": "enabled",
+						"medium": "enabled",
+						"high": "enabled",
+						"xhigh": "enabled",
+						"max": "enabled"
+					},
+					"input": [
+						"text"
+					],
+					"contextWindow": 1000000,
+					"cost": {
+						"input": 0.13,
+						"output": 0.65,
+						"cacheRead": 0.002,
+						"cacheWrite": 0
+					}
+				},
+				{
 					"id": "nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B",
 					"reasoning": true,
 					"thinkingLevelMap": {
-						"minimal": null,
-						"low": null,
-						"medium": null,
+						"minimal": "enabled",
+						"low": "enabled",
+						"medium": "enabled",
 						"high": "enabled",
-						"xhigh": null,
-						"max": null
+						"xhigh": "enabled",
+						"max": "enabled"
 					},
 					"input": [
 						"text"
@@ -132,37 +185,15 @@
 					}
 				},
 				{
-					"id": "deepseek-ai/DeepSeek-V4-Flash-0731",
-					"reasoning": true,
-					"thinkingLevelMap": {
-						"minimal": null,
-						"low": null,
-						"medium": null,
-						"high": "enabled",
-						"xhigh": null,
-						"max": null
-					},
-					"input": [
-						"text"
-					],
-					"contextWindow": 262000,
-					"cost": {
-						"input": 0.13,
-						"output": 0.28,
-						"cacheRead": 0.07,
-						"cacheWrite": 0
-					}
-				},
-				{
 					"id": "zai-org/GLM-5.2",
 					"reasoning": true,
 					"thinkingLevelMap": {
-						"minimal": null,
-						"low": null,
-						"medium": null,
+						"minimal": "enabled",
+						"low": "enabled",
+						"medium": "enabled",
 						"high": "enabled",
-						"xhigh": null,
-						"max": null
+						"xhigh": "enabled",
+						"max": "enabled"
 					},
 					"input": [
 						"text"
@@ -179,12 +210,12 @@
 					"id": "MiniMaxAI/MiniMax-M3",
 					"reasoning": true,
 					"thinkingLevelMap": {
-						"minimal": null,
-						"low": null,
-						"medium": null,
+						"minimal": "enabled",
+						"low": "enabled",
+						"medium": "enabled",
 						"high": "enabled",
-						"xhigh": null,
-						"max": null
+						"xhigh": "enabled",
+						"max": "enabled"
 					},
 					"input": [
 						"text",
@@ -211,12 +242,12 @@
 					"reasoning": true,
 					"thinkingLevelMap": {
 						"off": null,
-						"minimal": null,
-						"low": null,
-						"medium": null,
+						"minimal": "enabled",
+						"low": "enabled",
+						"medium": "enabled",
 						"high": "enabled",
-						"xhigh": null,
-						"max": null
+						"xhigh": "enabled",
+						"max": "enabled"
 					},
 					"input": [
 						"text",
@@ -239,12 +270,12 @@
 					"id": "nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B",
 					"reasoning": true,
 					"thinkingLevelMap": {
-						"minimal": null,
-						"low": null,
-						"medium": null,
+						"minimal": "enabled",
+						"low": "enabled",
+						"medium": "enabled",
 						"high": "enabled",
-						"xhigh": null,
-						"max": null
+						"xhigh": "enabled",
+						"max": "enabled"
 					},
 					"input": [
 						"text"
@@ -262,12 +293,12 @@
 					"reasoning": true,
 					"thinkingLevelMap": {
 						"off": null,
-						"minimal": null,
-						"low": null,
-						"medium": null,
+						"minimal": "enabled",
+						"low": "enabled",
+						"medium": "enabled",
 						"high": "enabled",
-						"xhigh": null,
-						"max": null
+						"xhigh": "enabled",
+						"max": "enabled"
 					},
 					"input": [
 						"text",
@@ -290,12 +321,12 @@
 					"id": "Qwen/Qwen3.6-35B-A3B",
 					"reasoning": true,
 					"thinkingLevelMap": {
-						"minimal": null,
-						"low": null,
-						"medium": null,
+						"minimal": "enabled",
+						"low": "enabled",
+						"medium": "enabled",
 						"high": "enabled",
-						"xhigh": null,
-						"max": null
+						"xhigh": "enabled",
+						"max": "enabled"
 					},
 					"input": [
 						"text",
@@ -313,12 +344,12 @@
 					"id": "google/gemma-4-31B-it",
 					"reasoning": true,
 					"thinkingLevelMap": {
-						"minimal": null,
-						"low": null,
-						"medium": null,
+						"minimal": "enabled",
+						"low": "enabled",
+						"medium": "enabled",
 						"high": "enabled",
-						"xhigh": null,
-						"max": null
+						"xhigh": "enabled",
+						"max": "enabled"
 					},
 					"input": [
 						"text",
@@ -351,12 +382,12 @@
 					"reasoning": true,
 					"thinkingLevelMap": {
 						"off": null,
-						"minimal": null,
-						"low": null,
-						"medium": null,
-						"high": "enabled",
-						"xhigh": null,
-						"max": null
+						"minimal": "low",
+						"low": "low",
+						"medium": "medium",
+						"high": "high",
+						"xhigh": "high",
+						"max": "high"
 					},
 					"input": [
 						"text"
@@ -369,9 +400,7 @@
 						"cacheWrite": 0
 					},
 					"compat": {
-						"chatTemplateKwargs": {
-							"enable_thinking": true
-						}
+						"supportsReasoningEffort": true
 					}
 				},
 				{
@@ -379,12 +408,12 @@
 					"reasoning": true,
 					"thinkingLevelMap": {
 						"off": null,
-						"minimal": null,
-						"low": null,
-						"medium": null,
-						"high": "enabled",
-						"xhigh": null,
-						"max": null
+						"minimal": "low",
+						"low": "low",
+						"medium": "medium",
+						"high": "high",
+						"xhigh": "high",
+						"max": "high"
 					},
 					"input": [
 						"text"
@@ -397,9 +426,7 @@
 						"cacheWrite": 0
 					},
 					"compat": {
-						"chatTemplateKwargs": {
-							"enable_thinking": true
-						}
+						"supportsReasoningEffort": true
 					}
 				},
 				{
